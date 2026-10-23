@@ -53,6 +53,9 @@ async function openCamera() {
       <div class="cam-overlay" id="camOverlay">
         <div class="cam-frame"><i></i><i></i><i></i><i></i></div>
       </div>
+      <button class="burst-toggle" id="burstToggle" data-act="burst-toggle" aria-pressed="false">
+        ${ICON('i-burst', 'ico sm')} <span>Rafale</span>
+      </button>
       <div class="cam-hint" id="camHint">Placez le document dans le cadre — restez stable</div>
     </div>
     <div class="cam-bottom">
@@ -123,6 +126,8 @@ async function startStream() {
 }
 
 function closeCamera() {
+  if (Burst.active) toggleBurst();
+  clearInterval(Burst.timer); Burst.timer = null; Burst.active = false;
   if (App.camera.stream) {
     App.camera.stream.getTracks().forEach(t => t.stop());
     App.camera.stream = null;
@@ -146,7 +151,53 @@ function updateCamPages() {
     : 'Placez le document dans le cadre — restez stable';
 }
 
-async function capturePhoto() {
+/* ---------------------------------------------------------- mode rafale -- */
+const Burst = { active: false, count: 0, timer: null, lastShot: 0, saved: 'none' };
+
+function toggleBurst() {
+  const btn = $('#burstToggle');
+  if (!App.camera.stream) { toast('La caméra doit être active pour la rafale', 'err'); return; }
+  Burst.active = !Burst.active;
+  if (btn) {
+    btn.classList.toggle('on', Burst.active);
+    btn.setAttribute('aria-pressed', String(Burst.active));
+    btn.querySelector('span').textContent = Burst.active ? 'Arrêter' : 'Rafale';
+  }
+  const hint = $('#camHint');
+  if (Burst.active) {
+    toast('Rafale : une photo toutes les 1,2 s — appuyez sur Arrêter', 'ok', 3000);
+    const before = Settings.get('defaultFilter');
+    Burst.saved = before;
+    Settings.set('defaultFilter', before || 'doc');   // la rafale privilégie un rendu net
+    Burst.count = 0;
+    let busy = false;
+    Burst.timer = setInterval(async () => {
+      if (!Burst.active) return;
+      if (busy) return;
+      if (!App.camera.stream) { toggleBurst(); return; }
+      busy = true;
+      try {
+        await capturePhoto({ quiet: true });
+        Burst.count++;
+        if (hint) hint.textContent = `Rafale en cours — ${plural(Burst.count, 'page capturée', 'pages capturées')}`;
+        if (Burst.count >= 20) { toggestionBurstLimit(); }
+      } finally { busy = false; }
+    }, 1200);
+  } else {
+    clearInterval(Burst.timer); Burst.timer = null;
+    Settings.set('defaultFilter', Burst.saved || 'doc');
+    if (hint) hint.textContent = 'Placez le document dans le cadre — restez stable';
+    if (Burst.count) toast(plural(Burst.count, 'page capturée en rafale', 'pages capturées en rafale'), 'ok');
+    Burst.count = 0;
+  }
+}
+function toggestionBurstLimit() {
+  Burst.active = true;
+  toggleBurst();
+  toast('Limite de 20 pages atteinte — rafale arrêtée', 'err', 3000);
+}
+
+async function capturePhoto(opts = {}) {
   const video = $('#camVideo');
   if (!video || !video.videoWidth) {
     toast('La caméra n\'est pas encore prête', 'err');
@@ -156,8 +207,9 @@ async function capturePhoto() {
   c.width = video.videoWidth; c.height = video.videoHeight;
   c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
   const dataUrl = c.toDataURL('image/jpeg', 0.92);
-  const page = await addPageFromDataUrl(dataUrl);
-  if (page && page.detected) toast('Document détecté et redressé', 'ok', 1600);
+  const page = await addPageFromDataUrl(dataUrl, { detect: opts.detect !== false });
+  if (page && page.detected && !opts.quiet) toast('Document détecté et redressé', 'ok', 1600);
+  if (opts.quiet) return page;
   // flash visuel
   const app = $('#cameraScreen');
   if (app) {
@@ -283,6 +335,7 @@ function renderEditor() {
         <button class="tool" data-act="editor-rotate">${ICON('i-rotate')}Pivoter</button>
         <button class="tool" data-act="editor-deskew">${ICON('i-straighten')}Redresser</button>
         <button class="tool" data-act="editor-adjust">${ICON('i-sun')}Luminosité</button>
+        <button class="tool" data-act="editor-ocr-zone">${ICON('i-zone')}Zone OCR</button>
         <button class="tool" data-act="editor-duplicate">${ICON('i-copy')}Dupliquer</button>
         <button class="tool" data-act="editor-delete-page">${ICON('i-trash')}Supprimer</button>
       </div>
@@ -308,6 +361,7 @@ function renderEditor() {
     </div>
   </div>`;
   drawEditorCanvas();
+  initPageReorder();
 }
 
 let editorRenderToken = 0;
@@ -398,6 +452,101 @@ function mountCropUI() {
     $('#cropToolbar').style.display = 'none';
     renderEditor();
   };
+}
+
+/* --------------------------------------- réorganisation des pages (V2.1) -- */
+function initPageReorder() {
+  const strip = $('#pagesStrip');
+  if (!strip) return;
+  let dragEl = null, dragIndex = -1, startX = 0, startY = 0, longPress = null, active = false;
+
+  const thumbs = () => Array.from(strip.querySelectorAll('.page-thumb'));
+
+  strip.addEventListener('pointerdown', (e) => {
+    const th = e.target.closest('.page-thumb, .add-page');
+    if (!th) return;
+    if (e.target.closest('.del')) return;              // bouton supprimer
+    startX = e.clientX; startY = e.clientY;
+    if (!th.classList.contains('page-thumb')) return;  // pas de drag sur « + »
+    longPress = setTimeout(() => {
+      dragEl = th;
+      dragIndex = +th.dataset.i;
+      active = true;
+      th.classList.add('dragging');
+      if (navigator.vibrate) navigator.vibrate(12);
+      strip.classList.add('reordering');
+    }, 260);
+  });
+
+  strip.addEventListener('pointermove', (e) => {
+    if (!dragEl && longPress) {
+      if (Math.hypot(e.clientX - startX, e.clientY - startY) > 10) {
+        clearTimeout(longPress); longPress = null;      // simple défilement horizontal
+      }
+      return;
+    }
+    if (!dragEl) return;
+    e.preventDefault();
+    moveGhost(e.clientX);
+  });
+
+  /* Sur mobile, un appui long suivi d'un déplacement déclenche un pointercancel
+     (le navigateur veut faire défiler). On suit donc aussi les événements touch,
+     avec preventDefault pour conserver la main. */
+  let touchDrag = false, touchIndex = -1;
+  strip.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    const th = e.target.closest('.page-thumb');
+    if (!th || e.target.closest('.del')) return;
+    touchIndex = +th.dataset.i;
+  }, { passive: true });
+  strip.addEventListener('touchmove', (e) => {
+    if (!dragEl) return;
+    if (e.cancelable) e.preventDefault();
+    const t = e.touches[0];
+    if (t && dragEl) moveGhost(t.clientX);
+    touchDrag = true;
+  }, { passive: false });
+  strip.addEventListener('touchend', () => { if (dragEl) finish(); });
+
+  const moveGhost = (clientX) => {
+    const others = thumbs().filter(el => el !== dragEl);
+    if (!others.length) return;
+    const boxes = others.map(el => ({ el, r: el.getBoundingClientRect() })).sort((a, b) => a.r.left - b.r.left);
+    let target = null;
+    for (const b of boxes) if (clientX < b.r.left + b.r.width / 2) { target = b.el; break; }
+    if (target) { if (dragEl.nextElementSibling !== target) strip.insertBefore(dragEl, target); }
+    else {
+      const last = boxes[boxes.length - 1].el;
+      if (dragEl !== last.nextElementSibling && dragEl !== last) strip.insertBefore(dragEl, last.nextSibling);
+    }
+    const sr = strip.getBoundingClientRect();
+    if (clientX > sr.right - 40) strip.scrollLeft += 12;
+    else if (clientX < sr.left + 40) strip.scrollLeft -= 12;
+  };
+
+  const finish = () => {
+    clearTimeout(longPress); longPress = null;
+    if (!dragEl) { strip.classList.remove('reordering'); return; }
+    dragEl.classList.remove('dragging');
+    dragEl = null; active = false;
+    strip.classList.remove('reordering');
+    const order = thumbs().map(el => +el.dataset.i);
+    const d = App.draft;
+    if (!d) return;
+    const reordered = order.map(i => d.pages[i]).filter(Boolean);
+    const changed = order.some((v, i) => v !== i);
+    d.pages = reordered;
+    d.active = 0;
+    if (changed) {
+      toast('Ordre des pages mis à jour', 'ok', 1600);
+      renderEditor();
+    }
+  };
+  strip.addEventListener('pointerup', finish);
+  // le navigateur peut annuler le pointeur (défilement) : on termine proprement,
+  // la position du doigt restant suivie par les événements touch ci-dessous.
+  strip.addEventListener('pointercancel', () => { if (dragEl) finish(); });
 }
 
 /* ------------------------------------------------ ajustement des 4 coins -- */
@@ -515,6 +664,130 @@ async function editorCorners() {
     toast('Perspective appliquée', 'ok');
     renderEditor();
   };
+}
+
+/* ------------------------------------------------------------ OCR de zone -- */
+/**
+ * Ouvre un sélecteur rectangulaire sur une image et lance l'OCR de la zone.
+ * @param {{src:string,label?:string}} source image à analyser
+ */
+async function ocrZone(source) {
+  if (!source || !source.src) return;
+  const img = await ImageOps.load(source.src);
+  const scale = Math.min(1, 620 / Math.max(img.naturalWidth, img.naturalHeight));
+  const dispW = Math.round(img.naturalWidth * scale);
+  const dispH = Math.round(img.naturalHeight * scale);
+
+  const sheet = openSheet({
+    title: 'OCR d\'une zone',
+    sub: 'Dessinez un rectangle autour du texte à reconnaître.',
+    body: `<div id="zoneWrap" style="position:relative;display:inline-block;max-width:100%;margin:2px auto 6px;
+            border-radius:10px;overflow:hidden;background:#0B1B34;touch-action:none">
+        <img id="zoneImg" src="${source.src}" style="width:${dispW}px;max-width:100%;display:block;user-select:none;-webkit-user-drag:none">
+        <div id="zoneRect" style="position:absolute;border:2px solid #3B82F6;background:rgba(37,99,235,.15);
+          box-shadow:0 0 0 9999px rgba(2,6,16,.45);display:none;pointer-events:none"></div>
+      </div>
+      <p class="tiny muted text-center" style="margin:0">Astuce : appuyez et glissez pour tracer la zone.</p>`,
+    actions: [{ label: 'Annuler', cls: 'ghost' },
+              { label: 'Lire la zone', cls: 'primary', act: 'zone-go' }]
+  });
+
+  const wrap = $('#zoneWrap', sheet);
+  const rectEl = $('#zoneRect', sheet);
+  let start = null, zone = null;   // zone en coordonnées pixels de l'image affichée
+
+  const setRect = (z) => {
+    zone = z;
+    rectEl.style.display = 'block';
+    rectEl.style.left = z.x + 'px'; rectEl.style.top = z.y + 'px';
+    rectEl.style.width = z.w + 'px'; rectEl.style.height = z.h + 'px';
+  };
+  wrap.addEventListener('pointerdown', (e) => {
+    const b = wrap.getBoundingClientRect();
+    start = { x: clamp(e.clientX - b.left, 0, b.width), y: clamp(e.clientY - b.top, 0, b.height) };
+    wrap.setPointerCapture(e.pointerId);
+    setRect({ x: start.x, y: start.y, w: 0, h: 0 });
+  });
+  wrap.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const b = wrap.getBoundingClientRect();
+    const cx = clamp(e.clientX - b.left, 0, b.width), cy = clamp(e.clientY - b.top, 0, b.height);
+    setRect({ x: Math.min(start.x, cx), y: Math.min(start.y, cy), w: Math.abs(cx - start.x), h: Math.abs(cy - start.y) });
+  });
+  wrap.addEventListener('pointerup', () => { start = null; });
+  wrap.addEventListener('pointercancel', () => { start = null; });
+
+  const goBtn = $('[data-act="zone-go"]', sheet);
+  goBtn.addEventListener('click', async () => {
+    if (!zone || zone.w < 12 || zone.h < 8) { toast('Tracez une zone plus grande', 'err'); return; }
+    // conversion vers les coordonnées de l'image source
+    const b = wrap.getBoundingClientRect();
+    const ratio = img.naturalWidth / b.width;
+    const crop = {
+      x: (zone.x / b.width), y: (zone.y / b.height),
+      w: (zone.w / b.width), h: (zone.h / b.height)
+    };
+    closeSheet();
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(8, Math.round(img.naturalWidth * crop.w));
+    canvas.height = Math.max(8, Math.round(img.naturalHeight * crop.h));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img,
+      crop.x * img.naturalWidth, crop.y * img.naturalHeight,
+      crop.w * img.naturalWidth, crop.h * img.naturalHeight,
+      0, 0, canvas.width, canvas.height);
+    const zoom = Math.min(3, Math.max(1, 1600 / Math.max(canvas.width, canvas.height)));
+    let finalCanvas = canvas;
+    if (zoom > 1) {
+      finalCanvas = document.createElement('canvas');
+      finalCanvas.width = Math.round(canvas.width * zoom);
+      finalCanvas.height = Math.round(canvas.height * zoom);
+      const c2 = finalCanvas.getContext('2d');
+      c2.imageSmoothingQuality = 'high';
+      c2.drawImage(canvas, 0, 0, finalCanvas.width, finalCanvas.height);
+    }
+    let results;
+    try { results = await runOcr([finalCanvas.toDataURL('image/jpeg', 0.96)]); }
+    catch (e) { return; }
+    if (!results) return;
+    const txt = (results[0] && results[0].text) || '';
+    const conf = (results[0] && results[0].confidence) || 0;
+    showZoneResult(txt, conf, finalCanvas.toDataURL('image/jpeg', 0.8));
+  });
+}
+
+function showZoneResult(txt, conf, thumbUrl) {
+  const s = openSheet({
+    title: txt ? 'Texte de la zone' : 'Aucun texte détecté',
+    sub: txt ? `Confiance ${conf} % · ${txt.trim().split(/\s+/).filter(Boolean).length} mot(s)` : 'Essayez une zone plus large ou un meilleur contraste.',
+    body: `${thumbUrl ? `<img src="${thumbUrl}" style="max-width:100%;border-radius:10px;border:1px solid var(--line);margin-bottom:10px">` : ''}
+      <textarea class="textarea" id="zoneText" style="min-height:140px">${escapeHtml(txt)}</textarea>`,
+    actions: [{ label: 'Fermer', cls: 'ghost' },
+              { label: 'Copier', cls: 'soft', act: 'zone-copy' },
+              { label: 'Ajouter au texte du document', cls: 'primary', act: 'zone-append' }]
+  });
+  const ta = $('#zoneText', s);
+  $('[data-act="zone-copy"]', s).addEventListener('click', () => copyText(ta.value));
+  $('[data-act="zone-append"]', s).addEventListener('click', async () => {
+    const add = ta.value.trim();
+    closeSheet();
+    if (!add) return;
+    if (App.doc) {
+      App.doc.text = (App.doc.text ? App.doc.text.replace(/\s*$/, '') + '\n\n' : '') + add;
+      App.doc.modified = true;
+      if (!App.doc.ocr || App.doc.ocr.status !== 'done') {
+        App.doc.ocr = { status: 'done', at: Date.now(), confidence: conf };
+      }
+      await Repo.update(App.doc);
+      App.detailTab = 'text';
+      await render();
+      toast('Ajouté au texte du document', 'ok');
+    } else if (App.draft) {
+      App.draft.zoneText = (App.draft.zoneText ? App.draft.zoneText + '\n\n' : '') + add;
+      toast('Texte conservé pour ce scan', 'ok');
+    }
+  });
 }
 
 /* --------------------------------------------------- redressement (deskew) -- */
@@ -1273,6 +1546,7 @@ Object.assign(Actions, {
   /* caméra */
   'camera-close': () => { closeCamera(); $('#captureRoot').innerHTML = ''; App.draft = null; go('home'); },
   'camera-shoot': () => capturePhoto(),
+  'burst-toggle': () => toggleBurst(),
   'camera-done': async () => {
     closeCamera();
     if (!App.draft || !App.draft.pages.length) { toast('Aucune page capturée', 'err'); $('#captureRoot').innerHTML = ''; go('home'); return; }
@@ -1357,6 +1631,18 @@ Object.assign(Actions, {
   'doc-delete': () => docDelete(App.doc.id),
   'doc-edit': () => docEdit(App.doc.id),
   'doc-to-images': () => docToImages(App.doc.id),
+  'doc-ocr-zone': async () => {
+    const p = App.docPages[App.detailPage];
+    if (!p) { toast('Aucune page affichable', 'err'); return; }
+    const c = await ImageOps.render(p, { maxPx: 2000 });
+    ocrZone({ src: c.toDataURL('image/jpeg', 0.95) });
+  },
+  'editor-ocr-zone': async () => {
+    const p = App.draft.pages[App.draft.active];
+    if (!p) return;
+    const c = await ImageOps.render(p, { maxPx: 2000 });
+    ocrZone({ src: c.toDataURL('image/jpeg', 0.95) });
+  },
   'toggle-autodetect': async (el) => {
     const v = !(Settings.get('autoDetect') !== false);
     Settings.set('autoDetect', v);

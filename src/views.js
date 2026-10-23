@@ -340,7 +340,7 @@ function previewTab(doc, pages, p) {
       </div>`;
   }
   return `
-  <div class="preview-box">
+  <div class="preview-box" id="previewBox" style="touch-action:pan-y">
     <img id="previewImg" src="${p.thumb || p.src}" alt="Aperçu de la page ${App.detailPage + 1}">
   </div>
   <div class="preview-nav">
@@ -358,6 +358,7 @@ function previewTab(doc, pages, p) {
       <button class="btn soft" data-act="doc-export-images">${ICON('i-image', 'ico sm')} Exporter en images</button>
       <button class="btn soft" data-act="doc-edit">${ICON('i-edit', 'ico sm')} Modifier</button>
     </div>
+    <button class="btn ghost" data-act="doc-ocr-zone">${ICON('i-zone', 'ico sm')} OCR d'une zone</button>
     <button class="btn ghost" data-act="doc-ocr">${ICON('i-text', 'ico sm')} ${doc.ocr && doc.ocr.status === 'done' ? 'Relancer l\'OCR' : 'Extraire le texte (OCR)'}</button>
     <button class="btn ghost" data-act="doc-rename">${ICON('i-edit', 'ico sm')} Renommer</button>
     <button class="btn danger" data-act="doc-delete">${ICON('i-trash', 'ico sm')} Supprimer le document</button>
@@ -480,7 +481,34 @@ async function render() {
     const bar = $('.appbar .row'); // rien
   }
   // aperçu HD + analyses IA déjà calculées
-  if (App.route === 'detail' && App.detailTab === 'preview' && App.docPages.length) showFullPreview();
+  if (App.route === 'detail' && App.detailTab === 'preview' && App.docPages.length) {
+    showFullPreview();
+    const box = $('#previewBox');
+    if (box && App.docPages.length > 1) {
+      let sx = 0, sy = 0, tracking = false;
+      const end = async (x, y) => {
+        if (!tracking) return;
+        tracking = false;
+        const dx = x - sx, dy = y - sy;
+        if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+        if (dx < 0 && App.detailPage < App.docPages.length - 1) { App.detailPage++; await render(); }
+        else if (dx > 0 && App.detailPage > 0) { App.detailPage--; await render(); }
+      };
+      box.addEventListener('touchstart', (e) => {
+        const t = e.touches[0]; sx = t.clientX; sy = t.clientY; tracking = true;
+      }, { passive: true });
+      box.addEventListener('touchend', (e) => {
+        const t = e.changedTouches[0];
+        if (t) end(t.clientX, t.clientY);
+      });
+      box.addEventListener('pointerdown', (e) => {
+        if (tracking) return;
+        sx = e.clientX; sy = e.clientY; tracking = true;
+      });
+      box.addEventListener('pointerup', (e) => end(e.clientX, e.clientY));
+      box.addEventListener('pointercancel', () => { tracking = false; });
+    }
+  }
   if (App.route === 'detail' && App.detailTab === 'ai') rerenderAiPanels();
   // écouteur de saisie OCR
   const ed = $('#ocrEditor');

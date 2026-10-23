@@ -1,11 +1,11 @@
-# ScanPro AI — V2 (capture avancée)
+# ScanPro AI — V2.1 (capture avancée + finitions mobiles)
 
 Scanner de documents pour Android (web app installable) : caméra, **détection automatique des
 contours**, **correction de perspective**, redressement, recadrage, filtres avancés,
 **OCR réel français/anglais**, texte éditable, **export PDF**, fusion de PDF, OCR des PDF importés,
 assistant local — **100 % sur l'appareil, sans compte ni serveur**.
 
-**Version 2.0.0** — nouveautés détaillées et limites : `docs/V2-NOUVEATURES.md`.
+**Versions** — V2 : `docs/V2-NOUVEATURES.md` · V2.1 : `docs/V2.1-NOUVEATURES.md`.
 
 👉 **Tester maintenant :** ouvrez la prévisualisation live du workspace (dossier `scanpro`),
 ou `docs/GUIDE-TEST.md` pour la procédure pas à pas sur téléphone.
@@ -25,6 +25,7 @@ Tests exécutés sur cette URL :
 - V1 `tests/e2e-pages.mjs` : **19/19 OK**
 - V2 `tests/e2e-v2.mjs` : **16/16 OK** (contours, perspective, 4 coins, redressement, filtres,
   OCR de PDF importé, conversion PDF → pages)
+- V2.1 `tests/e2e-v21.mjs` : **13/13 OK** (rafale, réorganisation des pages, OCR de zone, balayage)
 (caméra HTTPS 2048×1536, multi-pages, recadrage, rotation, filtre N&B, PDF, OCR, assistant,
 persistance, recherche, paramètres, zéro erreur console/réseau).
 
@@ -63,8 +64,11 @@ texte éditable/copiable/partageable · **PDF A4** · téléchargement · partag
 export images (ZIP) · recherche (nom + texte) · renommage · suppression · **fusion de PDF** ·
 persistance IndexedDB · quota · assistant heuristique hors-ligne.
 
+✅ V2.1 : **rafale** (20 pages max) · **réorganisation des pages par glisser** · **OCR de zone** ·
+**balayage entre les pages**.
+
 ❌ / ⚠️ Résumé IA génératif et extraction fiable de factures (marqués « serveur / API requis »),
-APK natif, réorganisation des pages par glisser-déposer, OCR de zone.
+APK natif, OCR multi-zones, lasso incliné.
 Détail complet : `docs/FONCTIONNALITES-ET-LIMITES.md`.
 
 ## Régénérer l'application

@@ -133,7 +133,7 @@ await p.evaluate(async () => {
   App.draft.pages.push(page);
   App.draft.active = App.draft.pages.length - 1;
 });
-await p.evaluate(() => Actions['editor-select-page']({ dataset: { i: String(window.ScanPro.App.draft.pages.length - 1) } }));
+await p.evaluate(() => window.ScanPro.Actions['editor-select-page']({ dataset: { i: String(window.ScanPro.App.draft.pages.length - 1) } }));
 await p.waitForTimeout(1500);
 await p.locator('[data-act="editor-deskew"]').click();
 await p.waitForTimeout(1500);
@@ -147,7 +147,7 @@ const dkApplied = await p.evaluate(() => window.ScanPro.App.draft.pages[window.S
 check('Correction de redressement appliquée', Math.abs(dkApplied) > 2, dkApplied + '°');
 await p.screenshot({ path: OUT + '/84b-v2-redresse.png' });
 // retour à la première page pour la suite du test
-await p.evaluate(() => Actions['editor-select-page']({ dataset: { i: '0' } }));
+await p.evaluate(() => window.ScanPro.Actions['editor-select-page']({ dataset: { i: '0' } }));
 await p.waitForTimeout(1200);
 
 // --- PDF avec perspective corrigée
