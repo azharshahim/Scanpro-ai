@@ -281,6 +281,15 @@ svg{display:block}
 .editor-stage canvas,.editor-stage img{max-width:100%;max-height:38dvh;border-radius:8px;display:block;
   box-shadow:0 18px 40px -20px #000;background:#fff}
 .editor-stage .stage-empty{padding:40px 16px;color:#A9BFDF;font-size:13px;text-align:center}
+.detect-badge{position:absolute;bottom:12px;left:12px;z-index:3;font-size:11px;font-weight:650;
+  padding:4px 9px;border-radius:999px;background:rgba(148,163,184,.22);color:#CBD5E1;
+  border:1px solid rgba(148,163,184,.35);backdrop-filter:blur(6px)}
+.detect-badge.on{background:rgba(16,185,129,.18);color:#7FE7C0;border-color:rgba(16,185,129,.4)}
+.corner-handle{position:absolute;width:26px;height:26px;border-radius:50%;background:#fff;
+  border:3px solid #2563EB;box-shadow:0 2px 10px rgba(0,0,0,.45);touch-action:none;z-index:4;
+  display:grid;place-items:center}
+.corner-handle:after{content:"";width:7px;height:7px;border-radius:50%;background:#2563EB}
+.corner-handle.active{background:#2563EB}
 #cropHost{display:inline-block;position:relative;line-height:0;max-width:100%;overflow:hidden;border-radius:8px}
 #cropLayer{position:absolute;inset:0;touch-action:none;display:none;overflow:hidden}
 #cropLayer.on{display:block}

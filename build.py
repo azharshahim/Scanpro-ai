@@ -5,6 +5,7 @@ import pathlib, re, datetime
 R = pathlib.Path(__file__).parent
 css = (R/'src/style.css').read_text(encoding='utf-8')
 core = (R/'src/core.js').read_text(encoding='utf-8')
+vision = (R/'src/vision.js').read_text(encoding='utf-8')
 app = (R/'src/app.js').read_text(encoding='utf-8')
 views = (R/'src/views.js').read_text(encoding='utf-8')
 ui = (R/'src/ui.js').read_text(encoding='utf-8')
@@ -38,6 +39,9 @@ html = f"""<!DOCTYPE html>
 <script src="vendor/jszip.min.js"></script>
 <script>
 {core}
+</script>
+<script>
+{vision}
 </script>
 <script>
 {app}

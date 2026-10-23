@@ -156,7 +156,8 @@ async function capturePhoto() {
   c.width = video.videoWidth; c.height = video.videoHeight;
   c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
   const dataUrl = c.toDataURL('image/jpeg', 0.92);
-  await addPageFromDataUrl(dataUrl);
+  const page = await addPageFromDataUrl(dataUrl);
+  if (page && page.detected) toast('Document détecté et redressé', 'ok', 1600);
   // flash visuel
   const app = $('#cameraScreen');
   if (app) {
@@ -168,16 +169,35 @@ async function capturePhoto() {
   if (navigator.vibrate) navigator.vibrate(18);
 }
 
-async function addPageFromDataUrl(src) {
+async function addPageFromDataUrl(src, { detect = true } = {}) {
   const norm = await normalizeSource(src);
-  const thumb = await ImageOps.thumb(norm);
-  App.draft.pages.push({
+  const page = {
     id: uid('pg'), src: norm, crop: { x: 0, y: 0, w: 1, h: 1 }, rotate: 0,
-    filter: Settings.get('defaultFilter') || 'none', thumb, adj: { b: 1, c: 1 }
-  });
+    quad: null, deskew: 0, detected: false,
+    filter: Settings.get('defaultFilter') || 'none', thumb: null, adj: { b: 1, c: 1 }
+  };
+
+  // V2 : détection automatique des contours du document
+  if (detect && Settings.get('autoDetect') !== false) {
+    try {
+      const canvas = await ImageOps.render(page, { maxPx: 1200, skipQuad: true });
+      const det = Vision.detectQuad(canvas);
+      if (det && Vision._quadValid(det.quad)) {
+        page.quad = det.quad;
+        page.detected = true;
+        // redressement estimé sur l'image redressée
+        try {
+          const warped = Vision.warp(canvas, det.quad, { maxPx: 900 });
+          page.deskew = Vision.deskewAngle(warped);
+        } catch (e) { page.deskew = 0; }
+      }
+    } catch (e) { console.warn('[ScanPro] détection', e); }
+  }
+  page.thumb = await ImageOps.thumb(await ImageOps.render(page, { maxPx: 400, quality: 0.7 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+  App.draft.pages.push(page);
   App.draft.active = App.draft.pages.length - 1;
   updateCamPages();
-  return App.draft.pages[App.draft.pages.length - 1];
+  return page;
 }
 async function normalizeSource(src) {
   const img = await ImageOps.load(src);
@@ -233,6 +253,7 @@ function renderEditor() {
 
     <div class="editor-wrap">
       <div class="editor-stage" id="editorStage">
+        ${p ? `<div class="detect-badge ${p.quad ? 'on' : ''}">${p.quad ? '✓ Perspective corrigée' : 'Contours non détectés'}</div>` : ''}
         ${p ? `<div id="cropHost" style="position:relative;display:inline-block;line-height:0">
             <canvas id="editorCanvas"></canvas>
             <div id="cropLayer"><div id="cropRect">
@@ -251,13 +272,16 @@ function renderEditor() {
     <div style="flex:1;overflow:auto;background:var(--bg);padding-bottom:8px;display:flex;flex-direction:column">
       <div class="filters" id="filterRow">
         ${[['doc', 'Document', '#fff'], ['color', 'Couleur', '#F87171'], ['gray', 'Gris', '#9CA3AF'],
-           ['bw', 'Noir & blanc', '#111827'], ['none', 'Original', '#BFD3F6']]
+           ['bw', 'Noir & blanc', '#111827'], ['shadow', 'Anti-ombre', '#E5E7EB'],
+           ['vivid', 'Vif', '#34D399'], ['none', 'Original', '#BFD3F6']]
           .map(([k, l, c]) => `<button class="chip sm ${(p && p.filter) === k ? 'on' : ''}"
             data-act="editor-filter" data-f="${k}"><span class="dot" style="background:${c}"></span>${l}</button>`).join('')}
       </div>
       <div class="tool-row">
         <button class="tool" data-act="editor-crop">${ICON('i-crop')}Recadrer</button>
+        <button class="tool" data-act="editor-corners">${ICON('i-corners')}4 coins</button>
         <button class="tool" data-act="editor-rotate">${ICON('i-rotate')}Pivoter</button>
+        <button class="tool" data-act="editor-deskew">${ICON('i-straighten')}Redresser</button>
         <button class="tool" data-act="editor-adjust">${ICON('i-sun')}Luminosité</button>
         <button class="tool" data-act="editor-duplicate">${ICON('i-copy')}Dupliquer</button>
         <button class="tool" data-act="editor-delete-page">${ICON('i-trash')}Supprimer</button>
@@ -278,7 +302,7 @@ function renderEditor() {
         <button class="add-page" data-act="editor-add-page" aria-label="Ajouter une page">${ICON('i-plus')}</button>
       </div>
       <div class="sticky-actions">
-        <button class="btn ghost" data-act="editor-ocr">${ICON('i-text', 'ico sm')} Extraire le texte</button>
+        <button class="btn ghost" data-act="editor-ocr">${ICON('i-text', 'ico sm')} Texte (OCR)</button>
         <button class="btn primary" data-act="editor-pdf">${ICON('i-pdf', 'ico sm')} Générer le PDF</button>
       </div>
     </div>
@@ -374,6 +398,156 @@ function mountCropUI() {
     $('#cropToolbar').style.display = 'none';
     renderEditor();
   };
+}
+
+/* ------------------------------------------------ ajustement des 4 coins -- */
+async function editorCorners() {
+  const d = App.draft;
+  const page = d.pages[d.active];
+  if (!page) return;
+  const canvas = await ImageOps.render(page, { maxPx: 1100, skipQuad: true });
+  const stage = $('#editorStage');
+  if (!stage) return;
+  d.cropMode = false;
+  $('#cropLayer')?.classList.remove('on');
+  $('#cropToolbar').style.display = 'none';
+
+  // quadrilatère de départ : détecté, sinon bords de l'image
+  let q = page.quad ? JSON.parse(JSON.stringify(page.quad))
+    : { tl: { x: 0.03, y: 0.03 }, tr: { x: 0.97, y: 0.03 }, br: { x: 0.97, y: 0.97 }, bl: { x: 0.03, y: 0.97 } };
+
+  const host = document.createElement('div');
+  host.id = 'cornerHost';
+  host.style.cssText = 'position:relative;display:inline-block;line-height:0;max-width:100%';
+  const cv = document.createElement('canvas');
+  cv.width = canvas.width; cv.height = canvas.height;
+  const k = Math.min(1, 620 / Math.max(canvas.width, canvas.height));
+  cv.style.cssText = `width:${Math.round(canvas.width * k)}px;height:${Math.round(canvas.height * k)}px;border-radius:8px;display:block`;
+  cv.getContext('2d').drawImage(canvas, 0, 0);
+  host.appendChild(cv);
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+  const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  poly.setAttribute('fill', 'rgba(37,99,235,.18)');
+  poly.setAttribute('stroke', '#3B82F6');
+  poly.setAttribute('stroke-width', '0.7');
+  svg.appendChild(poly);
+  host.appendChild(svg);
+
+  const order = ['tl', 'tr', 'br', 'bl'];
+  const handles = {};
+  const paint = () => {
+    poly.setAttribute('points', order.map(n => `${q[n].x * 100},${q[n].y * 100}`).join(' '));
+    order.forEach(n => {
+      handles[n].style.left = (q[n].x * 100) + '%';
+      handles[n].style.top = (q[n].y * 100) + '%';
+    });
+  };
+  order.forEach(n => {
+    const h = document.createElement('div');
+    h.className = 'corner-handle';
+    h.style.transform = 'translate(-50%,-50%)';
+    h.style.left = (q[n].x * 100) + '%';
+    h.style.top = (q[n].y * 100) + '%';
+    h.dataset.corner = n;
+    h.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      h.setPointerCapture(ev.pointerId);
+      h.classList.add('active');
+      const rect = cv.getBoundingClientRect();
+      const move = (e2) => {
+        q[n] = {
+          x: clamp((e2.clientX - rect.left) / rect.width, 0, 1),
+          y: clamp((e2.clientY - rect.top) / rect.height, 0, 1)
+        };
+        paint();
+      };
+      const up = () => {
+        h.classList.remove('active');
+        h.removeEventListener('pointermove', move);
+        h.removeEventListener('pointerup', up);
+        h.removeEventListener('pointercancel', up);
+      };
+      h.addEventListener('pointermove', move);
+      h.addEventListener('pointerup', up);
+      h.addEventListener('pointercancel', up);
+    });
+    handles[n] = h;
+    host.appendChild(h);
+  });
+  paint();
+
+  const bar = document.createElement('div');
+  bar.className = 'crop-toolbar';
+  bar.style.display = 'flex';
+  bar.innerHTML = `
+    <button class="btn" data-c="reset">Réinitialiser</button>
+    <button class="btn" data-c="auto">Détecter</button>
+    <button class="btn go" data-c="apply">Valider la perspective</button>`;
+  host.appendChild(bar);
+
+  stage.innerHTML = '';
+  stage.appendChild(host);
+
+  bar.querySelector('[data-c="reset"]').onclick = () => {
+    q = { tl: { x: 0, y: 0 }, tr: { x: 1, y: 0 }, br: { x: 1, y: 1 }, bl: { x: 0, y: 1 } };
+    paint();
+  };
+  bar.querySelector('[data-c="auto"]').onclick = async () => {
+    const det = Vision.detectQuad(canvas);
+    if (det && Vision._quadValid(det.quad)) { q = det.quad; paint(); toast('Contours détectés', 'ok'); }
+    else toast('Aucun contour détecté sur cette image', 'err');
+  };
+  bar.querySelector('[data-c="apply"]').onclick = async () => {
+    const ordered = Vision._orderQuad({ tl: q.tl, tr: q.tr, br: q.br, bl: q.bl });
+    if (Vision.quadArea(ordered) < 0.05) { toast('Zone trop petite — ajustez les coins', 'err'); return; }
+    page.quad = ordered;
+    page.detected = true;
+    page.crop = { x: 0, y: 0, w: 1, h: 1 };
+    try {
+      const warped = Vision.warp(canvas, ordered, { maxPx: 900 });
+      page.deskew = Vision.deskewAngle(warped);
+    } catch (e) {}
+    page.thumb = await ImageOps.thumb(await ImageOps.render(page, { maxPx: 400, quality: 0.7 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+    toast('Perspective appliquée', 'ok');
+    renderEditor();
+  };
+}
+
+/* --------------------------------------------------- redressement (deskew) -- */
+async function editorDeskew() {
+  const page = App.draft.pages[App.draft.active];
+  if (!page) return;
+  busyBar(true);
+  try {
+    const canvas = await ImageOps.render(page, { maxPx: 1200 });
+    const angle = Vision.deskewAngle(canvas);
+    busyBar(false);
+    // même sans inclinaison détectée, l'utilisateur peut ajuster finement à la main
+    const span = Math.max(3, Math.abs(angle) + 1);
+    const s = openSheet({
+      title: 'Redressement',
+      sub: angle ? `Inclinaison détectée : ${angle > 0 ? '+' : ''}${angle}°` : 'Aucune inclinaison notable détectée — ajustez si besoin.',
+      body: `<div class="field"><label>Correction appliquée : <b id="dkVal">${(-angle).toFixed(1)}°</b></label>
+        <input id="dkRange" type="range" min="${(-span).toFixed(1)}" max="${span.toFixed(1)}"
+          step="0.1" value="${(-angle).toFixed(1)}" style="min-height:32px"></div>
+        <p class="tiny muted">Déplacez le curseur pour affiner, puis validez.</p>`,
+      actions: [{ label: 'Annuler', cls: 'ghost' }, { label: 'Appliquer', cls: 'primary', act: 'dk-ok', close: true }]
+    });
+    const range = $('#dkRange', s);
+    page.deskew = -angle;
+    $('#dkVal', s).textContent = (-angle).toFixed(1) + '°';
+    range.addEventListener('input', () => {
+      page.deskew = -parseFloat(range.value);
+      $('#dkVal', s).textContent = (-parseFloat(range.value)).toFixed(1) + '°';
+      drawEditorCanvas();
+    });
+    $('[data-act="dk-ok"]', s)?.addEventListener('click', () => { closeSheet(); renderEditor(); });
+    drawEditorCanvas();
+  } catch (e) { busyBar(false); toast('Redressement impossible', 'err'); }
 }
 
 /* -------------------------------------------------------------- éditeur -- */
@@ -703,10 +877,38 @@ async function docRunOcr(docId) {
   const doc = await Repo.doc(docId);
   const pages = await Repo.pages(docId);
   if (!doc) return;
-  if (!pages.length) {
-    toast('Aucune image à analyser. Les PDF importés conservent leur texte d\'origine.', 'err', 5000);
+
+  /* V2 — OCR d'un PDF importé : les pages sont rendues à la volée par pdf.js. */
+  if (!pages.length && doc.fileId) {
+    const blob = await Repo.file(docId);
+    if (!blob) { toast('Fichier PDF introuvable', 'err'); return; }
+    const file = new File([blob], (doc.name || 'document') + '.pdf', { type: 'application/pdf' });
+    let rendered;
+    try {
+      busyBar(true);
+      rendered = await PDF.renderPages(file, { maxPx: 2000 });
+      busyBar(false);
+    } catch (e) {
+      busyBar(false);
+      toast('Lecture du PDF impossible : ' + e.message, 'err', 5000);
+      return;
+    }
+    let results;
+    try { results = await runOcr(rendered.map(r => ({ src: r.canvas.toDataURL('image/jpeg', 0.95) }))); }
+    catch (e) { return; }
+    if (!results) return;
+    const text = results.map((r, i) => `— Page ${i + 1} —\n${r.text}`).join('\n\n').trim();
+    const avg = Math.round(results.reduce((s, r) => s + r.confidence, 0) / Math.max(1, results.length));
+    doc.text = text;
+    doc.ocr = { status: text ? 'done' : 'empty', at: Date.now(), confidence: avg };
+    await Repo.update(doc);
+    App.doc = doc; App.detailTab = 'text';
+    await render();
+    toast(text ? 'OCR terminé · confiance ' + avg + ' %' : 'Aucun texte détecté', text ? 'ok' : 'err', 5000);
     return;
   }
+
+  if (!pages.length) { toast('Aucune page à analyser', 'err'); return; }
   let results;
   try { results = await runOcr(pages); } catch (e) {
     doc.ocr = { status: 'failed', at: Date.now(), confidence: 0 };
@@ -727,6 +929,49 @@ async function docRunOcr(docId) {
   await render();
   if (text) toast('OCR terminé · ' + plural(text.split(/\s+/).filter(Boolean).length, 'mot', 'mots') + ' · confiance ' + avg + ' %', 'ok', 4500);
   else toast("OCR terminé mais aucun texte détecté. Essayez un meilleur éclairage ou le mode « Document ».", 'err', 6000);
+}
+
+/* ------------------------------------- conversion d'un PDF en pages éditables -- */
+async function docToImages(docId) {
+  const doc = await Repo.doc(docId);
+  if (!doc) return;
+  const blob = await Repo.file(docId);
+  if (!blob) { toast('Ce document ne contient pas de PDF', 'err'); return; }
+  const file = new File([blob], (doc.name || 'document') + '.pdf', { type: 'application/pdf' });
+  let rendered;
+  try {
+    busyBar(true);
+    rendered = await PDF.renderPages(file, { maxPx: 2400 });
+    busyBar(false);
+  } catch (e) { busyBar(false); toast('Conversion impossible : ' + e.message, 'err', 5000); return; }
+  if (!rendered.length) return;
+  confirmSheet({
+    title: 'Convertir en pages modifiables ?',
+    sub: `Les ${rendered.length} page(s) seront rendues en images et remplaceront le PDF importé. ` +
+         `Vous pourrez alors recadrer, redresser, filtrer et exporter un nouveau PDF. L'original reste téléchargeable jusqu'à la conversion.`,
+    okLabel: 'Convertir',
+    onOk: async () => {
+      busyBar(true);
+      const pages = [];
+      for (let i = 0; i < rendered.length; i++) {
+        const src = rendered[i].canvas.toDataURL('image/jpeg', 0.92);
+        const page = { id: uid('pg'), src, crop: { x: 0, y: 0, w: 1, h: 1 }, rotate: 0, quad: null, deskew: 0, filter: 'none' };
+        page.thumb = await ImageOps.thumb(await ImageOps.render(page, { maxPx: 400, quality: 0.7 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+        pages.push(page);
+      }
+      const bytes = await Repo.replacePages(docId, pages);
+      if (doc.fileId) await Store.del('files', docId);
+      doc.fileId = null; doc.kind = 'scan'; doc.modified = true;
+      doc.thumb = pages[0].thumb; doc.pageCount = pages.length; doc.bytes = bytes;
+      await Repo.update(doc);
+      busyBar(false);
+      toast(plural(pages.length, 'page convertie', 'pages converties'), 'ok');
+      App.doc = await Repo.doc(docId);
+      App.docPages = await Repo.pages(docId);
+      App.detailTab = 'preview';
+      await render();
+    }
+  });
 }
 
 /* ------------------------------------------------- import / fusion PDF -- */
@@ -1076,6 +1321,8 @@ Object.assign(Actions, {
   },
   'editor-add-page': () => editorAddPage(),
   'editor-rotate': () => editorRotate(),
+  'editor-corners': () => editorCorners(),
+  'editor-deskew': () => editorDeskew(),
   'editor-crop': () => {
     App.draft.cropMode = true;
     App.draft.cropRect = Object.assign({}, App.draft.pages[App.draft.active].crop);
@@ -1109,6 +1356,14 @@ Object.assign(Actions, {
   'doc-rename': () => docRename(App.doc.id),
   'doc-delete': () => docDelete(App.doc.id),
   'doc-edit': () => docEdit(App.doc.id),
+  'doc-to-images': () => docToImages(App.doc.id),
+  'toggle-autodetect': async (el) => {
+    const v = !(Settings.get('autoDetect') !== false);
+    Settings.set('autoDetect', v);
+    el.classList.toggle('on', v);
+    el.setAttribute('aria-checked', v);
+    toast('Détection des contours ' + (v ? 'activée' : 'désactivée'), 'ok');
+  },
 
   /* texte */
   'text-copy': () => copyText(($('#ocrEditor') || {}).value || App.doc.text || ''),

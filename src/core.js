@@ -159,13 +159,36 @@ const ImageOps = {
     });
   },
   /** Rendu d'une page du brouillon / document : crop + rotation + filtre. */
-  async render(page, { maxPx = 2400, quality = 0.9 } = {}) {
+  async render(page, { maxPx = 2400, quality = 0.9, skipQuad = false } = {}) {
     const img = await this.load(page.src);
+
+    /* V2 — correction de perspective : le quadrilatère détecté (ou ajusté à la main)
+       est redressé avant le recadrage/rotation/filtre. Coordonnées normalisées
+       relatives à l'image source. */
+    let base = null;
+    if (!skipQuad && page.quad) {
+      const scale = Math.min(1, 2600 / Math.max(img.naturalWidth, img.naturalHeight));
+      if (scale < 1) {
+        base = document.createElement('canvas');
+        base.width = Math.round(img.naturalWidth * scale);
+        base.height = Math.round(img.naturalHeight * scale);
+        const bctx = base.getContext('2d');
+        bctx.fillStyle = '#fff'; bctx.fillRect(0, 0, base.width, base.height);
+        bctx.drawImage(img, 0, 0, base.width, base.height);
+      } else {
+        base = document.createElement('canvas');
+        base.width = img.naturalWidth; base.height = img.naturalHeight;
+        base.getContext('2d').drawImage(img, 0, 0);
+      }
+      base = Vision.warp(base, page.quad, { maxPx: Math.max(maxPx, 1800) });
+    }
+    const srcW = base ? base.width : img.naturalWidth;
+    const srcH = base ? base.height : img.naturalHeight;
     const crop = page.crop || { x: 0, y: 0, w: 1, h: 1 };
-    const sx = clamp(crop.x, 0, 1) * img.naturalWidth;
-    const sy = clamp(crop.y, 0, 1) * img.naturalHeight;
-    const sw = Math.max(2, clamp(crop.w, 0.02, 1) * img.naturalWidth);
-    const sh = Math.max(2, clamp(crop.h, 0.02, 1) * img.naturalHeight);
+    const sx = clamp(crop.x, 0, 1) * srcW;
+    const sy = clamp(crop.y, 0, 1) * srcH;
+    const sw = Math.max(2, clamp(crop.w, 0.02, 1) * srcW);
+    const sh = Math.max(2, clamp(crop.h, 0.02, 1) * srcH);
     const rot = ((Math.round((page.rotate || 0) / 90) * 90) % 360 + 360) % 360;
     const swap = rot === 90 || rot === 270;
     const scale = Math.min(1, maxPx / Math.max(sw, sh));
@@ -180,11 +203,19 @@ const ImageOps = {
     ctx.save();
     ctx.translate(c.width / 2, c.height / 2);
     ctx.rotate(rot * Math.PI / 180);
-    ctx.drawImage(img, sx, sy, sw, sh, -cw / 2, -ch / 2, cw, ch);
+    ctx.drawImage(base || img, sx, sy, sw, sh, -cw / 2, -ch / 2, cw, ch);
     ctx.restore();
+
+    // redressement automatique (petite rotation résiduelle)
+    let out = c;
+    const deskew = page.deskew || 0;
+    if (deskew) out = Vision.rotate(out, deskew, { maxPx: Math.max(cw, ch) });
+
     const f = page.filter || 'none';
-    if (f !== 'none' && f !== 'original') this.filter(c, f);
-    return c;
+    if (f === 'shadow') { Vision.shadowRemove(out); this.filter(out, 'doc'); }
+    else if (f === 'vivid') { Vision.shadowRemove(out); Vision.vivid(out); this.filter(out, 'color'); }
+    else if (f !== 'none' && f !== 'original') this.filter(out, f);
+    return out;
   },
   dataUrl(canvas, quality = 0.9) { return canvas.toDataURL('image/jpeg', quality); },
 
@@ -444,6 +475,33 @@ const PDF = {
     out.setProducer('ScanPro AI');
     const bytes = await out.save();
     return { blob: new Blob([bytes], { type: 'application/pdf' }), pageCount: added };
+  },
+
+  /** Rend les pages d'un PDF en canvas (V2 : OCR des PDF importés). */
+  async renderPages(file, { maxPx = 2000, pageIndexes = null, onProgress } = {}) {
+    if (typeof pdfjsLib === 'undefined') await Assets.ensureLoaded();
+    if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js indisponible');
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      (Assets._base || new URL('vendor/', location.href).href) + 'pdf.worker.min.js';
+    const buf = file instanceof ArrayBuffer ? file : await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+    const idx = pageIndexes || Array.from({ length: doc.numPages }, (_, i) => i + 1);
+    const out = [];
+    for (let i = 0; i < idx.length; i++) {
+      onProgress && onProgress(i / idx.length, `Page ${idx[i]}/${doc.numPages}`);
+      const page = await doc.getPage(idx[i]);
+      const vp0 = page.getViewport({ scale: 1 });
+      const scale = Math.min(3, maxPx / Math.max(vp0.width, vp0.height));
+      const vp = page.getViewport({ scale });
+      const c = document.createElement('canvas');
+      c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      out.push({ canvas: c, index: idx[i] });
+    }
+    onProgress && onProgress(1, 'Terminé');
+    return out;
   },
 
   /** Lit un PDF (nb de pages) et rend la 1re page en vignette. */

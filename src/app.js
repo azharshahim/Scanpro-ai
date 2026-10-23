@@ -6,7 +6,7 @@
 /* ------------------------------------------------------------- préférences -- */
 const Settings = {
   k: 'scanpro.settings.v1',
-  defaults: { ocrLangs: 'fra+eng', quality: 'high', defaultFilter: 'doc', autoOcr: false, seenOnboarding: false },
+  defaults: { ocrLangs: 'fra+eng', quality: 'high', defaultFilter: 'doc', autoOcr: false, autoDetect: true, seenOnboarding: false },
   data: null,
   load() {
     try { this.data = Object.assign({}, this.defaults, JSON.parse(localStorage.getItem(this.k) || '{}')); }
@@ -130,6 +130,7 @@ const Repo = {
       const rec = {
         id: p.id || uid('pg'), docId: doc.id, index: i, src: p.src,
         crop: p.crop || { x: 0, y: 0, w: 1, h: 1 }, rotate: p.rotate || 0,
+        quad: p.quad || null, deskew: p.deskew || 0,
         filter: p.filter || 'none', thumb: p.thumb || null, text: p.text || '', ocrConf: p.ocrConf || 0
       };
       bytes += (rec.src ? rec.src.length * 0.75 : 0) + (rec.thumb ? rec.thumb.length * 0.75 : 0);
@@ -167,7 +168,8 @@ const Repo = {
       const p = pages[i];
       const rec = {
         id: p.id || uid('pg'), docId, index: i, src: p.src, crop: p.crop || { x: 0, y: 0, w: 1, h: 1 },
-        rotate: p.rotate || 0, filter: p.filter || 'none', thumb: p.thumb || null,
+        rotate: p.rotate || 0, quad: p.quad || null, deskew: p.deskew || 0,
+        filter: p.filter || 'none', thumb: p.thumb || null,
         text: p.text || '', ocrConf: p.ocrConf || 0
       };
       bytes += (rec.src || '').length * 0.75 + (rec.thumb || '').length * 0.75;

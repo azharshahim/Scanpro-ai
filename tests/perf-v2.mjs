@@ -1,0 +1,47 @@
+import { chromium, devices } from 'playwright';
+const b = await chromium.launch();
+const ctx = await b.newContext({ ...devices['Pixel 7'] });
+const p = await ctx.newPage();
+await p.goto('http://localhost:8080/index.html', { waitUntil: 'networkidle' });
+await p.waitForTimeout(1000);
+const r = await p.evaluate(async () => {
+  // photo "réaliste" 3000 px de large (comme un capteur de téléphone)
+  const W = 3000, H = 4000;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = '#4a4d57'; x.fillRect(0, 0, W, H);
+  const doc = document.createElement('canvas'); doc.width = 2100; doc.height = 2970;
+  const d = doc.getContext('2d');
+  d.fillStyle = '#fff'; d.fillRect(0, 0, 2100, 2970);
+  d.fillStyle = '#111'; d.font = 'bold 110px Georgia'; d.fillText('FACTURE', 120, 240);
+  d.font = '54px Georgia';
+  for (let i = 0; i < 30; i++) d.fillText('Ligne de facture numero ' + (i + 1) + ' : 1 234,56 EUR', 120, 400 + i * 80);
+  x.drawImage(doc, 380, 450, 2400, 3300);   // léger décalage -> quadrilatère non trivial
+  const t = {};
+  let t0 = performance.now();
+  const det = Vision.detectQuad(c);
+  t.detect = Math.round(performance.now() - t0);
+  t0 = performance.now();
+  const warped = Vision.warp(c, det.quad, { maxPx: 2400 });
+  t.warp = Math.round(performance.now() - t0);
+  t0 = performance.now();
+  const angle = Vision.deskewAngle(warped);
+  t.deskew = Math.round(performance.now() - t0);
+  t0 = performance.now();
+  Vision.shadowRemove(warped);
+  t.shadow = Math.round(performance.now() - t0);
+  t0 = performance.now();
+  const filt = document.createElement('canvas');
+  filt.width = warped.width; filt.height = warped.height;
+  filt.getContext('2d').drawImage(warped, 0, 0);
+  ImageOps.filter(filt, 'bw');
+  t.bw = Math.round(performance.now() - t0);
+  t0 = performance.now();
+  const canvas = await ImageOps.render({ src: c.toDataURL('image/jpeg', 0.9), quad: det.quad, filter: 'doc', deskew: angle, crop: {x:0,y:0,w:1,h:1}, rotate: 0 }, { maxPx: 2400 });
+  t.renderComplet = Math.round(performance.now() - t0);
+  t.outSize = [canvas.width, canvas.height];
+  t.angle = angle;
+  return t;
+});
+console.log(JSON.stringify(r));
+await b.close();

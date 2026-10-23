@@ -13,8 +13,8 @@
 | Import d'un PDF existant | ✅ | Lu via pdf.js : nombre de pages + vignette de la 1re page ; le fichier est conservé **intact** |
 | Multi-pages | ✅ | Captures successives, indicateur de nombre de pages, vignettes, ajout/suppression/duplication |
 | Messages d'erreur caméra | ✅ | Refus, absence de caméra, caméra occupée, contexte non HTTPS → message explicite + repli galerie |
-| Détection automatique des contours | ❌ **V2** | Aucun contour n'est détecté automatiquement ; le cadre affiché est un guide visuel (non actif) |
-| Correction de perspective | ❌ **V2** | Seul le recadrage rectangulaire (4 poignées) est disponible |
+| Détection automatique des contours | ✅ **V2** | Sobel + Otsu + flood fill ; précision mesurée 1,2 % — voir `V2-NOUVEATURES.md` |
+| Correction de perspective | ✅ **V2** | Homographie 4 points + ajustement manuel des coins |
 
 ### Traitement d'image
 | Fonction | État | Détail |
@@ -27,7 +27,7 @@
 | Mode **Gris** | ✅ | Niveaux de gris |
 | Mode **Noir & blanc** | ✅ | Seuillage adaptatif (moyenne locale, fenêtre ≈ 4,5 % de l'image) |
 | Mode **Original** | ✅ | Aucun traitement |
-| Redressement (deskew) | ❌ **V2** | Non implémenté |
+| Redressement (deskew) | ✅ **V2** | Détection automatique + réglage fin au curseur |
 
 ### OCR
 | Fonction | État | Détail |
@@ -40,7 +40,7 @@
 | Mise en page | ⚠️ Partielle | Tesseract restitue les retours à la ligne et les espaces inter-mots (`preserve_interword_spaces`) ; les colonnes et tableaux ne sont pas reconstruits fidèlement |
 | Indicateur d'échec | ✅ | Bandeau « Aucun texte reconnu » + statut `failed` enregistré ; aucun faux positif |
 | Progression | ✅ | Fenêtre dédiée avec étapes et pourcentage (téléchargement du modèle, initialisation, reconnaissance) |
-| OCR des PDF importés | ❌ **V2** | Non proposé (les PDF importés conservent leur texte d'origine) |
+| OCR des PDF importés | ✅ **V2** | Rendu pdf.js page par page puis OCR ; conversion en pages modifiables |
 | Sélection de zone OCR | ❌ **V2** | L'OCR porte sur la page entière |
 
 ### Documents & export

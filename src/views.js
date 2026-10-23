@@ -220,6 +220,12 @@ async function viewSettings() {
         <button class="switch ${Settings.get('autoOcr') ? 'on' : ''}" data-act="toggle-autoocr"
           role="switch" aria-checked="${Settings.get('autoOcr')}" aria-label="OCR automatique"></button>
       </div>
+      <div class="set-row">
+        <span class="s-ico">${ICON('i-corners', 'ico sm')}</span>
+        <span class="s-body"><b>Détection automatique des contours</b><span>Redresser la perspective à la capture</span></span>
+        <button class="switch ${Settings.get('autoDetect') !== false ? 'on' : ''}" data-act="toggle-autodetect"
+          role="switch" aria-checked="${Settings.get('autoDetect') !== false}" aria-label="Détection des contours"></button>
+      </div>
     </div>
 
     <div class="set-group">
@@ -262,8 +268,9 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 1.0.0 (Web)<br>
-      OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · 100 % hors-ligne après le premier chargement<br>
+      <b>ScanPro AI</b> — version 2.0.0 (Web)<br>
+      OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
+      100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
     </div>
   </div>`;
@@ -326,7 +333,11 @@ function previewTab(doc, pages, p) {
     </div>
     <div class="banner warn mt14">${ICON('i-alert', 'ico sm')}
       <span><b>PDF importé :</b> il est conservé tel quel (l'original n'est pas réencodé).
-      L'OCR page par page des PDF importés et la modification de leurs pages arrivent en V2.</span></div>`;
+      Vous pouvez lancer l'<b>OCR page par page</b> ou en faire des images pour le retraiter.</span></div>
+      <div class="btn-col mt10">
+        <button class="btn soft" data-act="doc-ocr">${ICON('i-text', 'ico sm')} Extraire le texte (OCR des pages)</button>
+        <button class="btn soft" data-act="doc-to-images">${ICON('i-image', 'ico sm')} Convertir en pages modifiables</button>
+      </div>`;
   }
   return `
   <div class="preview-box">

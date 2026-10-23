@@ -296,6 +296,15 @@ svg{display:block}
 .editor-stage canvas,.editor-stage img{max-width:100%;max-height:38dvh;border-radius:8px;display:block;
   box-shadow:0 18px 40px -20px #000;background:#fff}
 .editor-stage .stage-empty{padding:40px 16px;color:#A9BFDF;font-size:13px;text-align:center}
+.detect-badge{position:absolute;bottom:12px;left:12px;z-index:3;font-size:11px;font-weight:650;
+  padding:4px 9px;border-radius:999px;background:rgba(148,163,184,.22);color:#CBD5E1;
+  border:1px solid rgba(148,163,184,.35);backdrop-filter:blur(6px)}
+.detect-badge.on{background:rgba(16,185,129,.18);color:#7FE7C0;border-color:rgba(16,185,129,.4)}
+.corner-handle{position:absolute;width:26px;height:26px;border-radius:50%;background:#fff;
+  border:3px solid #2563EB;box-shadow:0 2px 10px rgba(0,0,0,.45);touch-action:none;z-index:4;
+  display:grid;place-items:center}
+.corner-handle:after{content:"";width:7px;height:7px;border-radius:50%;background:#2563EB}
+.corner-handle.active{background:#2563EB}
 #cropHost{display:inline-block;position:relative;line-height:0;max-width:100%;overflow:hidden;border-radius:8px}
 #cropLayer{position:absolute;inset:0;touch-action:none;display:none;overflow:hidden}
 #cropLayer.on{display:block}
@@ -500,6 +509,8 @@ svg{display:block}
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 6.5"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-corners" viewBox="0 0 24 24"><path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/><path d="M20 15v5h-5"/><path d="M9 4h6M9 20h6M4 9v6M20 9v6" opacity=".45"/></symbol>
+    <symbol id="i-straighten" viewBox="0 0 24 24"><path d="M4 17 17 4"/><path d="M4 17h5M4 17v-5"/><path d="M17 4h-5M17 4v5"/><path d="M14.5 20h5.5"/></symbol>
     <symbol id="i-crop" viewBox="0 0 24 24"><path d="M7 3v14h14"/><path d="M3 7h14v14"/></symbol>
     <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 1 2.4 5.3"/><path d="M5 19.5V14h5.5"/></symbol>
     <symbol id="i-wand" viewBox="0 0 24 24"><path d="m4 20 12-12"/><path d="m14 4 1.2 2.8L18 8l-2.8 1.2L14 12l-1.2-2.8L10 8l2.8-1.2z"/><path d="m19.5 13.5.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7z"/></symbol>
@@ -715,13 +726,36 @@ const ImageOps = {
     });
   },
   /** Rendu d'une page du brouillon / document : crop + rotation + filtre. */
-  async render(page, { maxPx = 2400, quality = 0.9 } = {}) {
+  async render(page, { maxPx = 2400, quality = 0.9, skipQuad = false } = {}) {
     const img = await this.load(page.src);
+
+    /* V2 — correction de perspective : le quadrilatère détecté (ou ajusté à la main)
+       est redressé avant le recadrage/rotation/filtre. Coordonnées normalisées
+       relatives à l'image source. */
+    let base = null;
+    if (!skipQuad && page.quad) {
+      const scale = Math.min(1, 2600 / Math.max(img.naturalWidth, img.naturalHeight));
+      if (scale < 1) {
+        base = document.createElement('canvas');
+        base.width = Math.round(img.naturalWidth * scale);
+        base.height = Math.round(img.naturalHeight * scale);
+        const bctx = base.getContext('2d');
+        bctx.fillStyle = '#fff'; bctx.fillRect(0, 0, base.width, base.height);
+        bctx.drawImage(img, 0, 0, base.width, base.height);
+      } else {
+        base = document.createElement('canvas');
+        base.width = img.naturalWidth; base.height = img.naturalHeight;
+        base.getContext('2d').drawImage(img, 0, 0);
+      }
+      base = Vision.warp(base, page.quad, { maxPx: Math.max(maxPx, 1800) });
+    }
+    const srcW = base ? base.width : img.naturalWidth;
+    const srcH = base ? base.height : img.naturalHeight;
     const crop = page.crop || { x: 0, y: 0, w: 1, h: 1 };
-    const sx = clamp(crop.x, 0, 1) * img.naturalWidth;
-    const sy = clamp(crop.y, 0, 1) * img.naturalHeight;
-    const sw = Math.max(2, clamp(crop.w, 0.02, 1) * img.naturalWidth);
-    const sh = Math.max(2, clamp(crop.h, 0.02, 1) * img.naturalHeight);
+    const sx = clamp(crop.x, 0, 1) * srcW;
+    const sy = clamp(crop.y, 0, 1) * srcH;
+    const sw = Math.max(2, clamp(crop.w, 0.02, 1) * srcW);
+    const sh = Math.max(2, clamp(crop.h, 0.02, 1) * srcH);
     const rot = ((Math.round((page.rotate || 0) / 90) * 90) % 360 + 360) % 360;
     const swap = rot === 90 || rot === 270;
     const scale = Math.min(1, maxPx / Math.max(sw, sh));
@@ -736,11 +770,19 @@ const ImageOps = {
     ctx.save();
     ctx.translate(c.width / 2, c.height / 2);
     ctx.rotate(rot * Math.PI / 180);
-    ctx.drawImage(img, sx, sy, sw, sh, -cw / 2, -ch / 2, cw, ch);
+    ctx.drawImage(base || img, sx, sy, sw, sh, -cw / 2, -ch / 2, cw, ch);
     ctx.restore();
+
+    // redressement automatique (petite rotation résiduelle)
+    let out = c;
+    const deskew = page.deskew || 0;
+    if (deskew) out = Vision.rotate(out, deskew, { maxPx: Math.max(cw, ch) });
+
     const f = page.filter || 'none';
-    if (f !== 'none' && f !== 'original') this.filter(c, f);
-    return c;
+    if (f === 'shadow') { Vision.shadowRemove(out); this.filter(out, 'doc'); }
+    else if (f === 'vivid') { Vision.shadowRemove(out); Vision.vivid(out); this.filter(out, 'color'); }
+    else if (f !== 'none' && f !== 'original') this.filter(out, f);
+    return out;
   },
   dataUrl(canvas, quality = 0.9) { return canvas.toDataURL('image/jpeg', quality); },
 
@@ -1002,6 +1044,33 @@ const PDF = {
     return { blob: new Blob([bytes], { type: 'application/pdf' }), pageCount: added };
   },
 
+  /** Rend les pages d'un PDF en canvas (V2 : OCR des PDF importés). */
+  async renderPages(file, { maxPx = 2000, pageIndexes = null, onProgress } = {}) {
+    if (typeof pdfjsLib === 'undefined') await Assets.ensureLoaded();
+    if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js indisponible');
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      (Assets._base || new URL('vendor/', location.href).href) + 'pdf.worker.min.js';
+    const buf = file instanceof ArrayBuffer ? file : await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+    const idx = pageIndexes || Array.from({ length: doc.numPages }, (_, i) => i + 1);
+    const out = [];
+    for (let i = 0; i < idx.length; i++) {
+      onProgress && onProgress(i / idx.length, `Page ${idx[i]}/${doc.numPages}`);
+      const page = await doc.getPage(idx[i]);
+      const vp0 = page.getViewport({ scale: 1 });
+      const scale = Math.min(3, maxPx / Math.max(vp0.width, vp0.height));
+      const vp = page.getViewport({ scale });
+      const c = document.createElement('canvas');
+      c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      out.push({ canvas: c, index: idx[i] });
+    }
+    onProgress && onProgress(1, 'Terminé');
+    return out;
+  },
+
   /** Lit un PDF (nb de pages) et rend la 1re page en vignette. */
   async inspect(file) {
     if (typeof pdfjsLib === 'undefined') await Assets.ensureLoaded();
@@ -1085,6 +1154,512 @@ async function storageInfo() {
 </script>
 <script>
 /* =============================================================================
+ * ScanPro AI — V2 : moteur de vision (100 % local, sans dépendance)
+ *  - détection automatique du quadrilatère du document (Sobel + Otsu + flood fill)
+ *  - correction de perspective par homographie (interpolation bilinéaire)
+ *  - redressement (deskew) par maximisation de la variance des projections
+ *  - filtres avancés (suppression des ombres, vif, texte noir)
+ * ========================================================================== */
+'use strict';
+
+const Vision = {
+  /* ------------------------------------------------------------------ base -- */
+
+  /** Convertit un canvas en niveaux de gris, redimensionné à maxDim. */
+  _gray(canvas, maxDim = 520) {
+    const scale = Math.min(1, maxDim / Math.max(canvas.width, canvas.height));
+    const w = Math.max(2, Math.round(canvas.width * scale));
+    const h = Math.max(2, Math.round(canvas.height * scale));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(canvas, 0, 0, w, h);
+    const d = ctx.getImageData(0, 0, w, h).data;
+    const g = new Float32Array(w * h);
+    for (let i = 0, j = 0; j < g.length; i += 4, j++) {
+      g[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    }
+    return { g, w, h };
+  },
+
+  /** Flou moyen séparable (deux passes horizontale + verticale). */
+  _boxBlur(src, w, h, r = 2) {
+    const tmp = new Float32Array(w * h);
+    const out = new Float32Array(w * h);
+    const win = r * 2 + 1;
+    for (let y = 0; y < h; y++) {
+      let acc = 0;
+      const row = y * w;
+      for (let x = -r; x <= r; x++) acc += src[row + Math.min(w - 1, Math.max(0, x))];
+      for (let x = 0; x < w; x++) {
+        tmp[row + x] = acc / win;
+        const add = row + Math.min(w - 1, x + r + 1);
+        const sub = row + Math.max(0, x - r);
+        acc += src[add] - src[sub];
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let acc = 0;
+      for (let y = -r; y <= r; y++) acc += tmp[Math.min(h - 1, Math.max(0, y)) * w + x];
+      for (let y = 0; y < h; y++) {
+        out[y * w + x] = acc / win;
+        const add = Math.min(h - 1, y + r + 1) * w + x;
+        const sub = Math.max(0, y - r) * w + x;
+        acc += tmp[add] - tmp[sub];
+      }
+    }
+    return out;
+  },
+
+  /** Magnitude du gradient de Sobel. */
+  _sobel(g, w, h) {
+    const out = new Float32Array(w * h);
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        const a = g[i - w - 1], b = g[i - w], c = g[i - w + 1];
+        const d = g[i - 1], f = g[i + 1];
+        const p = g[i + w - 1], q = g[i + w], r2 = g[i + w + 1];
+        const gx = (c + 2 * f + r2) - (a + 2 * d + p);
+        const gy = (p + 2 * q + r2) - (a + 2 * b + c);
+        out[i] = Math.sqrt(gx * gx + gy * gy);
+      }
+    }
+    return out;
+  },
+
+  /** Seuil d'Otsu sur un histogramme 256 classes. */
+  _otsu(hist, total) {
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * hist[i];
+    let sumB = 0, wB = 0, best = 0, thr = 127;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t];
+      if (!wB) continue;
+      const wF = total - wB;
+      if (!wF) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB, mF = (sum - sumB) / wF;
+      const between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > best) { best = between; thr = t; }
+    }
+    return thr;
+  },
+
+  _dilate(edges, w, h) {
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (edges[i]) { out[i] = 1; continue; }
+        let hit = 0;
+        for (let dy = -1; dy <= 1 && !hit; dy++) {
+          const yy = y + dy; if (yy < 0 || yy >= h) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx; if (xx < 0 || xx >= w) continue;
+            if (edges[yy * w + xx]) { hit = 1; break; }
+          }
+        }
+        out[i] = hit;
+      }
+    }
+    return out;
+  },
+
+  /* ------------------------------------------------- quadrilatère détecté -- */
+
+  /**
+   * Recherche la plus grande zone fermée par des contours = le document.
+   * Retourne {quad, areaFrac} en coordonnées normalisées, ou null.
+   */
+  _quadFromEdges(edges, w, h) {
+    const n = w * h;
+    const visited = new Uint8Array(n);
+    const stack = new Int32Array(n);
+    let sp = 0;
+    const pushBg = (i) => { if (!visited[i] && !edges[i]) { visited[i] = 1; stack[sp++] = i; } };
+    for (let x = 0; x < w; x++) { pushBg(x); pushBg((h - 1) * w + x); }
+    for (let y = 0; y < h; y++) { pushBg(y * w); pushBg(y * w + w - 1); }
+    while (sp > 0) {
+      const i = stack[--sp];
+      const x = i % w, y = (i - x) / w;
+      if (x > 0) pushBg(i - 1);
+      if (x < w - 1) pushBg(i + 1);
+      if (y > 0) pushBg(i - w);
+      if (y < h - 1) pushBg(i + w);
+    }
+
+    const queue = new Int32Array(n);
+    let bestArea = 0, best = null;
+    for (let start = 0; start < n; start++) {
+      if (visited[start]) continue;
+      let head = 0, tail = 0, area = 0;
+      queue[tail++] = start; visited[start] = 1;
+      let minS = Infinity, maxS = -Infinity, minD = Infinity, maxD = -Infinity;
+      let tl = null, br = null, tr = null, bl = null;
+      while (head < tail) {
+        const i = queue[head++];
+        const x = i % w, y = (i - x) / w;
+        area++;
+        const s = x + y, d = x - y;
+        if (s < minS) { minS = s; tl = { x, y }; }
+        if (s > maxS) { maxS = s; br = { x, y }; }
+        if (d > maxD) { maxD = d; tr = { x, y }; }
+        if (d < minD) { minD = d; bl = { x, y }; }
+        if (x > 0 && !visited[i - 1]) { visited[i - 1] = 1; queue[tail++] = i - 1; }
+        if (x < w - 1 && !visited[i + 1]) { visited[i + 1] = 1; queue[tail++] = i + 1; }
+        if (y > 0 && !visited[i - w]) { visited[i - w] = 1; queue[tail++] = i - w; }
+        if (y < h - 1 && !visited[i + w]) { visited[i + w] = 1; queue[tail++] = i + w; }
+      }
+      if (area > bestArea && tl && tr && br && bl) {
+        bestArea = area; best = { tl, tr, br, bl, area };
+      }
+    }
+    if (!best) return null;
+
+    const quad = {
+      tl: { x: best.tl.x / w, y: best.tl.y / h },
+      tr: { x: best.tr.x / w, y: best.tr.y / h },
+      br: { x: best.br.x / w, y: best.br.y / h },
+      bl: { x: best.bl.x / w, y: best.bl.y / h }
+    };
+    return { quad, areaFrac: best.area / n };
+  },
+
+  quadArea(q) {
+    const p = [q.tl, q.tr, q.br, q.bl];
+    let a = 0;
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      a += p[i].x * p[j].y - p[j].x * p[i].y;
+    }
+    return Math.abs(a) / 2;
+  },
+
+  /** Vérifie qu'un quadrilatère est exploitable (convexe, assez grand, ordonné). */
+  _quadValid(q) {
+    if (!q || !q.tl || !q.tr || !q.br || !q.bl) return false;
+    const pts = [q.tl, q.tr, q.br, q.bl];
+    for (const p of pts) {
+      if (!isFinite(p.x) || !isFinite(p.y)) return false;
+      if (p.x < -0.02 || p.x > 1.02 || p.y < -0.02 || p.y > 1.02) return false;
+    }
+    const area = this.quadArea(q);
+    if (area < 0.06 || area > 0.995) return false;
+    // côtés non dégénérés
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const sides = [dist(q.tl, q.tr), dist(q.tr, q.br), dist(q.br, q.bl), dist(q.bl, q.tl)];
+    const diag = Math.hypot(1, 1);
+    if (Math.min(...sides) < diag * 0.08) return false;
+    // convexité (produits vectoriels de même signe)
+    let sign = 0;
+    for (let i = 0; i < 4; i++) {
+      const a = pts[i], b = pts[(i + 1) % 4], c = pts[(i + 2) % 4];
+      const cr = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x);
+      if (Math.abs(cr) < 1e-6) continue;
+      const s = Math.sign(cr);
+      if (sign === 0) sign = s; else if (s !== sign) return false;
+    }
+    return true;
+  },
+
+  /**
+   * Détecte le document sur un canvas/image.
+   * @returns {{quad:{tl,tr,br,bl}, areaFrac:number}|null} quad normalisé (0..1)
+   */
+  detectQuad(canvas) {
+    try {
+      const { g, w, h } = this._gray(canvas, 520);
+      const blur = this._boxBlur(g, w, h, 2);
+      const mag = this._sobel(blur, w, h);
+
+      let maxMag = 0;
+      for (let i = 0; i < mag.length; i++) if (mag[i] > maxMag) maxMag = mag[i];
+      if (maxMag < 8) return null;                     // image trop uniforme
+
+      const hist = new Uint32Array(256);
+      const k = 255 / maxMag;
+      for (let i = 0; i < mag.length; i++) hist[Math.min(255, Math.round(mag[i] * k))]++;
+      const otsu = this._otsu(hist, w * h) / k;
+
+      let best = null;
+      // plusieurs seuils : on garde le meilleur quadrilatère plausible
+      for (const factor of [1, 0.75, 1.4]) {
+        const thr = Math.max(10, otsu * factor);
+        let edges = new Uint8Array(w * h);
+        for (let i = 0; i < mag.length; i++) edges[i] = mag[i] > thr ? 1 : 0;
+        edges = this._dilate(edges, w, h);
+        edges = this._dilate(edges, w, h);
+        const res = this._quadFromEdges(edges, w, h);
+        if (!res || !this._quadValid(res.quad)) continue;
+        if (res.areaFrac > 0.985) continue;             // cadre entier : rien à corriger
+        const score = res.areaFrac * (factor === 1 ? 1.15 : 1);
+        if (!best || score > best.score) best = { quad: res.quad, areaFrac: res.areaFrac, score };
+      }
+      if (!best) return null;
+      return { quad: this._orderQuad(best.quad), areaFrac: best.areaFrac };
+    } catch (e) {
+      console.warn('[Vision] detectQuad', e);
+      return null;
+    }
+  },
+
+  /** Force l'ordre TL, TR, BR, BL (par angle autour du centre). */
+  _orderQuad(q) {
+    const cx = (q.tl.x + q.tr.x + q.br.x + q.bl.x) / 4;
+    const cy = (q.tl.y + q.tr.y + q.br.y + q.bl.y) / 4;
+    const pts = [q.tl, q.tr, q.br, q.bl]
+      .map(p => ({ x: p.x, y: p.y, a: Math.atan2(p.y - cy, p.x - cx) }))
+      .sort((p, r) => p.a - r.a);
+    // le premier point est celui de plus petit angle : on décale pour partir du haut-gauche
+    let start = 0, bestSum = Infinity;
+    pts.forEach((p, i) => { const s = p.x + p.y; if (s < bestSum) { bestSum = s; start = i; } });
+    const r = [pts[start], pts[(start + 1) % 4], pts[(start + 2) % 4], pts[(start + 3) % 4]];
+    return {
+      tl: { x: r[0].x, y: r[0].y }, tr: { x: r[1].x, y: r[1].y },
+      br: { x: r[2].x, y: r[2].y }, bl: { x: r[3].x, y: r[3].y }
+    };
+  },
+
+  /* ------------------------------------------------------------- warp 4 pts -- */
+
+  /** Résolution d'un système linéaire n×n (pivot partiel). */
+  _solve(A, b, n) {
+    for (let i = 0; i < n; i++) {
+      let p = i;
+      for (let r = i + 1; r < n; r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r;
+      if (Math.abs(A[p][i]) < 1e-12) return null;
+      if (p !== i) { const t = A[p]; A[p] = A[i]; A[i] = t; const tb = b[p]; b[p] = b[i]; b[i] = tb; }
+      const piv = A[i][i];
+      for (let r = i + 1; r < n; r++) {
+        const f = A[r][i] / piv;
+        if (!f) continue;
+        for (let c = i; c < n; c++) A[r][c] -= f * A[i][c];
+        b[r] -= f * b[i];
+      }
+    }
+    const x = new Array(n).fill(0);
+    for (let i = n - 1; i >= 0; i--) {
+      let s = b[i];
+      for (let c = i + 1; c < n; c++) s -= A[i][c] * x[c];
+      x[i] = s / A[i][i];
+    }
+    return x;
+  },
+
+  /** Homographie qui envoie src[i] sur dst[i] (i = 0..3). Retourne [a,b,c,d,e,f,g,h]. */
+  _homography(src, dst) {
+    const A = [], b = [];
+    for (let i = 0; i < 4; i++) {
+      const { x, y } = src[i], { x: u, y: v } = dst[i];
+      A.push([x, y, 1, 0, 0, 0, -x * u, -y * u]); b.push(u);
+      A.push([0, 0, 0, x, y, 1, -x * v, -y * v]); b.push(v);
+    }
+    return this._solve(A, b, 8);
+  },
+
+  /**
+   * Corrige la perspective : le quadrilatère `quad` (normalisé) devient un
+   * rectangle droit. `quad` est exprimé dans le repère du canvas source.
+   */
+  warp(srcCanvas, quad, { maxPx = 2400 } = {}) {
+    const W = srcCanvas.width, H = srcCanvas.height;
+    const P = [
+      { x: quad.tl.x * W, y: quad.tl.y * H },
+      { x: quad.tr.x * W, y: quad.tr.y * H },
+      { x: quad.br.x * W, y: quad.br.y * H },
+      { x: quad.bl.x * W, y: quad.bl.y * H }
+    ];
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    const wTop = dist(P[0], P[1]), wBottom = dist(P[3], P[2]);
+    const hLeft = dist(P[0], P[3]), hRight = dist(P[1], P[2]);
+    let outW = Math.max(8, Math.round(Math.max(wTop, wBottom)));
+    let outH = Math.max(8, Math.round(Math.max(hLeft, hRight)));
+    const k = Math.min(1, maxPx / Math.max(outW, outH));
+    outW = Math.max(8, Math.round(outW * k));
+    outH = Math.max(8, Math.round(outH * k));
+
+    // inverse : de la sortie (rectangle) vers la source (quad)
+    const dstPts = [{ x: 0, y: 0 }, { x: outW, y: 0 }, { x: outW, y: outH }, { x: 0, y: outH }];
+    const M = this._homography(dstPts, P);
+    if (!M || M.some(v => !isFinite(v))) return srcCanvas;
+    const [a, b, c, d, e, f, g2, h2] = M;
+
+    const src = srcCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    const outCanvas = document.createElement('canvas');
+    outCanvas.width = outW; outCanvas.height = outH;
+    const outCtx = outCanvas.getContext('2d');
+    const outImg = outCtx.createImageData(outW, outH);
+    const o = outImg.data;
+
+    for (let y = 0; y < outH; y++) {
+      let nu = c + b * y, nv = f + e * y, den = 1 + h2 * y;
+      const du = a, dv = d, dden = g2;
+      for (let x = 0; x < outW; x++) {
+        const u = nu / den, v = nv / den;
+        nu += du; nv += dv; den += dden;
+        const oi = (y * outW + x) * 4;
+        if (u < 0 || v < 0 || u > W - 1 || v > H - 1) {
+          o[oi] = o[oi + 1] = o[oi + 2] = 255; o[oi + 3] = 255;
+          continue;
+        }
+        const x0 = u | 0, y0 = v | 0;
+        const x1 = Math.min(W - 1, x0 + 1), y1 = Math.min(H - 1, y0 + 1);
+        const fx = u - x0, fy = v - y0;
+        const i00 = (y0 * W + x0) * 4, i10 = (y0 * W + x1) * 4;
+        const i01 = (y1 * W + x0) * 4, i11 = (y1 * W + x1) * 4;
+        const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy), w01 = (1 - fx) * fy, w11 = fx * fy;
+        o[oi]     = src[i00] * w00 + src[i10] * w10 + src[i01] * w01 + src[i11] * w11;
+        o[oi + 1] = src[i00 + 1] * w00 + src[i10 + 1] * w10 + src[i01 + 1] * w01 + src[i11 + 1] * w11;
+        o[oi + 2] = src[i00 + 2] * w00 + src[i10 + 2] * w10 + src[i01 + 2] * w01 + src[i11 + 2] * w11;
+        o[oi + 3] = 255;
+      }
+    }
+    outCtx.putImageData(outImg, 0, 0);
+    return outCanvas;
+  },
+
+  /* ---------------------------------------------------------------- deskew -- */
+
+  /** Angle (degrés) qui redresse le mieux les lignes de texte, ou 0. */
+  deskewAngle(canvas, { maxAngle = 10, step = 0.5 } = {}) {
+    try {
+      const { g, w, h } = this._gray(canvas, 480);
+      const hist = new Uint32Array(256);
+      for (let i = 0; i < g.length; i++) hist[Math.min(255, g[i] | 0)]++;
+      const thr = this._otsu(hist, w * h);
+      // masque du texte (pixels sombres)
+      const bin = new Uint8Array(w * h);
+      let ink = 0;
+      for (let i = 0; i < g.length; i++) if (g[i] < thr) { bin[i] = 1; ink++; }
+      if (ink < w * h * 0.002 || ink > w * h * 0.6) return 0;   // pas de texte net
+
+      const cx = w / 2, cy = h / 2;
+      let bestAngle = 0, bestScore = -1;
+      for (let a = -maxAngle; a <= maxAngle + 1e-9; a += step) {
+        const rad = a * Math.PI / 180;
+        const cos = Math.cos(rad), sin = Math.sin(rad);
+        const rows = new Float32Array(h);
+        for (let y = 0; y < h; y++) {
+          const dy = y - cy;
+          let sum = 0;
+          for (let x = 0; x < w; x++) {
+            const dx = x - cx;
+            const sx = Math.round(cx + dx * cos - dy * sin);
+            const sy = Math.round(cy + dx * sin + dy * cos);
+            if (sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+            sum += bin[sy * w + sx];
+          }
+          rows[y] = sum;
+        }
+        // variance des projections : maximale quand les lignes s'alignent
+        let mean = 0;
+        for (let y = 0; y < h; y++) mean += rows[y];
+        mean /= h;
+        let varr = 0;
+        for (let y = 0; y < h; y++) { const d2 = rows[y] - mean; varr += d2 * d2; }
+        if (varr > bestScore) { bestScore = varr; bestAngle = a; }
+      }
+      return Math.abs(bestAngle) < 0.6 ? 0 : Math.round(bestAngle * 10) / 10;
+    } catch (e) {
+      console.warn('[Vision] deskew', e);
+      return 0;
+    }
+  },
+
+  /** Applique une petite rotation et recadre au plus grand rectangle inscrit. */
+  rotate(srcCanvas, deg, { maxPx = 2400 } = {}) {
+    if (!deg) return srcCanvas;
+    const W = srcCanvas.width, H = srcCanvas.height;
+    const rad = deg * Math.PI / 180;
+    const cos = Math.cos(rad), sin = Math.sin(rad);
+    const s = Math.min(W / (W * Math.abs(cos) + H * Math.abs(sin)),
+                         H / (H * Math.abs(cos) + W * Math.abs(sin)));
+    const outW = Math.max(8, Math.round(W * s));
+    const outH = Math.max(8, Math.round(H * s));
+    const c = document.createElement('canvas');
+    c.width = outW; c.height = outH;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, outW, outH);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.translate(outW / 2, outH / 2);
+    ctx.rotate(rad);
+    ctx.drawImage(srcCanvas, -W / 2, -H / 2);
+    const k = Math.min(1, maxPx / Math.max(outW, outH));
+    if (k < 1) {
+      const c2 = document.createElement('canvas');
+      c2.width = Math.round(outW * k); c2.height = Math.round(outH * k);
+      c2.getContext('2d').drawImage(c, 0, 0, c2.width, c2.height);
+      return c2;
+    }
+    return c;
+  },
+
+  /* ------------------------------------------------------- filtres avancés -- */
+
+  /** Suppression des ombres / éclairage inégal : division par le fond estimé. */
+  shadowRemove(canvas) {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const { width: W, height: H } = canvas;
+    const id = ctx.getImageData(0, 0, W, H);
+    const d = id.data;
+
+    /* Fond estimé sur une copie réduite (≈ 320 px) puis ré-échantillonné : même
+       correction visuelle, coût divisé par ~20 (important sur téléphone). */
+    const k = Math.min(1, 320 / Math.max(W, H));
+    const sw = Math.max(8, Math.round(W * k)), sh = Math.max(8, Math.round(H * k));
+    const small = document.createElement('canvas');
+    small.width = sw; small.height = sh;
+    const sctx = small.getContext('2d', { willReadFrequently: true });
+    sctx.drawImage(canvas, 0, 0, sw, sh);
+    const sd = sctx.getImageData(0, 0, sw, sh).data;
+    const bg = [new Float32Array(sw * sh), new Float32Array(sw * sh), new Float32Array(sw * sh)];
+    for (let c = 0; c < 3; c++) for (let i = 0, j = 0; j < sw * sh; i += 4, j++) bg[c][j] = sd[i + c];
+    const r = Math.max(4, Math.round(Math.min(sw, sh) * 0.10));
+    for (let c = 0; c < 3; c++) bg[c] = this._boxBlur(bg[c], sw, sh, r);
+
+    const gx = sw / W, gy = sh / H;
+    for (let y = 0; y < H; y++) {
+      const fy = Math.min(sh - 1.001, y * gy);
+      const y0 = fy | 0, y1 = Math.min(sh - 1, y0 + 1), wy = fy - y0;
+      for (let x = 0; x < W; x++) {
+        const fx = Math.min(sw - 1.001, x * gx);
+        const x0 = fx | 0, x1 = Math.min(sw - 1, x0 + 1), wx = fx - x0;
+        const i00 = y0 * sw + x0, i10 = y0 * sw + x1, i01 = y1 * sw + x0, i11 = y1 * sw + x1;
+        const w00 = (1 - wx) * (1 - wy), w10 = wx * (1 - wy), w01 = (1 - wx) * wy, w11 = wx * wy;
+        const di = (y * W + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const channel = bg[c];
+          const b = Math.max(24,
+            channel[i00] * w00 + channel[i10] * w10 + channel[i01] * w01 + channel[i11] * w11);
+          const v = d[di + c] / b * 232;
+          d[di + c] = v > 255 ? 255 : v;
+        }
+      }
+    }
+    ctx.putImageData(id, 0, 0);
+  },
+
+  /** Saturation + auto-niveaux doux (mode « Vif »). */
+  vivid(canvas) {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const id = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = id.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const l = 0.299 * r + 0.587 * g + 0.114 * b;
+      d[i]     = clamp(l + (r - l) * 1.35, 0, 255);
+      d[i + 1] = clamp(l + (g - l) * 1.35, 0, 255);
+      d[i + 2] = clamp(l + (b - l) * 1.35, 0, 255);
+    }
+    ctx.putImageData(id, 0, 0);
+  }
+};
+
+</script>
+<script>
+/* =============================================================================
  * ScanPro AI — état global, dépôt de documents, UI shell (toasts, feuilles)
  * ========================================================================== */
 'use strict';
@@ -1092,7 +1667,7 @@ async function storageInfo() {
 /* ------------------------------------------------------------- préférences -- */
 const Settings = {
   k: 'scanpro.settings.v1',
-  defaults: { ocrLangs: 'fra+eng', quality: 'high', defaultFilter: 'doc', autoOcr: false, seenOnboarding: false },
+  defaults: { ocrLangs: 'fra+eng', quality: 'high', defaultFilter: 'doc', autoOcr: false, autoDetect: true, seenOnboarding: false },
   data: null,
   load() {
     try { this.data = Object.assign({}, this.defaults, JSON.parse(localStorage.getItem(this.k) || '{}')); }
@@ -1216,6 +1791,7 @@ const Repo = {
       const rec = {
         id: p.id || uid('pg'), docId: doc.id, index: i, src: p.src,
         crop: p.crop || { x: 0, y: 0, w: 1, h: 1 }, rotate: p.rotate || 0,
+        quad: p.quad || null, deskew: p.deskew || 0,
         filter: p.filter || 'none', thumb: p.thumb || null, text: p.text || '', ocrConf: p.ocrConf || 0
       };
       bytes += (rec.src ? rec.src.length * 0.75 : 0) + (rec.thumb ? rec.thumb.length * 0.75 : 0);
@@ -1253,7 +1829,8 @@ const Repo = {
       const p = pages[i];
       const rec = {
         id: p.id || uid('pg'), docId, index: i, src: p.src, crop: p.crop || { x: 0, y: 0, w: 1, h: 1 },
-        rotate: p.rotate || 0, filter: p.filter || 'none', thumb: p.thumb || null,
+        rotate: p.rotate || 0, quad: p.quad || null, deskew: p.deskew || 0,
+        filter: p.filter || 'none', thumb: p.thumb || null,
         text: p.text || '', ocrConf: p.ocrConf || 0
       };
       bytes += (rec.src || '').length * 0.75 + (rec.thumb || '').length * 0.75;
@@ -1686,6 +2263,12 @@ async function viewSettings() {
         <button class="switch ${Settings.get('autoOcr') ? 'on' : ''}" data-act="toggle-autoocr"
           role="switch" aria-checked="${Settings.get('autoOcr')}" aria-label="OCR automatique"></button>
       </div>
+      <div class="set-row">
+        <span class="s-ico">${ICON('i-corners', 'ico sm')}</span>
+        <span class="s-body"><b>Détection automatique des contours</b><span>Redresser la perspective à la capture</span></span>
+        <button class="switch ${Settings.get('autoDetect') !== false ? 'on' : ''}" data-act="toggle-autodetect"
+          role="switch" aria-checked="${Settings.get('autoDetect') !== false}" aria-label="Détection des contours"></button>
+      </div>
     </div>
 
     <div class="set-group">
@@ -1728,8 +2311,9 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 1.0.0 (Web)<br>
-      OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · 100 % hors-ligne après le premier chargement<br>
+      <b>ScanPro AI</b> — version 2.0.0 (Web)<br>
+      OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
+      100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
     </div>
   </div>`;
@@ -1792,7 +2376,11 @@ function previewTab(doc, pages, p) {
     </div>
     <div class="banner warn mt14">${ICON('i-alert', 'ico sm')}
       <span><b>PDF importé :</b> il est conservé tel quel (l'original n'est pas réencodé).
-      L'OCR page par page des PDF importés et la modification de leurs pages arrivent en V2.</span></div>`;
+      Vous pouvez lancer l'<b>OCR page par page</b> ou en faire des images pour le retraiter.</span></div>
+      <div class="btn-col mt10">
+        <button class="btn soft" data-act="doc-ocr">${ICON('i-text', 'ico sm')} Extraire le texte (OCR des pages)</button>
+        <button class="btn soft" data-act="doc-to-images">${ICON('i-image', 'ico sm')} Convertir en pages modifiables</button>
+      </div>`;
   }
   return `
   <div class="preview-box">
@@ -2116,7 +2704,8 @@ async function capturePhoto() {
   c.width = video.videoWidth; c.height = video.videoHeight;
   c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
   const dataUrl = c.toDataURL('image/jpeg', 0.92);
-  await addPageFromDataUrl(dataUrl);
+  const page = await addPageFromDataUrl(dataUrl);
+  if (page && page.detected) toast('Document détecté et redressé', 'ok', 1600);
   // flash visuel
   const app = $('#cameraScreen');
   if (app) {
@@ -2128,16 +2717,35 @@ async function capturePhoto() {
   if (navigator.vibrate) navigator.vibrate(18);
 }
 
-async function addPageFromDataUrl(src) {
+async function addPageFromDataUrl(src, { detect = true } = {}) {
   const norm = await normalizeSource(src);
-  const thumb = await ImageOps.thumb(norm);
-  App.draft.pages.push({
+  const page = {
     id: uid('pg'), src: norm, crop: { x: 0, y: 0, w: 1, h: 1 }, rotate: 0,
-    filter: Settings.get('defaultFilter') || 'none', thumb, adj: { b: 1, c: 1 }
-  });
+    quad: null, deskew: 0, detected: false,
+    filter: Settings.get('defaultFilter') || 'none', thumb: null, adj: { b: 1, c: 1 }
+  };
+
+  // V2 : détection automatique des contours du document
+  if (detect && Settings.get('autoDetect') !== false) {
+    try {
+      const canvas = await ImageOps.render(page, { maxPx: 1200, skipQuad: true });
+      const det = Vision.detectQuad(canvas);
+      if (det && Vision._quadValid(det.quad)) {
+        page.quad = det.quad;
+        page.detected = true;
+        // redressement estimé sur l'image redressée
+        try {
+          const warped = Vision.warp(canvas, det.quad, { maxPx: 900 });
+          page.deskew = Vision.deskewAngle(warped);
+        } catch (e) { page.deskew = 0; }
+      }
+    } catch (e) { console.warn('[ScanPro] détection', e); }
+  }
+  page.thumb = await ImageOps.thumb(await ImageOps.render(page, { maxPx: 400, quality: 0.7 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+  App.draft.pages.push(page);
   App.draft.active = App.draft.pages.length - 1;
   updateCamPages();
-  return App.draft.pages[App.draft.pages.length - 1];
+  return page;
 }
 async function normalizeSource(src) {
   const img = await ImageOps.load(src);
@@ -2193,6 +2801,7 @@ function renderEditor() {
 
     <div class="editor-wrap">
       <div class="editor-stage" id="editorStage">
+        ${p ? `<div class="detect-badge ${p.quad ? 'on' : ''}">${p.quad ? '✓ Perspective corrigée' : 'Contours non détectés'}</div>` : ''}
         ${p ? `<div id="cropHost" style="position:relative;display:inline-block;line-height:0">
             <canvas id="editorCanvas"></canvas>
             <div id="cropLayer"><div id="cropRect">
@@ -2211,13 +2820,16 @@ function renderEditor() {
     <div style="flex:1;overflow:auto;background:var(--bg);padding-bottom:8px;display:flex;flex-direction:column">
       <div class="filters" id="filterRow">
         ${[['doc', 'Document', '#fff'], ['color', 'Couleur', '#F87171'], ['gray', 'Gris', '#9CA3AF'],
-           ['bw', 'Noir & blanc', '#111827'], ['none', 'Original', '#BFD3F6']]
+           ['bw', 'Noir & blanc', '#111827'], ['shadow', 'Anti-ombre', '#E5E7EB'],
+           ['vivid', 'Vif', '#34D399'], ['none', 'Original', '#BFD3F6']]
           .map(([k, l, c]) => `<button class="chip sm ${(p && p.filter) === k ? 'on' : ''}"
             data-act="editor-filter" data-f="${k}"><span class="dot" style="background:${c}"></span>${l}</button>`).join('')}
       </div>
       <div class="tool-row">
         <button class="tool" data-act="editor-crop">${ICON('i-crop')}Recadrer</button>
+        <button class="tool" data-act="editor-corners">${ICON('i-corners')}4 coins</button>
         <button class="tool" data-act="editor-rotate">${ICON('i-rotate')}Pivoter</button>
+        <button class="tool" data-act="editor-deskew">${ICON('i-straighten')}Redresser</button>
         <button class="tool" data-act="editor-adjust">${ICON('i-sun')}Luminosité</button>
         <button class="tool" data-act="editor-duplicate">${ICON('i-copy')}Dupliquer</button>
         <button class="tool" data-act="editor-delete-page">${ICON('i-trash')}Supprimer</button>
@@ -2238,7 +2850,7 @@ function renderEditor() {
         <button class="add-page" data-act="editor-add-page" aria-label="Ajouter une page">${ICON('i-plus')}</button>
       </div>
       <div class="sticky-actions">
-        <button class="btn ghost" data-act="editor-ocr">${ICON('i-text', 'ico sm')} Extraire le texte</button>
+        <button class="btn ghost" data-act="editor-ocr">${ICON('i-text', 'ico sm')} Texte (OCR)</button>
         <button class="btn primary" data-act="editor-pdf">${ICON('i-pdf', 'ico sm')} Générer le PDF</button>
       </div>
     </div>
@@ -2334,6 +2946,156 @@ function mountCropUI() {
     $('#cropToolbar').style.display = 'none';
     renderEditor();
   };
+}
+
+/* ------------------------------------------------ ajustement des 4 coins -- */
+async function editorCorners() {
+  const d = App.draft;
+  const page = d.pages[d.active];
+  if (!page) return;
+  const canvas = await ImageOps.render(page, { maxPx: 1100, skipQuad: true });
+  const stage = $('#editorStage');
+  if (!stage) return;
+  d.cropMode = false;
+  $('#cropLayer')?.classList.remove('on');
+  $('#cropToolbar').style.display = 'none';
+
+  // quadrilatère de départ : détecté, sinon bords de l'image
+  let q = page.quad ? JSON.parse(JSON.stringify(page.quad))
+    : { tl: { x: 0.03, y: 0.03 }, tr: { x: 0.97, y: 0.03 }, br: { x: 0.97, y: 0.97 }, bl: { x: 0.03, y: 0.97 } };
+
+  const host = document.createElement('div');
+  host.id = 'cornerHost';
+  host.style.cssText = 'position:relative;display:inline-block;line-height:0;max-width:100%';
+  const cv = document.createElement('canvas');
+  cv.width = canvas.width; cv.height = canvas.height;
+  const k = Math.min(1, 620 / Math.max(canvas.width, canvas.height));
+  cv.style.cssText = `width:${Math.round(canvas.width * k)}px;height:${Math.round(canvas.height * k)}px;border-radius:8px;display:block`;
+  cv.getContext('2d').drawImage(canvas, 0, 0);
+  host.appendChild(cv);
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+  const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+  poly.setAttribute('fill', 'rgba(37,99,235,.18)');
+  poly.setAttribute('stroke', '#3B82F6');
+  poly.setAttribute('stroke-width', '0.7');
+  svg.appendChild(poly);
+  host.appendChild(svg);
+
+  const order = ['tl', 'tr', 'br', 'bl'];
+  const handles = {};
+  const paint = () => {
+    poly.setAttribute('points', order.map(n => `${q[n].x * 100},${q[n].y * 100}`).join(' '));
+    order.forEach(n => {
+      handles[n].style.left = (q[n].x * 100) + '%';
+      handles[n].style.top = (q[n].y * 100) + '%';
+    });
+  };
+  order.forEach(n => {
+    const h = document.createElement('div');
+    h.className = 'corner-handle';
+    h.style.transform = 'translate(-50%,-50%)';
+    h.style.left = (q[n].x * 100) + '%';
+    h.style.top = (q[n].y * 100) + '%';
+    h.dataset.corner = n;
+    h.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      h.setPointerCapture(ev.pointerId);
+      h.classList.add('active');
+      const rect = cv.getBoundingClientRect();
+      const move = (e2) => {
+        q[n] = {
+          x: clamp((e2.clientX - rect.left) / rect.width, 0, 1),
+          y: clamp((e2.clientY - rect.top) / rect.height, 0, 1)
+        };
+        paint();
+      };
+      const up = () => {
+        h.classList.remove('active');
+        h.removeEventListener('pointermove', move);
+        h.removeEventListener('pointerup', up);
+        h.removeEventListener('pointercancel', up);
+      };
+      h.addEventListener('pointermove', move);
+      h.addEventListener('pointerup', up);
+      h.addEventListener('pointercancel', up);
+    });
+    handles[n] = h;
+    host.appendChild(h);
+  });
+  paint();
+
+  const bar = document.createElement('div');
+  bar.className = 'crop-toolbar';
+  bar.style.display = 'flex';
+  bar.innerHTML = `
+    <button class="btn" data-c="reset">Réinitialiser</button>
+    <button class="btn" data-c="auto">Détecter</button>
+    <button class="btn go" data-c="apply">Valider la perspective</button>`;
+  host.appendChild(bar);
+
+  stage.innerHTML = '';
+  stage.appendChild(host);
+
+  bar.querySelector('[data-c="reset"]').onclick = () => {
+    q = { tl: { x: 0, y: 0 }, tr: { x: 1, y: 0 }, br: { x: 1, y: 1 }, bl: { x: 0, y: 1 } };
+    paint();
+  };
+  bar.querySelector('[data-c="auto"]').onclick = async () => {
+    const det = Vision.detectQuad(canvas);
+    if (det && Vision._quadValid(det.quad)) { q = det.quad; paint(); toast('Contours détectés', 'ok'); }
+    else toast('Aucun contour détecté sur cette image', 'err');
+  };
+  bar.querySelector('[data-c="apply"]').onclick = async () => {
+    const ordered = Vision._orderQuad({ tl: q.tl, tr: q.tr, br: q.br, bl: q.bl });
+    if (Vision.quadArea(ordered) < 0.05) { toast('Zone trop petite — ajustez les coins', 'err'); return; }
+    page.quad = ordered;
+    page.detected = true;
+    page.crop = { x: 0, y: 0, w: 1, h: 1 };
+    try {
+      const warped = Vision.warp(canvas, ordered, { maxPx: 900 });
+      page.deskew = Vision.deskewAngle(warped);
+    } catch (e) {}
+    page.thumb = await ImageOps.thumb(await ImageOps.render(page, { maxPx: 400, quality: 0.7 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+    toast('Perspective appliquée', 'ok');
+    renderEditor();
+  };
+}
+
+/* --------------------------------------------------- redressement (deskew) -- */
+async function editorDeskew() {
+  const page = App.draft.pages[App.draft.active];
+  if (!page) return;
+  busyBar(true);
+  try {
+    const canvas = await ImageOps.render(page, { maxPx: 1200 });
+    const angle = Vision.deskewAngle(canvas);
+    busyBar(false);
+    // même sans inclinaison détectée, l'utilisateur peut ajuster finement à la main
+    const span = Math.max(3, Math.abs(angle) + 1);
+    const s = openSheet({
+      title: 'Redressement',
+      sub: angle ? `Inclinaison détectée : ${angle > 0 ? '+' : ''}${angle}°` : 'Aucune inclinaison notable détectée — ajustez si besoin.',
+      body: `<div class="field"><label>Correction appliquée : <b id="dkVal">${(-angle).toFixed(1)}°</b></label>
+        <input id="dkRange" type="range" min="${(-span).toFixed(1)}" max="${span.toFixed(1)}"
+          step="0.1" value="${(-angle).toFixed(1)}" style="min-height:32px"></div>
+        <p class="tiny muted">Déplacez le curseur pour affiner, puis validez.</p>`,
+      actions: [{ label: 'Annuler', cls: 'ghost' }, { label: 'Appliquer', cls: 'primary', act: 'dk-ok', close: true }]
+    });
+    const range = $('#dkRange', s);
+    page.deskew = -angle;
+    $('#dkVal', s).textContent = (-angle).toFixed(1) + '°';
+    range.addEventListener('input', () => {
+      page.deskew = -parseFloat(range.value);
+      $('#dkVal', s).textContent = (-parseFloat(range.value)).toFixed(1) + '°';
+      drawEditorCanvas();
+    });
+    $('[data-act="dk-ok"]', s)?.addEventListener('click', () => { closeSheet(); renderEditor(); });
+    drawEditorCanvas();
+  } catch (e) { busyBar(false); toast('Redressement impossible', 'err'); }
 }
 
 /* -------------------------------------------------------------- éditeur -- */
@@ -2663,10 +3425,38 @@ async function docRunOcr(docId) {
   const doc = await Repo.doc(docId);
   const pages = await Repo.pages(docId);
   if (!doc) return;
-  if (!pages.length) {
-    toast('Aucune image à analyser. Les PDF importés conservent leur texte d\'origine.', 'err', 5000);
+
+  /* V2 — OCR d'un PDF importé : les pages sont rendues à la volée par pdf.js. */
+  if (!pages.length && doc.fileId) {
+    const blob = await Repo.file(docId);
+    if (!blob) { toast('Fichier PDF introuvable', 'err'); return; }
+    const file = new File([blob], (doc.name || 'document') + '.pdf', { type: 'application/pdf' });
+    let rendered;
+    try {
+      busyBar(true);
+      rendered = await PDF.renderPages(file, { maxPx: 2000 });
+      busyBar(false);
+    } catch (e) {
+      busyBar(false);
+      toast('Lecture du PDF impossible : ' + e.message, 'err', 5000);
+      return;
+    }
+    let results;
+    try { results = await runOcr(rendered.map(r => ({ src: r.canvas.toDataURL('image/jpeg', 0.95) }))); }
+    catch (e) { return; }
+    if (!results) return;
+    const text = results.map((r, i) => `— Page ${i + 1} —\n${r.text}`).join('\n\n').trim();
+    const avg = Math.round(results.reduce((s, r) => s + r.confidence, 0) / Math.max(1, results.length));
+    doc.text = text;
+    doc.ocr = { status: text ? 'done' : 'empty', at: Date.now(), confidence: avg };
+    await Repo.update(doc);
+    App.doc = doc; App.detailTab = 'text';
+    await render();
+    toast(text ? 'OCR terminé · confiance ' + avg + ' %' : 'Aucun texte détecté', text ? 'ok' : 'err', 5000);
     return;
   }
+
+  if (!pages.length) { toast('Aucune page à analyser', 'err'); return; }
   let results;
   try { results = await runOcr(pages); } catch (e) {
     doc.ocr = { status: 'failed', at: Date.now(), confidence: 0 };
@@ -2687,6 +3477,49 @@ async function docRunOcr(docId) {
   await render();
   if (text) toast('OCR terminé · ' + plural(text.split(/\s+/).filter(Boolean).length, 'mot', 'mots') + ' · confiance ' + avg + ' %', 'ok', 4500);
   else toast("OCR terminé mais aucun texte détecté. Essayez un meilleur éclairage ou le mode « Document ».", 'err', 6000);
+}
+
+/* ------------------------------------- conversion d'un PDF en pages éditables -- */
+async function docToImages(docId) {
+  const doc = await Repo.doc(docId);
+  if (!doc) return;
+  const blob = await Repo.file(docId);
+  if (!blob) { toast('Ce document ne contient pas de PDF', 'err'); return; }
+  const file = new File([blob], (doc.name || 'document') + '.pdf', { type: 'application/pdf' });
+  let rendered;
+  try {
+    busyBar(true);
+    rendered = await PDF.renderPages(file, { maxPx: 2400 });
+    busyBar(false);
+  } catch (e) { busyBar(false); toast('Conversion impossible : ' + e.message, 'err', 5000); return; }
+  if (!rendered.length) return;
+  confirmSheet({
+    title: 'Convertir en pages modifiables ?',
+    sub: `Les ${rendered.length} page(s) seront rendues en images et remplaceront le PDF importé. ` +
+         `Vous pourrez alors recadrer, redresser, filtrer et exporter un nouveau PDF. L'original reste téléchargeable jusqu'à la conversion.`,
+    okLabel: 'Convertir',
+    onOk: async () => {
+      busyBar(true);
+      const pages = [];
+      for (let i = 0; i < rendered.length; i++) {
+        const src = rendered[i].canvas.toDataURL('image/jpeg', 0.92);
+        const page = { id: uid('pg'), src, crop: { x: 0, y: 0, w: 1, h: 1 }, rotate: 0, quad: null, deskew: 0, filter: 'none' };
+        page.thumb = await ImageOps.thumb(await ImageOps.render(page, { maxPx: 400, quality: 0.7 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+        pages.push(page);
+      }
+      const bytes = await Repo.replacePages(docId, pages);
+      if (doc.fileId) await Store.del('files', docId);
+      doc.fileId = null; doc.kind = 'scan'; doc.modified = true;
+      doc.thumb = pages[0].thumb; doc.pageCount = pages.length; doc.bytes = bytes;
+      await Repo.update(doc);
+      busyBar(false);
+      toast(plural(pages.length, 'page convertie', 'pages converties'), 'ok');
+      App.doc = await Repo.doc(docId);
+      App.docPages = await Repo.pages(docId);
+      App.detailTab = 'preview';
+      await render();
+    }
+  });
 }
 
 /* ------------------------------------------------- import / fusion PDF -- */
@@ -3036,6 +3869,8 @@ Object.assign(Actions, {
   },
   'editor-add-page': () => editorAddPage(),
   'editor-rotate': () => editorRotate(),
+  'editor-corners': () => editorCorners(),
+  'editor-deskew': () => editorDeskew(),
   'editor-crop': () => {
     App.draft.cropMode = true;
     App.draft.cropRect = Object.assign({}, App.draft.pages[App.draft.active].crop);
@@ -3069,6 +3904,14 @@ Object.assign(Actions, {
   'doc-rename': () => docRename(App.doc.id),
   'doc-delete': () => docDelete(App.doc.id),
   'doc-edit': () => docEdit(App.doc.id),
+  'doc-to-images': () => docToImages(App.doc.id),
+  'toggle-autodetect': async (el) => {
+    const v = !(Settings.get('autoDetect') !== false);
+    Settings.set('autoDetect', v);
+    el.classList.toggle('on', v);
+    el.setAttribute('aria-checked', v);
+    toast('Détection des contours ' + (v ? 'activée' : 'désactivée'), 'ok');
+  },
 
   /* texte */
   'text-copy': () => copyText(($('#ocrEditor') || {}).value || App.doc.text || ''),
