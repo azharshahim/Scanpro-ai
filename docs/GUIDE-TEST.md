@@ -2,9 +2,9 @@
 
 ## 1. Sur votre téléphone Android (le plus rapide)
 
-1. Ouvrez l'application dans le navigateur du téléphone (Chrome recommandé) :
-   **la prévisualisation live affichée dans cet environnement** (bouton « aperçu » du workspace)
-   ou `index.html` servi en HTTPS.
+1. Ouvrez **https://azharshahim.github.io/Scanpro-ai/** dans le navigateur du téléphone
+   (Chrome recommandé). Vous pouvez aussi l'**installer** : menu ⋮ → « Ajouter à l'écran d'accueil ».
+   *(Alternative : la prévisualisation live du workspace.)*
 2. Au premier lancement, un écran de bienvenue s'affiche → **Commencer**.
 3. Appuyez sur **Scanner avec la caméra** → autorisez la caméra → prenez 1 ou plusieurs photos
    (bouton rond) → **Terminer** (✓).

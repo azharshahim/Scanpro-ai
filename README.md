@@ -9,11 +9,18 @@ ou `docs/GUIDE-TEST.md` pour la procédure pas à pas sur téléphone.
 
 ## Hébergement
 
-| URL | État | Remarque |
-|---|---|---|
-| Prévisualisation live du workspace | ✅ recommandée pour tester | HTTPS, caméra + OCR + service worker |
-| `https://azharshahim.github.io/Scanpro-ai/` | ⏳ à activer | **Settings → Pages → Source : « GitHub Actions »** (le workflow `.github/workflows/pages.yml` est déjà en place) ou « Deploy from a branch : main / (root) ». Le jeton utilisé pour le push n'avait pas la permission *Pages*. |
-| `https://htmlpreview.github.io/?https://github.com/azharshahim/Scanpro-ai/blob/v1.0.0/index.html` | ✅ fonctionne | Rendu du dépôt public via un service tiers (OCR vérifié : 712 caractères). À utiliser en dépannage. |
+**Application en ligne : https://azharshahim.github.io/Scanpro-ai/**
+
+| Élément | État |
+|---|---|
+| GitHub Pages (déploiement par GitHub Actions) | ✅ actif, HTTPS forcé |
+| Workflow `.github/workflows/pages.yml` | ✅ déploie `main` à chaque push |
+| Service worker + manifeste PWA | ✅ installable sur l'écran d'accueil Android |
+| Fichiers `vendor/` servis localement | ✅ (repli automatique sur le CDN du dépôt en cas de blocage) |
+
+Test de bout en bout exécuté sur cette URL (`tests/e2e-pages.mjs`) : **19/19 vérifications OK**
+(caméra HTTPS 2048×1536, multi-pages, recadrage, rotation, filtre N&B, PDF, OCR, assistant,
+persistance, recherche, paramètres, zéro erreur console/réseau).
 
 Les modèles OCR et bibliothèques sont servis localement (`vendor/`). Si un hébergeur bloque les
 fichiers binaires lourds, l'app bascule automatiquement sur le CDN jsDelivr du dépôt (tag `v1.0.0`,
