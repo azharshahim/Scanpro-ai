@@ -854,14 +854,56 @@ const ImageOps = {
 };
 
 /* -------------------------------------------------------------------- OCR -- */
+/* Certains hébergeurs (aperçus GitHub, githack, etc.) bloquent les gros fichiers
+   binaires. On sonde les fichiers locaux puis on bascule, si besoin, sur le CDN
+   jsDelivr du dépôt public. En local (http://localhost) rien ne change. */
+const CDN_VENDOR = 'https://cdn.jsdelivr.net/gh/azharshahim/Scanpro-ai@main/vendor/';
+const Assets = {
+  _base: null,
+  localBase() { return new URL('vendor/', location.href).href; },
+  async base() {
+    if (this._base) return this._base;
+    const local = this.localBase();
+    if (location.protocol === 'file:' || navigator.onLine === false) return (this._base = local);
+    try {
+      const r = await fetch(local + 'lang/fra.traineddata.gz', { method: 'HEAD', cache: 'no-store' });
+      this._base = r.ok ? local : CDN_VENDOR;
+    } catch (e) { this._base = CDN_VENDOR; }
+    if (this._base === CDN_VENDOR) console.info('[Assets] fichiers locaux indisponibles → CDN jsDelivr');
+    return this._base;
+  },
+  async ensureLoaded() {
+    await this.base();
+    const onCdn = this._base === CDN_VENDOR;
+    const needed = [
+      ['tesseract.min.js', () => OCR.available()],
+      ['jspdf.umd.min.js', () => PDF.hasJsPDF()],
+      ['pdf-lib.min.js', () => PDF.hasPdfLib()],
+      ['pdf.min.js', () => typeof pdfjsLib !== 'undefined'],
+      ['jszip.min.js', () => typeof JSZip !== 'undefined']
+    ];
+    for (const [file, ok] of needed) {
+      if (ok()) continue;
+      await new Promise((res) => {
+        const sc = document.createElement('script');
+        sc.src = (onCdn ? CDN_VENDOR : this.localBase()) + file;
+        sc.onload = sc.onerror = () => res();
+        document.head.appendChild(sc);
+      });
+    }
+  }
+};
+
 const OCR = {
   worker: null, langs: null, busy: false,
   available: () => typeof Tesseract !== 'undefined',
-  corePath() { return new URL('vendor/', location.href).href; },
-  langPath() { return new URL('vendor/lang', location.href).href; },
-  workerPath() { return new URL('vendor/tesseract-worker.min.js', location.href).href; },
+  corePath() { return Assets._base || this.localCore(); },
+  localCore() { return new URL('vendor/', location.href).href; },
+  langPath() { return (Assets._base || this.localCore()) + 'lang'; },
+  workerPath() { return (Assets._base || this.localCore()) + 'tesseract-worker.min.js'; },
 
   async ensure(langs = 'fra+eng', onProgress) {
+    if (!this.available()) await Assets.ensureLoaded();
     if (!this.available()) throw new Error("Le moteur OCR n'a pas pu être chargé (tesseract.min.js absent ou bloqué).");
     if (this.worker && this.langs === langs) return this.worker;
     if (this.worker) { try { await this.worker.terminate(); } catch (e) {} this.worker = null; }
@@ -897,6 +939,7 @@ const PDF = {
 
   /** Construit un PDF A4 à partir des pages (image par page). */
   async build(pages, { name = 'scan', quality = 0.88, maxPx = 2400, onProgress } = {}) {
+    if (!this.hasJsPDF()) await Assets.ensureLoaded();
     if (!this.hasJsPDF()) throw new Error('La bibliothèque PDF (jsPDF) est indisponible.');
     if (!pages.length) throw new Error('Aucune page à exporter.');
     const { jsPDF } = window.jspdf;
@@ -919,6 +962,7 @@ const PDF = {
 
   /** Fusionne plusieurs PDF (octets) en un seul. */
   async merge(files, { name = 'fusion' } = {}) {
+    if (!this.hasPdfLib()) await Assets.ensureLoaded();
     if (!this.hasPdfLib()) throw new Error('La bibliothèque pdf-lib est indisponible.');
     const { PDFDocument } = window.PDFLib;
     const out = await PDFDocument.create();
@@ -940,6 +984,7 @@ const PDF = {
 
   /** Lit un PDF (nb de pages) et rend la 1re page en vignette. */
   async inspect(file) {
+    if (typeof pdfjsLib === 'undefined') await Assets.ensureLoaded();
     if (typeof pdfjsLib === 'undefined') return { pageCount: 0, thumb: null };
     try {
       const buf = await file.arrayBuffer();
