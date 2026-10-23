@@ -309,16 +309,13 @@ const CDN_VENDOR = 'https://cdn.jsdelivr.net/gh/azharshahim/Scanpro-ai@v1.0.0/ve
 const Assets = {
   _base: null,
   localBase() { return new URL('vendor/', location.href).href; },
-  async base() {
-    if (this._base) return this._base;
-    const local = this.localBase();
-    if (location.protocol === 'file:' || navigator.onLine === false) return (this._base = local);
-    try {
-      const r = await fetch(local + 'tesseract.min.js', { method: 'HEAD', cache: 'no-store' });
-      this._base = r.ok ? local : CDN_VENDOR;
-    } catch (e) { this._base = CDN_VENDOR; }
-    if (this._base === CDN_VENDOR) console.info('[Assets] fichiers locaux indisponibles → CDN jsDelivr');
-    return this._base;
+  /* Pas de requête de sonde : on part des fichiers locaux et on ne bascule sur le CDN
+     qu'en cas d'échec réel de chargement (voir OCR.ensure et ensureLoaded). */
+  async base() { return (this._base = this._base || this.localBase()); },
+  useCdn() {
+    if (this._base === CDN_VENDOR) return;
+    console.info('[Assets] bascule sur le CDN jsDelivr');
+    this._base = CDN_VENDOR;
   },
   async ensureLoaded() {
     await this.base();
@@ -330,14 +327,19 @@ const Assets = {
       ['pdf.min.js', () => typeof pdfjsLib !== 'undefined'],
       ['jszip.min.js', () => typeof JSZip !== 'undefined']
     ];
+    const load = (src) => new Promise((res) => {
+      const sc = document.createElement('script');
+      sc.src = src;
+      sc.onload = sc.onerror = () => res();
+      document.head.appendChild(sc);
+    });
     for (const [file, ok] of needed) {
       if (ok()) continue;
-      await new Promise((res) => {
-        const sc = document.createElement('script');
-        sc.src = (onCdn ? CDN_VENDOR : this.localBase()) + file;
-        sc.onload = sc.onerror = () => res();
-        document.head.appendChild(sc);
-      });
+      await load((onCdn ? CDN_VENDOR : this.localBase()) + file);
+      if (!ok() && !onCdn) {           // fichier local absent/bloqué → CDN
+        this.useCdn();
+        await load(CDN_VENDOR + file);
+      }
     }
   }
 };
@@ -362,10 +364,9 @@ const OCR = {
       this.worker = await this._spawn(langs, crossOrigin && !fileMode, onProgress);
     } catch (err) {
       // fichiers locaux inaccessibles/bloqués → bascule sur le CDN du dépôt, puis nouvel essai
-      const local = Assets.localBase();
-      if (Assets._base && Assets._base !== CDN_VENDOR && local !== CDN_VENDOR) {
+      if (Assets._base !== CDN_VENDOR) {
         console.warn('[OCR] chargement local impossible, repli CDN :', err && err.message);
-        Assets._base = CDN_VENDOR;
+        Assets.useCdn();
         this.worker = await this._spawn(langs, true, onProgress);
       } else throw err;
     }

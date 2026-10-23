@@ -30,7 +30,7 @@ await p.goto(APP, { waitUntil: 'load', timeout: 60000 });
 await p.waitForTimeout(1800);
 check('Chargement de la page', await p.evaluate(() => !!document.querySelector('#view')));
 check('Application initialisée', (await p.evaluate(() => typeof window.ScanPro)) === 'object', (Date.now() - t0) + ' ms');
-check('Assets servis localement (pas de CDN)', (await p.evaluate(() => Assets.base())) === new URL('vendor/', APP).href);
+check('Assets locaux (fichiers servis par Pages)', (await p.evaluate(() => Assets.base())).includes('/Scanpro-ai/vendor/'));
 
 const sheet = p.locator('.sheet .btn.primary');
 if (await sheet.count()) await sheet.click();
