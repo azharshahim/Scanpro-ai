@@ -21,7 +21,10 @@ ou `docs/GUIDE-TEST.md` pour la procédure pas à pas sur téléphone.
 | Service worker + manifeste PWA | ✅ installable sur l'écran d'accueil Android |
 | Fichiers `vendor/` servis localement | ✅ (repli automatique sur le CDN du dépôt en cas de blocage) |
 
-Test de bout en bout exécuté sur cette URL (`tests/e2e-pages.mjs`) : **19/19 vérifications OK**
+Tests exécutés sur cette URL :
+- V1 `tests/e2e-pages.mjs` : **19/19 OK**
+- V2 `tests/e2e-v2.mjs` : **16/16 OK** (contours, perspective, 4 coins, redressement, filtres,
+  OCR de PDF importé, conversion PDF → pages)
 (caméra HTTPS 2048×1536, multi-pages, recadrage, rotation, filtre N&B, PDF, OCR, assistant,
 persistance, recherche, paramètres, zéro erreur console/réseau).
 
