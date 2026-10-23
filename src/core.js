@@ -314,7 +314,7 @@ const Assets = {
     const local = this.localBase();
     if (location.protocol === 'file:' || navigator.onLine === false) return (this._base = local);
     try {
-      const r = await fetch(local + 'lang/fra.traineddata.gz', { method: 'HEAD', cache: 'no-store' });
+      const r = await fetch(local + 'tesseract.min.js', { method: 'HEAD', cache: 'no-store' });
       this._base = r.ok ? local : CDN_VENDOR;
     } catch (e) { this._base = CDN_VENDOR; }
     if (this._base === CDN_VENDOR) console.info('[Assets] fichiers locaux indisponibles → CDN jsDelivr');
@@ -358,19 +358,32 @@ const OCR = {
     onProgress && onProgress({ status: 'initialisation du moteur OCR', progress: 0.02 });
     const crossOrigin = !this.workerPath().startsWith(location.origin);
     const fileMode = location.protocol === 'file:';
-    this.worker = await Tesseract.createWorker(langs, 1, {
-      workerPath: this.workerPath(),
-      corePath: this.corePath(),
-      langPath: this.langPath(),
-      workerBlobURL: crossOrigin && !fileMode,
-      logger: (m) => onProgress && onProgress(m),
-      errorHandler: (e) => console.warn('[OCR]', e)
-    });
+    try {
+      this.worker = await this._spawn(langs, crossOrigin && !fileMode, onProgress);
+    } catch (err) {
+      // fichiers locaux inaccessibles/bloqués → bascule sur le CDN du dépôt, puis nouvel essai
+      const local = Assets.localBase();
+      if (Assets._base && Assets._base !== CDN_VENDOR && local !== CDN_VENDOR) {
+        console.warn('[OCR] chargement local impossible, repli CDN :', err && err.message);
+        Assets._base = CDN_VENDOR;
+        this.worker = await this._spawn(langs, true, onProgress);
+      } else throw err;
+    }
     try {
       await this.worker.setParameters({ preserve_interword_spaces: '1' });
     } catch (e) { /* non bloquant */ }
     this.langs = langs;
     return this.worker;
+  },
+  async _spawn(langs, workerBlobURL, onProgress) {
+    return Tesseract.createWorker(langs, 1, {
+      workerPath: this.workerPath(),
+      corePath: this.corePath(),
+      langPath: this.langPath(),
+      workerBlobURL,
+      logger: (m) => onProgress && onProgress(m),
+      errorHandler: (e) => console.warn('[OCR]', e)
+    });
   },
   /** '@@' : moteur OCR indisponible, message clair côté UI. */
   async run(dataUrl, langs, onProgress) {
