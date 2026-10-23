@@ -1,0 +1,8 @@
+# artefacts de test et fichiers temporaires
+tests/out/
+node_modules/
+*.log
+.DS_Store
+# ne jamais versionner de secret
+.ghtok
+.env

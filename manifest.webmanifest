@@ -1,0 +1,15 @@
+{
+  "name": "ScanPro AI — Scanner & OCR",
+  "short_name": "ScanPro AI",
+  "description": "Scanner de documents avec OCR français/anglais et export PDF, 100 % local.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F3F6FC",
+  "theme_color": "#0B1B34",
+  "lang": "fr",
+  "icons": [
+    { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,3181 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5">
+<meta name="theme-color" content="#0B1B34">
+<meta name="description" content="ScanPro AI — scanner de documents Android : caméra, OCR français/anglais, PDF, 100 % local.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>ScanPro AI — Scanner &amp; OCR</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icon.svg">
+<style>
+/* ==========================================================================
+   ScanPro AI — Design system (V1)
+   Palette : fond clair, bleu nuit, accents bleus
+   ========================================================================== */
+:root{
+  --navy:#0B1B34;
+  --navy-2:#13294B;
+  --navy-3:#1E3A63;
+  --blue:#2563EB;
+  --blue-2:#1D4ED8;
+  --blue-soft:#E8F0FE;
+  --bg:#F3F6FC;
+  --card:#FFFFFF;
+  --muted:#64748B;
+  --muted-2:#94A3B8;
+  --line:#E2E9F4;
+  --ok:#10B981;
+  --ok-soft:#E7F8F1;
+  --warn:#F59E0B;
+  --warn-soft:#FEF4E2;
+  --danger:#EF4444;
+  --danger-soft:#FDECEC;
+  --radius:18px;
+  --radius-sm:12px;
+  --shadow:0 1px 2px rgba(11,27,52,.04), 0 8px 24px -12px rgba(11,27,52,.18);
+  --shadow-lg:0 24px 60px -20px rgba(11,27,52,.35);
+  --nav-h:74px;
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+html{background:var(--bg)}
+body{
+  font-family:var(--font);
+  color:var(--navy);
+  background:var(--bg);
+  font-size:15.5px;
+  line-height:1.45;
+  overscroll-behavior-y:none;
+  min-height:100dvh;
+}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+a{color:var(--blue);text-decoration:none}
+svg{display:block}
+.ico{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ico.sm{width:18px;height:18px}
+.ico.lg{width:26px;height:26px}
+
+/* ---------- App shell ---------- */
+#app{max-width:600px;margin:0 auto;min-height:100dvh;position:relative;background:var(--bg);
+  padding-bottom:calc(var(--nav-h) + var(--safe-b) + 26px)}
+.view{animation:viewIn .28s cubic-bezier(.2,.7,.3,1)}
+@keyframes viewIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+
+/* ---------- Header ---------- */
+.appbar{
+  position:sticky;top:0;z-index:30;
+  background:linear-gradient(160deg,#0B1B34 0%,#13294B 62%,#173A6B 100%);
+  color:#fff;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 14px;
+  border-radius:0 0 22px 22px;
+  box-shadow:0 10px 30px -16px rgba(11,27,52,.65);
+}
+.appbar.plain{position:sticky}
+.appbar-row{display:flex;align-items:center;gap:10px;min-height:36px}
+.appbar h1{font-size:19px;font-weight:700;margin:0;letter-spacing:-.2px;flex:1;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brand{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.brand-mark{width:38px;height:38px;border-radius:12px;flex:none;display:grid;place-items:center;
+  background:linear-gradient(140deg,#3B82F6,#1D4ED8);box-shadow:0 6px 16px -6px rgba(37,99,235,.9)}
+.brand-mark svg{width:21px;height:21px;stroke:#fff}
+.brand-name{font-size:18px;font-weight:800;letter-spacing:-.3px;line-height:1.1}
+.brand-sub{font-size:11.5px;color:#9DB6DC;letter-spacing:.4px;text-transform:uppercase;font-weight:600}
+.icon-btn{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#fff;
+  background:rgba(255,255,255,.09);transition:background .18s, transform .12s}
+.icon-btn:active{transform:scale(.94);background:rgba(255,255,255,.2)}
+.icon-btn.light{color:var(--navy);background:#fff;border:1px solid var(--line)}
+.hello{margin-top:14px}
+.hello h2{font-size:23px;line-height:1.2;margin:0 0 4px;font-weight:750;letter-spacing:-.5px}
+.hello p{margin:0;color:#A9BFDF;font-size:13px}
+.stat-row{display:flex;gap:8px;margin-top:14px}
+.stat{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);
+  border-radius:14px;padding:9px 12px}
+.stat b{display:block;font-size:18px;font-weight:750}
+.stat span{font-size:11.5px;color:#A9BFDF;letter-spacing:.2px}
+.local-chip{display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-size:11.5px;
+  background:rgba(16,185,129,.16);color:#7FE7C0;border:1px solid rgba(16,185,129,.28);
+  padding:5px 10px;border-radius:999px;font-weight:600}
+
+/* ---------- Content ---------- */
+.content{padding:16px 16px 22px}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 2px 10px}
+.section-head:first-child{margin-top:6px}
+.section-head h2{font-size:16px;font-weight:700;margin:0;letter-spacing:-.2px}
+.section-head .link{font-size:13px;font-weight:600;color:var(--blue);background:none;padding:4px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.tiny{font-size:12px}
+
+/* ---------- Buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:9px;
+  min-height:52px;padding:0 18px;border-radius:15px;font-weight:650;font-size:15.5px;
+  transition:transform .12s ease, box-shadow .18s ease, background .18s ease, opacity .18s;
+  border:1px solid transparent;width:100%;text-align:center;user-select:none;
+}
+.btn:active{transform:scale(.977)}
+.btn:disabled{opacity:.5;pointer-events:none}
+.btn.primary{background:linear-gradient(135deg,#3B82F6,#1D4ED8);color:#fff;
+  box-shadow:0 10px 22px -10px rgba(37,99,235,.85)}
+.btn.navy{background:var(--navy);color:#fff;box-shadow:0 10px 22px -12px rgba(11,27,52,.8)}
+.btn.ghost{background:#fff;color:var(--navy);border-color:var(--line);box-shadow:0 1px 2px rgba(11,27,52,.04)}
+.btn.soft{background:var(--blue-soft);color:var(--blue-2)}
+.btn.danger{background:var(--danger-soft);color:#B91C1C}
+.btn.sm{min-height:42px;font-size:14px;padding:0 14px;border-radius:12px;width:auto}
+.btn.xs{min-height:34px;font-size:12.5px;padding:0 11px;border-radius:10px;width:auto;gap:6px;font-weight:600}
+.btn.block{width:100%}
+.btn-col{display:flex;flex-direction:column;gap:10px}
+.btn-row{display:flex;gap:10px}
+.btn-row>.btn{flex:1}
+
+/* ---------- Cards ---------- */
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  border:1px solid rgba(226,233,244,.9);overflow:hidden}
+.card-pad{padding:16px}
+.card-title{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px;margin:0 0 4px}
+.card-sub{font-size:12.5px;color:var(--muted);margin:0}
+
+/* ---------- Accueil : actions ---------- */
+.scan-cta{
+  position:relative;overflow:hidden;border-radius:20px;padding:18px;color:#fff;
+  background:linear-gradient(135deg,#0B1B34,#17376A 55%,#1D4ED8 130%);
+  box-shadow:0 18px 40px -22px rgba(11,27,52,.9);
+}
+.scan-cta:after{content:"";position:absolute;width:190px;height:190px;border-radius:50%;
+  right:-70px;top:-90px;background:radial-gradient(circle,rgba(59,130,246,.55),transparent 70%)}
+.scan-cta .cta-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.cta-badge{width:46px;height:46px;border-radius:14px;background:rgba(255,255,255,.14);
+  border:1px solid rgba(255,255,255,.18);display:grid;place-items:center;flex:none}
+.cta-badge svg{width:24px;height:24px;stroke:#fff}
+.scan-cta h3{margin:0;font-size:17px;font-weight:750;letter-spacing:-.2px}
+.scan-cta p{margin:2px 0 0;font-size:12.5px;color:#B6CBE8}
+.btn-camera{background:#fff;color:var(--navy);min-height:56px;font-weight:750;
+  box-shadow:0 12px 26px -14px rgba(0,0,0,.6);position:relative;z-index:1}
+.btn-camera .ico{stroke:var(--blue)}
+.scan-cta .mini-row{display:flex;gap:8px;margin-top:9px;position:relative;z-index:1}
+.scan-cta .mini-row .btn{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.16);
+  min-height:44px;font-size:13.5px;font-weight:600;border-radius:12px}
+.scan-cta .mini-row .btn:active{background:rgba(255,255,255,.2)}
+
+.quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.quick{display:flex;align-items:center;gap:10px;min-width:0;background:#fff;border:1px solid var(--line);
+  border-radius:15px;padding:13px 12px;box-shadow:0 1px 2px rgba(11,27,52,.04);text-align:left;
+  transition:transform .12s, box-shadow .18s}
+.quick:active{transform:scale(.98)}
+.quick .q-ico{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none;
+  background:var(--blue-soft);color:var(--blue-2)}
+.quick b{display:block;font-size:13.5px;font-weight:650;line-height:1.22;white-space:normal}
+.quick>span:last-child{display:block;min-width:0}
+.quick span{font-size:11.5px;color:var(--muted-2)}
+
+/* ---------- Recherche ---------- */
+.search{position:relative;display:flex;align-items:center}
+.search svg{position:absolute;left:13px;width:19px;height:19px;stroke:var(--muted-2);pointer-events:none}
+.search input{width:100%;min-height:48px;border-radius:14px;border:1px solid var(--line);
+  background:#fff;padding:0 42px;font-size:14.5px;outline:none;box-shadow:0 1px 2px rgba(11,27,52,.03);
+  transition:border-color .18s, box-shadow .18s}
+.search input:focus{border-color:#BFD3F6;box-shadow:0 0 0 4px rgba(37,99,235,.09)}
+.search .clear{position:absolute;right:8px;width:32px;height:32px;border-radius:9px;display:grid;
+  place-items:center;color:var(--muted);background:#F1F5FB}
+.appbar .search{margin-top:14px}
+.appbar .search input{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.1);
+  color:#fff;box-shadow:none}
+.appbar .search input::placeholder{color:#9DB6DC}
+.appbar .search input:focus{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.3);box-shadow:none}
+.appbar .search svg{stroke:#9DB6DC}
+.appbar .search .clear{background:rgba(255,255,255,.14);color:#fff}
+
+/* ---------- Liste documents ---------- */
+.doc-list{display:flex;flex-direction:column;gap:10px}
+.doc-item{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid var(--line);
+  border-radius:16px;padding:11px;box-shadow:0 1px 2px rgba(11,27,52,.04);text-align:left;width:100%;
+  transition:transform .12s, box-shadow .18s}
+.doc-item:active{transform:scale(.99);box-shadow:0 6px 18px -12px rgba(11,27,52,.4)}
+.doc-thumb{width:56px;height:72px;border-radius:10px;overflow:hidden;flex:none;background:#EDF2FA;
+  display:grid;place-items:center;border:1px solid #EDF2FA;position:relative}
+.doc-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.doc-thumb .ico{stroke:var(--muted-2)}
+.doc-meta{flex:1;min-width:0}
+.doc-meta b{display:block;font-size:14.5px;font-weight:650;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;letter-spacing:-.1px}
+.doc-meta .meta-line{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin-top:3px;flex-wrap:wrap}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:650;padding:2px 7px;
+  border-radius:999px;background:#F1F5FB;color:var(--muted);letter-spacing:.1px}
+.tag.ok{background:var(--ok-soft);color:#047857}
+.tag.blue{background:var(--blue-soft);color:var(--blue-2)}
+.tag.warn{background:var(--warn-soft);color:#B45309}
+.doc-row-actions{display:grid;place-items:center;color:var(--muted-2);width:34px;height:34px;
+  border-radius:10px;flex:none}
+.doc-row-actions:active{background:#F1F5FB}
+
+.empty{text-align:center;padding:34px 18px;background:#fff;border:1px dashed #D8E2F1;border-radius:18px}
+.empty .e-ico{width:62px;height:62px;border-radius:20px;background:var(--blue-soft);display:grid;
+  place-items:center;margin:0 auto 12px;color:var(--blue)}
+.empty h3{margin:0 0 5px;font-size:15px}
+.empty p{margin:0;font-size:12.5px;color:var(--muted)}
+.empty .btn{margin-top:14px}
+
+/* ---------- Bottom nav ---------- */
+.bottom-nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:40;max-width:600px;margin:0 auto;
+  background:rgba(255,255,255,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  border-top:1px solid var(--line);display:flex;align-items:stretch;
+  padding:8px 10px calc(8px + var(--safe-b));gap:4px;
+  box-shadow:0 -8px 24px -18px rgba(11,27,52,.4);
+}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  color:var(--muted-2);font-size:11.5px;font-weight:650;padding:7px 0 5px;border-radius:13px;
+  transition:color .18s, background .18s;letter-spacing:.15px;position:relative}
+.nav-item .ico{width:23px;height:23px}
+.nav-item.active{color:var(--blue-2);background:var(--blue-soft)}
+.nav-item.active .ico{stroke:var(--blue-2)}
+.nav-fab{flex:none;width:64px;display:grid;place-items:center;margin-top:-26px}
+.nav-fab button{width:58px;height:58px;border-radius:20px;display:grid;place-items:center;color:#fff;
+  background:linear-gradient(135deg,#3B82F6,#1D4ED8);
+  box-shadow:0 14px 26px -12px rgba(37,99,235,.95), 0 0 0 6px rgba(243,246,252,.9);
+  transition:transform .12s}
+.nav-fab button:active{transform:scale(.93)}
+.nav-fab .ico{width:27px;height:27px;stroke-width:1.9}
+
+/* ---------- Écran capture ---------- */
+.capture{position:fixed;inset:0;z-index:60;background:#05080F;display:flex;flex-direction:column;
+  color:#fff;max-width:600px;margin:0 auto}
+.cam-stage{flex:1;position:relative;overflow:hidden;background:#05080F}
+.cam-stage video{width:100%;height:100%;object-fit:cover;display:block}
+.cam-overlay{position:absolute;inset:0;pointer-events:none;display:grid;place-items:center;padding:26px}
+.cam-frame{width:100%;height:100%;max-height:74%;border-radius:16px;position:relative;
+  box-shadow:0 0 0 100vmax rgba(3,7,14,.55)}
+.cam-frame i{position:absolute;width:34px;height:34px;border:3px solid #7FB2FF;border-radius:4px}
+.cam-frame i:nth-child(1){top:-2px;left:-2px;border-right:0;border-bottom:0;border-top-left-radius:16px}
+.cam-frame i:nth-child(2){top:-2px;right:-2px;border-left:0;border-bottom:0;border-top-right-radius:16px}
+.cam-frame i:nth-child(3){bottom:-2px;left:-2px;border-right:0;border-top:0;border-bottom-left-radius:16px}
+.cam-frame i:nth-child(4){bottom:-2px;right:-2px;border-left:0;border-top:0;border-bottom-right-radius:16px}
+.cam-hint{position:absolute;left:0;right:0;bottom:14px;text-align:center;padding:0 20px;
+  font-size:12.5px;color:#CBD9EE;text-shadow:0 2px 8px #000}
+.cam-topbar{position:absolute;top:calc(8px + env(safe-area-inset-top,0px));left:8px;right:8px;
+  display:flex;align-items:center;gap:8px;z-index:3}
+.cam-topbar .pill{display:inline-flex;align-items:center;gap:6px;background:rgba(11,27,52,.7);
+  border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(10px);padding:8px 12px;border-radius:999px;
+  font-size:12px;font-weight:650;color:#fff}
+.cam-topbar .spacer{flex:1}
+.cam-bottom{background:linear-gradient(180deg,rgba(5,8,15,0),#05080F 26%);padding:14px 16px calc(18px + var(--safe-b))}
+.shutter-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px}
+.side-action{width:52px;display:flex;flex-direction:column;align-items:center;gap:5px;color:#C7D6EC;
+  font-size:10px;font-weight:600}
+.side-action .sa-btn{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);color:#fff}
+.side-action:active .sa-btn{background:rgba(255,255,255,.22)}
+.shutter{width:76px;height:76px;border-radius:50%;background:#fff;display:grid;place-items:center;
+  box-shadow:0 0 0 5px rgba(255,255,255,.22);transition:transform .1s}
+.shutter:active{transform:scale(.94)}
+.shutter i{width:62px;height:62px;border-radius:50%;background:linear-gradient(135deg,#3B82F6,#1D4ED8);
+  display:block}
+.cam-pages{display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;scrollbar-width:none}
+.cam-pages::-webkit-scrollbar{display:none}
+.cam-page{width:46px;height:60px;border-radius:8px;overflow:hidden;flex:none;border:2px solid rgba(255,255,255,.25);
+  position:relative;background:#16233A}
+.cam-page img{width:100%;height:100%;object-fit:cover}
+.cam-page b{position:absolute;left:2px;top:2px;font-size:9px;background:rgba(0,0,0,.6);border-radius:5px;
+  padding:0 4px;line-height:14px}
+.cam-warn{margin:0 0 10px;background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.35);
+  color:#FCD9A0;font-size:12px;padding:9px 11px;border-radius:11px;display:flex;gap:8px;align-items:flex-start}
+.cam-warn .ico{stroke:#FCD9A0;flex:none;width:17px;height:17px;margin-top:1px}
+
+/* ---------- Éditeur ---------- */
+.editor-wrap{background:#0B1B34;padding-bottom:4px;flex:none}
+.editor-stage{position:relative;display:grid;place-items:center;background:#0B1B34;min-height:200px;
+  padding:10px 12px;overflow:hidden}
+.editor-stage canvas,.editor-stage img{max-width:100%;max-height:38dvh;border-radius:8px;display:block;
+  box-shadow:0 18px 40px -20px #000;background:#fff}
+.editor-stage .stage-empty{padding:40px 16px;color:#A9BFDF;font-size:13px;text-align:center}
+#cropHost{display:inline-block;position:relative;line-height:0;max-width:100%;overflow:hidden;border-radius:8px}
+#cropLayer{position:absolute;inset:0;touch-action:none;display:none;overflow:hidden}
+#cropLayer.on{display:block}
+.crop-toolbar{display:flex;gap:7px;justify-content:center;padding:0 10px 10px;flex-wrap:nowrap}
+.crop-toolbar .btn{width:auto;min-height:36px;font-size:12.5px;padding:0 11px;border-radius:11px;white-space:nowrap;
+  background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.16)}
+.crop-toolbar .btn.go{background:#2563EB;border-color:#2563EB}
+.filters{display:flex;gap:8px;padding:12px 16px 4px;overflow-x:auto;scrollbar-width:none}
+.filters::-webkit-scrollbar{display:none}
+.chip{display:inline-flex;align-items:center;gap:7px;min-height:40px;padding:0 14px;border-radius:12px;
+  background:#fff;border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--navy);
+  white-space:nowrap;flex:none;transition:background .15s,color .15s,border-color .15s}
+.chip .dot{width:12px;height:12px;border-radius:4px;border:1px solid rgba(11,27,52,.15)}
+.chip.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.chip:active{transform:scale(.97)}
+.chip.sm{min-height:32px;font-size:12px;padding:0 11px;border-radius:10px}
+.tool-row{display:flex;gap:8px;overflow-x:auto;padding:12px 16px 2px;scrollbar-width:none}
+.tool-row::-webkit-scrollbar{display:none}
+.tool{flex:none;display:flex;flex-direction:column;align-items:center;gap:5px;width:72px;
+  padding:9px 4px;border-radius:13px;background:#fff;border:1px solid var(--line);font-size:11.5px;
+  font-weight:600;color:var(--navy);text-align:center;line-height:1.15}
+.tool:active{background:#F1F5FB}
+.tool .ico{stroke:var(--blue-2)}
+.pages-strip{display:flex;gap:9px;overflow-x:auto;padding:12px 16px 6px;scrollbar-width:none}
+.pages-strip::-webkit-scrollbar{display:none}
+.page-thumb{width:68px;flex:none;position:relative;text-align:center}
+.page-thumb .pt-img{width:68px;height:88px;border-radius:9px;overflow:hidden;border:2px solid transparent;
+  background:#EDF2FA;display:grid;place-items:center;position:relative}
+.page-thumb.on .pt-img{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.18)}
+.page-thumb img{width:100%;height:100%;object-fit:cover}
+.page-thumb span{display:block;font-size:10.5px;color:var(--muted);margin-top:4px;font-weight:600}
+.page-thumb.on span{color:var(--blue-2)}
+.page-thumb .del{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;
+  background:#fff;color:var(--danger);border:1px solid var(--line);display:grid;place-items:center;
+  box-shadow:0 2px 6px rgba(11,27,52,.16)}
+.page-thumb .del .ico{width:13px;height:13px;stroke-width:2.4}
+.add-page{width:68px;height:88px;border-radius:9px;border:1.5px dashed #C6D5EA;display:grid;
+  place-items:center;background:#fff;color:var(--blue);flex:none;margin-top:0}
+
+.sticky-actions{position:sticky;bottom:0;z-index:20;margin-top:auto;
+  display:flex;gap:9px;background:rgba(243,246,252,.96);backdrop-filter:blur(10px);
+  padding:10px 16px calc(12px + var(--safe-b));border-top:1px solid var(--line)}
+.sticky-actions .btn{min-height:48px;font-size:14.5px}
+
+/* ---------- Détail document ---------- */
+.detail-tabs{display:flex;gap:6px;background:#EAF0F9;padding:4px;border-radius:13px;margin:0 0 14px}
+.detail-tabs button{flex:1;min-height:38px;border-radius:10px;font-size:12.5px;font-weight:650;
+  color:var(--muted);display:flex;align-items:center;justify-content:center;gap:6px}
+.detail-tabs button.on{background:#fff;color:var(--navy);box-shadow:0 2px 6px -2px rgba(11,27,52,.2)}
+.detail-tabs .ico{width:16px;height:16px}
+.preview-box{background:#fff;border-radius:16px;border:1px solid var(--line);padding:10px;
+  display:grid;place-items:center;min-height:150px;overflow:hidden}
+.preview-box img{max-width:100%;max-height:52dvh;border-radius:8px;box-shadow:0 8px 20px -14px rgba(11,27,52,.6)}
+.preview-nav{display:flex;align-items:center;justify-content:space-between;margin-top:10px;font-size:12.5px;
+  color:var(--muted);font-weight:600}
+.preview-nav .btn{width:auto}
+.textarea{width:100%;min-height:260px;border-radius:14px;border:1px solid var(--line);padding:13px;
+  font-size:14px;line-height:1.6;resize:vertical;background:#fff;outline:none;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.textarea:focus{border-color:#BFD3F6;box-shadow:0 0 0 4px rgba(37,99,235,.09)}
+.text-meta{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:9px 2px 0;
+  font-size:11.5px;color:var(--muted)}
+.ai-out{background:#FBFCFF;border:1px solid var(--line);border-radius:12px;padding:12px;
+  font-size:13.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;min-height:56px}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;font-size:12.5px;margin:0}
+.kv dt{color:var(--muted);font-weight:600}
+.kv dd{margin:0;font-weight:600;word-break:break-word}
+.ai-note{display:flex;gap:9px;background:var(--warn-soft);border:1px solid #F7DFB0;color:#8A5A08;
+  padding:10px 12px;border-radius:12px;font-size:12px;line-height:1.45}
+.ai-note .ico{stroke:#B45309;flex:none;margin-top:1px}
+.ai-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:10px}
+.ai-card h4{margin:0 0 8px;font-size:13.5px;display:flex;align-items:center;gap:7px}
+.ai-card h4 .ico{stroke:var(--blue-2)}
+.soon{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.4px;
+  text-transform:uppercase;color:#8A5A08;background:var(--warn-soft);padding:2px 7px;border-radius:999px}
+
+/* ---------- Paramètres ---------- */
+.set-group{background:#fff;border-radius:16px;border:1px solid var(--line);overflow:hidden;margin-bottom:12px;
+  box-shadow:0 1px 2px rgba(11,27,52,.04)}
+.set-group h3{margin:0;padding:13px 15px 7px;font-size:11.5px;text-transform:uppercase;letter-spacing:.7px;
+  color:var(--muted-2);font-weight:750}
+.set-row{display:flex;align-items:center;gap:12px;padding:12px 15px;min-height:56px;width:100%;
+  text-align:left;border-top:1px solid #F1F5FB}
+.set-group h3 + .set-row{border-top:0}
+.set-row .s-ico{width:36px;height:36px;border-radius:10px;background:#F3F7FD;display:grid;place-items:center;
+  color:var(--navy-2);flex:none}
+.set-row .s-body{flex:1;min-width:0}
+.set-row b{display:block;font-size:14px;font-weight:600}
+.set-row span{display:block;font-size:11.5px;color:var(--muted);margin-top:1px}
+.set-row .chev{color:var(--muted-2)}
+.switch{width:46px;height:28px;border-radius:999px;background:#DCE5F1;position:relative;flex:none;
+  transition:background .2s}
+.switch:after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.24);transition:transform .2s}
+.switch.on{background:var(--blue)}
+.switch.on:after{transform:translateX(18px)}
+.meter{height:8px;border-radius:999px;background:#EDF2FA;overflow:hidden;margin:8px 0 4px}
+.meter i{display:block;height:100%;background:linear-gradient(90deg,#3B82F6,#1D4ED8);border-radius:999px;
+  transition:width .3s}
+.about{text-align:center;padding:18px 12px 6px;color:var(--muted-2);font-size:11.5px;line-height:1.6}
+.about b{color:var(--navy)}
+
+/* ---------- Nav bar secondaire (dans une vue) ---------- */
+.subnav{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.subnav h2{font-size:20px;margin:0;font-weight:750;letter-spacing:-.4px;flex:1}
+
+/* ---------- Modales / feuilles ---------- */
+.backdrop{position:fixed;inset:0;background:rgba(6,14,28,.5);backdrop-filter:blur(3px);z-index:80;
+  display:flex;align-items:flex-end;justify-content:center;animation:fade .2s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.sheet{width:100%;max-width:600px;background:#fff;border-radius:22px 22px 0 0;padding:8px 16px
+  calc(18px + var(--safe-b));box-shadow:var(--shadow-lg);animation:sheetIn .26s cubic-bezier(.2,.8,.3,1);
+  max-height:88dvh;overflow:auto}
+@keyframes sheetIn{from{transform:translateY(24px);opacity:.6}to{transform:none;opacity:1}}
+.sheet .grab{width:40px;height:4px;border-radius:99px;background:#DCE5F1;margin:6px auto 12px}
+.sheet h3{margin:0 0 4px;font-size:17px;font-weight:750;letter-spacing:-.2px}
+.sheet p.sub{margin:0 0 12px;font-size:12.5px;color:var(--muted)}
+.sheet .sheet-actions{display:flex;gap:9px;margin-top:14px}
+.sheet .sheet-actions .btn{flex:1}
+.sheet .btn.wide{width:100%;margin-top:6px}
+.sheet-list{display:flex;flex-direction:column;gap:4px;margin:6px -6px}
+.sheet-list button{display:flex;align-items:center;gap:12px;padding:12px 10px;border-radius:12px;
+  text-align:left;font-size:14.5px;font-weight:600;color:var(--navy)}
+.sheet-list button:active{background:#F1F5FB}
+.sheet-list .ico{stroke:var(--navy-2)}
+.sheet-list .danger{color:#B91C1C}
+.sheet-list .danger .ico{stroke:#B91C1C}
+.field{margin:10px 0}
+.field label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:0 0 5px;
+  text-transform:uppercase;letter-spacing:.4px}
+.field input,.field select,.field textarea{width:100%;min-height:48px;border-radius:12px;border:1px solid var(--line);
+  padding:0 13px;background:#fff;outline:none;font-size:15px}
+.field textarea{min-height:90px;padding:11px 13px;resize:vertical}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:#BFD3F6;
+  box-shadow:0 0 0 4px rgba(37,99,235,.09)}
+
+/* ---------- Toasts / progression ---------- */
+#toasts{position:fixed;left:0;right:0;bottom:calc(var(--nav-h) + var(--safe-b) + 14px);z-index:120;
+  display:flex;flex-direction:column;align-items:center;gap:8px;padding:0 16px;pointer-events:none}
+.toast{max-width:480px;width:100%;background:var(--navy);color:#fff;border-radius:13px;padding:11px 14px;
+  font-size:13px;font-weight:550;box-shadow:0 16px 30px -14px rgba(11,27,52,.8);display:flex;gap:9px;
+  align-items:center;animation:toastIn .25s cubic-bezier(.2,.8,.3,1)}
+.toast .ico{stroke:#9DB6DC;flex:none}
+.toast.ok{background:#065F46}.toast.ok .ico{stroke:#7FE7C0}
+.toast.err{background:#7F1D1D}.toast.err .ico{stroke:#FCA5A5}
+@keyframes toastIn{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+#progress{position:fixed;left:0;right:0;top:0;height:3px;z-index:200;background:transparent;display:none}
+#progress.on{display:block}
+#progress i{display:block;height:100%;width:30%;background:linear-gradient(90deg,#3B82F6,#60A5FA);
+  border-radius:0 3px 3px 0;animation:indet 1.1s infinite ease-in-out}
+@keyframes indet{0%{margin-left:-30%}100%{margin-left:100%}}
+.busy{position:relative;pointer-events:none;opacity:.7}
+.spinner{width:17px;height:17px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
+  border-top-color:#fff;animation:spin .7s linear infinite;flex:none}
+.spinner.dark{border-color:rgba(11,27,52,.18);border-top-color:var(--blue)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.ocr-bar{height:6px;border-radius:99px;background:#EAF0F9;overflow:hidden;margin:8px 0 2px}
+.ocr-bar i{display:block;height:100%;background:linear-gradient(90deg,#3B82F6,#1D4ED8);width:0;
+  transition:width .25s}
+.banner{display:flex;gap:10px;padding:11px 13px;border-radius:13px;font-size:12.5px;line-height:1.45;
+  align-items:flex-start;margin-bottom:12px}
+.banner .ico{flex:none;margin-top:1px}
+.banner.info{background:var(--blue-soft);color:#1E40AF;border:1px solid #CFDFFB}
+.banner.info .ico{stroke:#1E40AF}
+.banner.warn{background:var(--warn-soft);color:#8A5A08;border:1px solid #F7DFB0}
+.banner.warn .ico{stroke:#B45309}
+.banner.err{background:var(--danger-soft);color:#991B1B;border:1px solid #F7CFCF}
+.banner.err .ico{stroke:#B91C1C}
+.banner.ok{background:var(--ok-soft);color:#065F46;border:1px solid #B8EBD8}
+.banner.ok .ico{stroke:#047857}
+.hr{height:1px;background:var(--line);margin:14px 0;border:0}
+.row{display:flex;gap:10px;align-items:center}
+.row.wrap{flex-wrap:wrap}
+.grow{flex:1}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.hidden{display:none !important}
+.text-center{text-align:center}
+.mt0{margin-top:0}.mt6{margin-top:6px}.mt10{margin-top:10px}.mt14{margin-top:14px}.mt20{margin-top:20px}
+.mb0{margin-bottom:0}.mb6{margin-bottom:6px}.mb10{margin-bottom:10px}.mb14{margin-bottom:14px}
+
+</style>
+</head>
+<body>
+<!-- ============================ Sprite d'icônes ============================ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3.5l9 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M9.5 20v-5.5h5V20"/></symbol>
+    <symbol id="i-docs" viewBox="0 0 24 24"><path d="M8 3.5h6.5L19 8v12.5H8z"/><path d="M14 3.5V8h5"/><path d="M5 6.5v14h3"/><path d="M11 12h5M11 16h5"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.5 14.3a7.6 7.6 0 0 0 0-4.6l1.6-1.3-1.8-3.1-1.9.8a7.6 7.6 0 0 0-4-2.3L13 1.8h-3.6L9 3.8a7.6 7.6 0 0 0-4 2.3l-1.9-.8L1.3 8.4l1.6 1.3a7.6 7.6 0 0 0 0 4.6l-1.6 1.3 1.8 3.1 1.9-.8a7.6 7.6 0 0 0 4 2.3l.4 2h3.6l.4-2a7.6 7.6 0 0 0 4-2.3l1.9.8 1.8-3.1z"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3.5 8.5h3l1.5-2.5h8L17.5 8.5h3v11h-17z"/><circle cx="12" cy="13.5" r="3.5"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M4 8.5V5.5A1.5 1.5 0 0 1 5.5 4h3M15.5 4h3A1.5 1.5 0 0 1 20 5.5v3M20 15.5v3a1.5 1.5 0 0 1-1.5 1.5h-3M8.5 20h-3A1.5 1.5 0 0 1 4 18.5v-3"/><path d="M4 12h16"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.7"/><path d="m4.5 17.5 4.6-4.4 3.2 3 2.6-2.3 4.6 4.1"/></symbol>
+    <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M7 3.5h7L19 8.5v12H7z"/><path d="M14 3.5v5h5"/><path d="M10 12.5h1.6a1.6 1.6 0 0 1 0 3.2H10zM10 12.5v6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 4.5 4.5"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.4" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 5.5 8 12l6.5 6.5"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11"/><path d="m7.5 11 4.5 4.5L16.5 11"/><path d="M4.5 19.5h15"/></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><circle cx="17.5" cy="6" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="17.5" cy="18" r="2.5"/><path d="m8.3 10.8 7-3.5M8.3 13.2l7 3.5"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 5.5A1.5 1.5 0 0 0 13.5 4H5.5A1.5 1.5 0 0 0 4 5.5v8A1.5 1.5 0 0 0 5.5 15"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15"/><path d="M9 7V4.5h6V7"/><path d="M6.5 7l1 13h9l1-13"/><path d="M10.5 11v5M13.5 11v5"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="m15.5 5 3.5 3.5L9 18.5l-4.5 1L5.5 15z"/><path d="M14 6.5 17.5 10"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 6.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-crop" viewBox="0 0 24 24"><path d="M7 3v14h14"/><path d="M3 7h14v14"/></symbol>
+    <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M5 12a7 7 0 1 1 2.4 5.3"/><path d="M5 19.5V14h5.5"/></symbol>
+    <symbol id="i-wand" viewBox="0 0 24 24"><path d="m4 20 12-12"/><path d="m14 4 1.2 2.8L18 8l-2.8 1.2L14 12l-1.2-2.8L10 8l2.8-1.2z"/><path d="m19.5 13.5.7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7z"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6.5V5h14v1.5"/><path d="M12 5v14"/><path d="M9 19h6"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M7 3.5h7L19 8.5v12H7z"/><path d="M14 3.5v5h5"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4l2 2.5h8A1.5 1.5 0 0 1 20.5 10v8A1.5 1.5 0 0 1 19 19.5H5A1.5 1.5 0 0 1 3.5 18z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/><path d="M12 14v2.5"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="m12 3 1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/><path d="m18.5 15 .9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><circle cx="12" cy="8" r=".9" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4.5 21 19.5H3z"/><path d="M12 10v4"/><circle cx="12" cy="16.6" r=".9" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-printer" viewBox="0 0 24 24"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="7" rx="2"/><path d="M7 14h10v6H7z"/></symbol>
+    <symbol id="i-merge" viewBox="0 0 24 24"><path d="M7 3v5a3 3 0 0 0 3 3h4"/><path d="M7 21v-5a3 3 0 0 1 3-3h4"/><path d="m12 8 3 3-3 3"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7.5 18.5A4 4 0 0 1 7 10.6a5 5 0 0 1 9.6-1.4A3.7 3.7 0 0 1 17 18.5z"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5 19 6v6c0 4-3 7.2-7 8.5-4-1.3-7-4.5-7-8.5V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19 12a7 7 0 0 1-12 4.9"/><path d="M5 12a7 7 0 0 1 12-4.9"/><path d="M4.5 20v-5h5M19.5 4v5h-5"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="7" rx="2"/><path d="M7 14h10v6H7z"/></symbol>
+  </defs>
+</svg>
+
+<div id="app">
+  <main id="view" role="main"></main>
+  <nav class="bottom-nav" id="bottomNav" aria-label="Navigation principale">
+    <button class="nav-item" data-nav="home" aria-label="Accueil">
+      <svg class="ico"><use href="#i-home"/></svg><span>Accueil</span>
+    </button>
+    <div class="nav-fab">
+      <button id="fabScan" aria-label="Nouveau scan">
+        <svg class="ico"><use href="#i-scan"/></svg>
+      </button>
+    </div>
+    <button class="nav-item" data-nav="docs" aria-label="Documents">
+      <svg class="ico"><use href="#i-docs"/></svg><span>Documents</span>
+    </button>
+    <button class="nav-item" data-nav="settings" aria-label="Paramètres">
+      <svg class="ico"><use href="#i-settings"/></svg><span>Paramètres</span>
+    </button>
+  </nav>
+</div>
+
+<div id="captureRoot"></div>
+<div id="modalRoot"></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="progress"><i></i></div>
+
+<script src="vendor/tesseract.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script>
+/* =============================================================================
+ * ScanPro AI — noyau applicatif
+ * Stockage IndexedDB, traitement d'image, OCR (Tesseract.js), PDF (jsPDF / pdf-lib)
+ * Aucune donnée n'est envoyée à un serveur : tout reste dans le navigateur.
+ * ========================================================================== */
+'use strict';
+
+/* ----------------------------------------------------------------- utils -- */
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const uid = (p = 'id') => p + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+function escapeHtml(s = '') {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtBytes(b) {
+  if (!b && b !== 0) return '—';
+  if (b < 1024) return b + ' o';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(b < 10240 ? 1 : 0) + ' Ko';
+  return (b / 1048576).toFixed(b < 10485760 ? 1 : 0) + ' Mo';
+}
+function fmtDate(ts) {
+  const d = new Date(ts), now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const hm = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  if (sameDay) return "Aujourd'hui, " + hm;
+  const yest = new Date(now); yest.setDate(now.getDate() - 1);
+  if (d.toDateString() === yest.toDateString()) return 'Hier, ' + hm;
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric' }) + ', ' + hm;
+}
+function slugify(s) {
+  return (s || 'scan').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'scan';
+}
+const plural = (n, s, p) => n + ' ' + (n > 1 ? p : s);
+
+/* --------------------------------------------------------------- stockage -- */
+const DB_NAME = 'scanpro-ai', DB_VER = 1;
+const Store = {
+  _db: null,
+  _mem: { docs: new Map(), pages: new Map(), kv: new Map(), files: new Map() },
+  _fallback: false,
+
+  async open() {
+    if (this._db) return this._db;
+    try {
+      this._db = await new Promise((res, rej) => {
+        const req = indexedDB.open(DB_NAME, DB_VER);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('docs')) db.createObjectStore('docs', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('pages')) {
+            const ps = db.createObjectStore('pages', { keyPath: 'id' });
+            ps.createIndex('docId', 'docId');
+          }
+          if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv', { keyPath: 'k' });
+          if (!db.objectStoreNames.contains('files')) db.createObjectStore('files', { keyPath: 'id' });
+        };
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => rej(req.error);
+        req.onblocked = () => rej(new Error('IndexedDB bloquée (autre onglet ouvert ?)'));
+      });
+      return this._db;
+    } catch (e) {
+      console.warn('[Store] IndexedDB indisponible, mode mémoire :', e);
+      this._fallback = true;
+      return null;
+    }
+  },
+  async tx(storeName, mode = 'readonly') {
+    const db = await this.open();
+    if (!db) return null;
+    return db.transaction(storeName, mode).objectStore(storeName);
+  },
+  async put(storeName, value) {
+    const os = await this.tx(storeName, 'readwrite');
+    if (!os) { this._mem[storeName].set(value[storeName === 'kv' ? 'k' : 'id'], value); return; }
+    await new Promise((res, rej) => {
+      const r = os.put(value);
+      r.onsuccess = () => res(); r.onerror = () => rej(r.error);
+    });
+  },
+  async get(storeName, key) {
+    const os = await this.tx(storeName);
+    if (!os) return this._mem[storeName].get(key);
+    return new Promise((res, rej) => {
+      const r = os.get(key);
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+  },
+  async del(storeName, key) {
+    const os = await this.tx(storeName, 'readwrite');
+    if (!os) { this._mem[storeName].delete(key); return; }
+    return new Promise((res, rej) => {
+      const r = os.delete(key);
+      r.onsuccess = () => res(); r.onerror = () => rej(r.error);
+    });
+  },
+  async all(storeName) {
+    const os = await this.tx(storeName);
+    if (!os) return Array.from(this._mem[storeName].values());
+    return new Promise((res, rej) => {
+      const r = os.getAll();
+      r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error);
+    });
+  },
+  async byDoc(docId) {
+    const os = await this.tx('pages');
+    if (!os) return Array.from(this._mem.pages.values()).filter(p => p.docId === docId);
+    return new Promise((res, rej) => {
+      const r = os.index('docId').getAll(docId);
+      r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error);
+    });
+  },
+  async clearAll() {
+    for (const s of ['docs', 'pages', 'kv', 'files']) {
+      const os = await this.tx(s, 'readwrite');
+      if (os) await new Promise(res => { const r = os.clear(); r.onsuccess = r.onerror = () => res(); });
+      else this._mem[s].clear();
+    }
+  },
+  get isFallback() { return this._fallback; }
+};
+
+/* ---------------------------------------------------------- image helpers -- */
+const ImageOps = {
+  load(src) {
+    return new Promise((res, rej) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = () => rej(new Error("Image illisible ou format non pris en charge"));
+      im.src = src;
+    });
+  },
+  /** Redimensionne un fichier image en dataURL JPEG (limite de mémoire). */
+  async fileToDataUrl(file, maxPx = 2400, quality = 0.9) {
+    if (!file) throw new Error('Fichier manquant');
+    if (file.type && !/^image\//.test(file.type)) throw new Error('Format non pris en charge : ' + (file.type || 'inconnu'));
+    let src;
+    try { src = URL.createObjectURL(file); } catch (e) { src = await this.fileToDataUrlLegacy(file); }
+    const img = await this.load(src);
+    const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(src);
+    return { dataUrl: c.toDataURL('image/jpeg', quality), w: c.width, h: c.height };
+  },
+  fileToDataUrlLegacy(file) {
+    return new Promise((res, rej) => {
+      const fr = new FileReader();
+      fr.onload = () => res(fr.result); fr.onerror = () => rej(new Error('Lecture du fichier impossible'));
+      fr.readAsDataURL(file);
+    });
+  },
+  /** Rendu d'une page du brouillon / document : crop + rotation + filtre. */
+  async render(page, { maxPx = 2400, quality = 0.9 } = {}) {
+    const img = await this.load(page.src);
+    const crop = page.crop || { x: 0, y: 0, w: 1, h: 1 };
+    const sx = clamp(crop.x, 0, 1) * img.naturalWidth;
+    const sy = clamp(crop.y, 0, 1) * img.naturalHeight;
+    const sw = Math.max(2, clamp(crop.w, 0.02, 1) * img.naturalWidth);
+    const sh = Math.max(2, clamp(crop.h, 0.02, 1) * img.naturalHeight);
+    const rot = ((Math.round((page.rotate || 0) / 90) * 90) % 360 + 360) % 360;
+    const swap = rot === 90 || rot === 270;
+    const scale = Math.min(1, maxPx / Math.max(sw, sh));
+    const cw = Math.max(1, Math.round(sw * scale));
+    const ch = Math.max(1, Math.round(sh * scale));
+    const c = document.createElement('canvas');
+    c.width = swap ? ch : cw;
+    c.height = swap ? cw : ch;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.save();
+    ctx.translate(c.width / 2, c.height / 2);
+    ctx.rotate(rot * Math.PI / 180);
+    ctx.drawImage(img, sx, sy, sw, sh, -cw / 2, -ch / 2, cw, ch);
+    ctx.restore();
+    const f = page.filter || 'none';
+    if (f !== 'none' && f !== 'original') this.filter(c, f);
+    return c;
+  },
+  dataUrl(canvas, quality = 0.9) { return canvas.toDataURL('image/jpeg', quality); },
+
+  /* ---------- filtres pixel ---------- */
+  filter(canvas, mode) {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const W = canvas.width, H = canvas.height;
+    const id = ctx.getImageData(0, 0, W, H);
+    const d = id.data;
+    const n = W * H;
+    const gray = new Uint8ClampedArray(n);
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+      gray[j] = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) | 0;
+    }
+    if (mode === 'gray') {
+      for (let i = 0, j = 0; i < d.length; i += 4, j++) { const v = gray[j]; d[i] = d[i + 1] = d[i + 2] = v; }
+    } else if (mode === 'color') {
+      // auto-niveaux par canal (2 % / 98 %)
+      const hist = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
+      for (let i = 0; i < d.length; i += 4) { hist[0][d[i]]++; hist[1][d[i + 1]]++; hist[2][d[i + 2]]++; }
+      const lo = [], hi = [];
+      for (let k = 0; k < 3; k++) {
+        let acc = 0, l = 0, h = 255;
+        const lim = n * 0.02;
+        for (; l < 256; l++) { acc += hist[k][l]; if (acc > lim) break; }
+        acc = 0;
+        for (h = 255; h > 0; h--) { acc += hist[k][h]; if (acc > lim) break; }
+        lo[k] = l; hi[k] = h;
+      }
+      for (let i = 0; i < d.length; i += 4) {
+        d[i]     = clamp((d[i] - lo[0]) * 255 / Math.max(1, hi[0] - lo[0]), 0, 255);
+        d[i + 1] = clamp((d[i + 1] - lo[1]) * 255 / Math.max(1, hi[1] - lo[1]), 0, 255);
+        d[i + 2] = clamp((d[i + 2] - lo[2]) * 255 / Math.max(1, hi[2] - lo[2]), 0, 255);
+      }
+      this._sharpen(d, W, H, 0.35);
+    } else if (mode === 'doc') {
+      // niveaux + contraste doux sur niveaux de gris, rendu "photocopie propre"
+      const hist = new Uint32Array(256);
+      for (let j = 0; j < n; j++) hist[gray[j]]++;
+      let acc = 0, lo = 0, hi = 255; const lim = n * 0.03;
+      for (; lo < 256; lo++) { acc += hist[lo]; if (acc > lim) break; }
+      acc = 0;
+      for (hi = 255; hi > 0; hi--) { acc += hist[hi]; if (acc > lim) break; }
+      const span = Math.max(1, hi - lo);
+      for (let j = 0, i = 0; j < n; j++, i += 4) {
+        let v = (gray[j] - lo) * 255 / span;
+        v = v < 0 ? 0 : v > 255 ? 255 : v;
+        v = 255 * Math.pow(v / 255, 1.28);           // courbe : blancs plus blancs
+        v = clamp(v, 0, 255);
+        d[i] = d[i + 1] = d[i + 2] = v;
+      }
+      this._sharpen(d, W, H, 0.55);
+    } else if (mode === 'bw') {
+      // seuillage adaptatif (moyenne locale via image intégrale)
+      const integ = new Float64Array((W + 1) * (H + 1));
+      for (let y = 0; y < H; y++) {
+        let rowSum = 0;
+        for (let x = 0; x < W; x++) {
+          rowSum += gray[y * W + x];
+          integ[(y + 1) * (W + 1) + (x + 1)] = integ[y * (W + 1) + (x + 1)] + rowSum;
+        }
+      }
+      const r = Math.max(6, Math.round(Math.min(W, H) * 0.045));
+      const C = 12;
+      for (let y = 0; y < H; y++) {
+        const y0 = Math.max(0, y - r), y1 = Math.min(H - 1, y + r);
+        for (let x = 0; x < W; x++) {
+          const x0 = Math.max(0, x - r), x1 = Math.min(W - 1, x + r);
+          const area = (x1 - x0 + 1) * (y1 - y0 + 1);
+          const sum = integ[(y1 + 1) * (W + 1) + (x1 + 1)] - integ[y0 * (W + 1) + (x1 + 1)]
+                    - integ[(y1 + 1) * (W + 1) + x0] + integ[y0 * (W + 1) + x0];
+          const mean = sum / area;
+          const i = (y * W + x) * 4;
+          const v = gray[y * W + x] < mean - C ? 0 : 255;
+          d[i] = d[i + 1] = d[i + 2] = v;
+        }
+      }
+    }
+    ctx.putImageData(id, 0, 0);
+  },
+  _sharpen(d, W, H, amount) {
+    const src = new Uint8ClampedArray(d.length);
+    src.set(d);
+    const k = amount;
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const i = (y * W + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const p = i + c;
+          const center = src[p] * (1 + 4 * k);
+          const around = (src[p - 4] + src[p + 4] + src[p - W * 4] + src[p + W * 4]) * k;
+          d[p] = clamp(center - around, 0, 255);
+        }
+      }
+    }
+  },
+  /** Redimensionne un dataURL en vignette carrée (pour les listes). */
+  async thumb(src, w = 140, h = 180) {
+    try {
+      const img = await this.load(src);
+      const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
+      const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
+      ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+      return c.toDataURL('image/jpeg', 0.7);
+    } catch (e) { return null; }
+  }
+};
+
+/* -------------------------------------------------------------------- OCR -- */
+const OCR = {
+  worker: null, langs: null, busy: false,
+  available: () => typeof Tesseract !== 'undefined',
+  corePath() { return new URL('vendor/', location.href).href; },
+  langPath() { return new URL('vendor/lang', location.href).href; },
+  workerPath() { return new URL('vendor/tesseract-worker.min.js', location.href).href; },
+
+  async ensure(langs = 'fra+eng', onProgress) {
+    if (!this.available()) throw new Error("Le moteur OCR n'a pas pu être chargé (tesseract.min.js absent ou bloqué).");
+    if (this.worker && this.langs === langs) return this.worker;
+    if (this.worker) { try { await this.worker.terminate(); } catch (e) {} this.worker = null; }
+    onProgress && onProgress({ status: 'initialisation du moteur OCR', progress: 0.02 });
+    this.worker = await Tesseract.createWorker(langs, 1, {
+      workerPath: this.workerPath(),
+      corePath: this.corePath(),
+      langPath: this.langPath(),
+      workerBlobURL: false,
+      logger: (m) => onProgress && onProgress(m),
+      errorHandler: (e) => console.warn('[OCR]', e)
+    });
+    try {
+      await this.worker.setParameters({ preserve_interword_spaces: '1' });
+    } catch (e) { /* non bloquant */ }
+    this.langs = langs;
+    return this.worker;
+  },
+  /** '@@' : moteur OCR indisponible, message clair côté UI. */
+  async run(dataUrl, langs, onProgress) {
+    const w = await this.ensure(langs, onProgress);
+    const { data } = await w.recognize(dataUrl);
+    const text = (data.text || '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    return { text, confidence: Math.round(data.confidence || 0), words: (data.words || []).length, lines: (data.lines || []).length };
+  },
+  async terminate() { if (this.worker) { try { await this.worker.terminate(); } catch (e) {} this.worker = null; this.langs = null; } }
+};
+
+/* -------------------------------------------------------------------- PDF -- */
+const PDF = {
+  hasJsPDF: () => !!(window.jspdf && window.jspdf.jsPDF),
+  hasPdfLib: () => typeof window.PDFLib !== 'undefined',
+
+  /** Construit un PDF A4 à partir des pages (image par page). */
+  async build(pages, { name = 'scan', quality = 0.88, maxPx = 2400, onProgress } = {}) {
+    if (!this.hasJsPDF()) throw new Error('La bibliothèque PDF (jsPDF) est indisponible.');
+    if (!pages.length) throw new Error('Aucune page à exporter.');
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true, orientation: 'portrait' });
+    const PW = 210, PH = 297, M = 8;
+    for (let i = 0; i < pages.length; i++) {
+      onProgress && onProgress((i) / pages.length, `Mise en page ${i + 1}/${pages.length}`);
+      const canvas = await ImageOps.render(pages[i], { maxPx, quality: 0.95 });
+      const data = canvas.toDataURL('image/jpeg', quality);
+      const availW = PW - M * 2, availH = PH - M * 2;
+      const ratio = canvas.width / canvas.height;
+      let w = availW, h = w / ratio;
+      if (h > availH) { h = availH; w = h * ratio; }
+      if (i > 0) pdf.addPage('a4', 'portrait');
+      pdf.addImage(data, 'JPEG', (PW - w) / 2, (PH - h) / 2, w, h, 'p' + i, 'FAST');
+    }
+    onProgress && onProgress(1, 'Finalisation');
+    return { blob: pdf.output('blob'), base64: null };
+  },
+
+  /** Fusionne plusieurs PDF (octets) en un seul. */
+  async merge(files, { name = 'fusion' } = {}) {
+    if (!this.hasPdfLib()) throw new Error('La bibliothèque pdf-lib est indisponible.');
+    const { PDFDocument } = window.PDFLib;
+    const out = await PDFDocument.create();
+    let added = 0;
+    for (const f of files) {
+      const bytes = f.bytes instanceof Uint8Array ? f.bytes : new Uint8Array(f.bytes);
+      let src;
+      try { src = await PDFDocument.load(bytes, { ignoreEncryption: true }); }
+      catch (e) { throw new Error('PDF illisible ou protégé : ' + (f.name || 'fichier')); }
+      const idx = await out.copyPages(src, src.getPageIndices());
+      idx.forEach(p => { out.addPage(p); added++; });
+    }
+    if (!added) throw new Error('Aucune page PDF trouvée.');
+    out.setTitle(name);
+    out.setProducer('ScanPro AI');
+    const bytes = await out.save();
+    return { blob: new Blob([bytes], { type: 'application/pdf' }), pageCount: added };
+  },
+
+  /** Lit un PDF (nb de pages) et rend la 1re page en vignette. */
+  async inspect(file) {
+    if (typeof pdfjsLib === 'undefined') return { pageCount: 0, thumb: null };
+    try {
+      const buf = await file.arrayBuffer();
+      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('vendor/pdf.worker.min.js', location.href).href;
+      const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+      let thumb = null;
+      const p = await doc.getPage(1);
+      const vp = p.getViewport({ scale: 1 });
+      const scale = 320 / Math.max(vp.width, vp.height);
+      const v = p.getViewport({ scale });
+      const c = document.createElement('canvas');
+      c.width = Math.round(v.width); c.height = Math.round(v.height);
+      await p.render({ canvasContext: c.getContext('2d'), viewport: v }).promise;
+      thumb = c.toDataURL('image/jpeg', 0.75);
+      return { pageCount: doc.numPages, thumb };
+    } catch (e) {
+      console.warn('[PDF] inspect', e);
+      return { pageCount: 0, thumb: null, error: e.message };
+    }
+  }
+};
+
+/* ---------------------------------------------------------- file helpers -- */
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 20000);
+}
+function dataUrlToBlob(dataUrl) {
+  const [meta, b64] = dataUrl.split(',');
+  const mime = (meta.match(/:(.*?);/) || [])[1] || 'image/jpeg';
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+async function shareFile(blob, filename, title = 'ScanPro AI') {
+  if (!navigator.share) throw new Error("Le partage natif n'est pas disponible sur ce navigateur.");
+  const file = new File([blob], filename, { type: blob.type || 'application/octet-stream' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({ files: [file], title, text: title });
+    return 'shared';
+  }
+  throw new Error("Ce navigateur ne peut pas partager ce type de fichier. Utilisez « Télécharger ».");
+}
+function pickFiles({ accept = 'image/*', multiple = true, capture = null } = {}) {
+  return new Promise(res => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = accept; inp.multiple = multiple;
+    if (capture) inp.capture = capture;
+    inp.style.position = 'fixed'; inp.style.left = '-9999px';
+    document.body.appendChild(inp);
+    inp.addEventListener('change', () => {
+      const files = Array.from(inp.files || []);
+      inp.remove();
+      res(files);
+    }, { once: true });
+    // si l'utilisateur annule, on nettoie au prochain focus
+    window.addEventListener('focus', () => setTimeout(() => { if (document.body.contains(inp)) inp.remove(); }, 1500), { once: true });
+    inp.click();
+  });
+}
+
+/* ----------------------------------------------------------- stockage info -- */
+async function storageInfo() {
+  let usage = null, quota = null;
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const est = await navigator.storage.estimate();
+      usage = est.usage || 0; quota = est.quota || 0;
+    }
+  } catch (e) {}
+  return { usage, quota, fallback: Store.isFallback };
+}
+
+</script>
+<script>
+/* =============================================================================
+ * ScanPro AI — état global, dépôt de documents, UI shell (toasts, feuilles)
+ * ========================================================================== */
+'use strict';
+
+/* ------------------------------------------------------------- préférences -- */
+const Settings = {
+  k: 'scanpro.settings.v1',
+  defaults: { ocrLangs: 'fra+eng', quality: 'high', defaultFilter: 'doc', autoOcr: false, seenOnboarding: false },
+  data: null,
+  load() {
+    try { this.data = Object.assign({}, this.defaults, JSON.parse(localStorage.getItem(this.k) || '{}')); }
+    catch (e) { this.data = Object.assign({}, this.defaults); }
+    return this.data;
+  },
+  get(key) { if (!this.data) this.load(); return this.data[key]; },
+  set(key, val) {
+    if (!this.data) this.load();
+    this.data[key] = val;
+    try { localStorage.setItem(this.k, JSON.stringify(this.data)); } catch (e) {}
+  }
+};
+
+/* ------------------------------------------------------------------- état -- */
+const App = {
+  route: 'home',
+  param: null,
+  docs: [],            // métadonnées
+  search: '',
+  docFilter: 'all',
+  draft: null,         // {docId?, name, pages:[{id,src,crop,rotate,filter}], active, cropMode, cropRect}
+  doc: null,           // document ouvert
+  docPages: [],
+  detailTab: 'preview',
+  detailPage: 0,
+  camera: { stream: null, facing: 'environment', torch: false },
+  ocrText: {},
+  ready: false
+};
+
+/* ------------------------------------------------------- toasts / overlay -- */
+function toast(msg, type = '', ms = 2600) {
+  const host = $('#toasts');
+  const icons = { ok: 'i-check', err: 'i-alert' };
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.innerHTML = `<svg class="ico sm"><use href="#${icons[type] || 'i-info'}"/></svg><span>${escapeHtml(msg)}</span>`;
+  host.appendChild(el);
+  while (host.children.length > 2) host.firstElementChild.remove();
+  setTimeout(() => {
+    el.style.transition = 'opacity .25s, transform .25s';
+    el.style.opacity = '0'; el.style.transform = 'translateY(8px)';
+    setTimeout(() => el.remove(), 260);
+  }, ms);
+  return el;
+}
+const busyBar = (on) => $('#progress').classList.toggle('on', !!on);
+
+function openSheet({ title = '', sub = '', body = '', actions = [], onMount = null, full = false }) {
+  closeSheet();
+  const root = $('#modalRoot');
+  const back = document.createElement('div');
+  back.className = 'backdrop';
+  back.innerHTML = `
+    <div class="sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(title || 'Dialogue')}">
+      <div class="grab"></div>
+      ${title ? `<h3>${escapeHtml(title)}</h3>` : ''}
+      ${sub ? `<p class="sub">${sub}</p>` : ''}
+      <div class="sheet-body">${body}</div>
+      ${actions.length ? `<div class="sheet-actions">
+        ${actions.map(a => `<button class="btn ${a.cls || 'ghost'}" ${a.act ? `data-act="${a.act}"` : ''}
+          ${a.close !== false ? 'data-close="1"' : ''}>${a.label}</button>`).join('')}
+      </div>` : ''}
+    </div>`;
+  root.appendChild(back);
+  back.addEventListener('click', (e) => { if (e.target === back) closeSheet(); });
+  back.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) closeSheet(); });
+  if (onMount) onMount(back.querySelector('.sheet'));
+  return back.querySelector('.sheet');
+}
+function closeSheet() { const r = $('#modalRoot'); if (r) r.innerHTML = ''; }
+
+function confirmSheet({ title, sub, okLabel = 'Confirmer', danger = false, onOk }) {
+  openSheet({
+    title, sub,
+    actions: [
+      { label: 'Annuler', cls: 'ghost' },
+      { label: okLabel, cls: danger ? 'danger' : 'primary', act: 'confirm-ok', close: true }
+    ],
+    onMount: (sheet) => {
+      const b = $('[data-act="confirm-ok"]', sheet);
+      b.addEventListener('click', () => setTimeout(() => onOk && onOk(), 0), { once: true });
+    }
+  });
+}
+function promptSheet({ title, label = 'Nom', value = '', sub = '', okLabel = 'Enregistrer', onOk }) {
+  const s = openSheet({
+    title, sub,
+    body: `<div class="field"><label for="__p">${escapeHtml(label)}</label>
+      <input id="__p" value="${escapeHtml(value)}" autocomplete="off" enterkeyhint="done"></div>`,
+    actions: [{ label: 'Annuler', cls: 'ghost' }, { label: okLabel, cls: 'primary', act: 'prompt-ok', close: true }],
+    onMount: (sheet) => {
+      const inp = $('#__p', sheet);
+      setTimeout(() => { inp.focus(); inp.select(); }, 60);
+      const go = () => { const v = inp.value.trim(); if (v) onOk && onOk(v); };
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); closeSheet(); } });
+      $('[data-act="prompt-ok"]', sheet).addEventListener('click', () => setTimeout(go, 0), { once: true });
+    }
+  });
+  return s;
+}
+
+/* ------------------------------------------------------------ dépôt docs -- */
+const Repo = {
+  async list() {
+    const docs = await Store.all('docs');
+    return docs.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  },
+  async create({ name = 'Document', pages = [], file = null, thumb = null, source = 'scan' }) {
+    const now = Date.now();
+    const doc = {
+      id: uid('doc'), name, createdAt: now, updatedAt: now,
+      pageCount: pages.length, thumb: thumb || (pages[0] ? pages[0].thumb : null),
+      text: '', ocr: { status: pages.length ? 'none' : 'none', at: null, confidence: 0 },
+      bytes: 0, source, modified: false, kind: file ? 'pdf' : 'scan'
+    };
+    let bytes = 0;
+    for (let i = 0; i < pages.length; i++) {
+      const p = pages[i];
+      const rec = {
+        id: p.id || uid('pg'), docId: doc.id, index: i, src: p.src,
+        crop: p.crop || { x: 0, y: 0, w: 1, h: 1 }, rotate: p.rotate || 0,
+        filter: p.filter || 'none', thumb: p.thumb || null, text: p.text || '', ocrConf: p.ocrConf || 0
+      };
+      bytes += (rec.src ? rec.src.length * 0.75 : 0) + (rec.thumb ? rec.thumb.length * 0.75 : 0);
+      await Store.put('pages', rec);
+    }
+    if (file) {
+      await Store.put('files', { id: doc.id, name: name + '.pdf', blob: file });
+      bytes += file.size || 0;
+      doc.fileId = doc.id;
+    }
+    doc.bytes = Math.round(bytes);
+    await Store.put('docs', doc);
+    App.docs = await this.list();
+    return doc;
+  },
+  async pages(docId) {
+    const ps = await Store.byDoc(docId);
+    return ps.sort((a, b) => a.index - b.index);
+  },
+  async doc(id) { return Store.get('docs', id); },
+  async update(doc) {
+    doc.updatedAt = Date.now();
+    const ps = await this.pages(doc.id);
+    // les PDF importés conservent le nombre de pages lu par pdf.js
+    if (doc.kind !== 'pdf' || ps.length) doc.pageCount = ps.length;
+    await Store.put('docs', doc);
+    App.docs = await this.list();
+    return doc;
+  },
+  async replacePages(docId, pages) {
+    const old = await this.pages(docId);
+    for (const p of old) await Store.del('pages', p.id);
+    let bytes = 0;
+    for (let i = 0; i < pages.length; i++) {
+      const p = pages[i];
+      const rec = {
+        id: p.id || uid('pg'), docId, index: i, src: p.src, crop: p.crop || { x: 0, y: 0, w: 1, h: 1 },
+        rotate: p.rotate || 0, filter: p.filter || 'none', thumb: p.thumb || null,
+        text: p.text || '', ocrConf: p.ocrConf || 0
+      };
+      bytes += (rec.src || '').length * 0.75 + (rec.thumb || '').length * 0.75;
+      await Store.put('pages', rec);
+    }
+    return Math.round(bytes);
+  },
+  async file(docId) {
+    const f = await Store.get('files', docId);
+    return f ? f.blob : null;
+  },
+  async remove(docId) {
+    const ps = await this.pages(docId);
+    for (const p of ps) await Store.del('pages', p.id);
+    await Store.del('files', docId);
+    await Store.del('docs', docId);
+    App.docs = await this.list();
+  },
+  async totalBytes() {
+    const docs = await Store.all('docs');
+    return docs.reduce((s, d) => s + (d.bytes || 0), 0);
+  }
+};
+
+/* --------------------------------------------------- OCR : exécution + UI -- */
+function ocrOverlay() {
+  const sheet = openSheet({
+    title: 'Reconnaissance de texte',
+    sub: 'Analyse locale dans votre navigateur — aucune image n\'est envoyée sur Internet.',
+    body: `<div class="row" style="gap:12px;align-items:center;margin:4px 0 10px">
+        <span class="spinner dark" id="ocrSpin"></span>
+        <div class="grow"><b id="ocrStatus" style="font-size:13.5px">Préparation…</b>
+        <div class="ocr-bar"><i id="ocrBar"></i></div>
+        <div class="tiny muted" id="ocrPct">0 %</div></div>
+      </div>
+      <div class="banner info"><svg class="ico sm"><use href="#i-info"/></svg>
+        <span>Le premier lancement télécharge les données de langue (français + anglais) puis les met en cache.</span></div>`,
+    actions: [{ label: 'Annuler', cls: 'ghost', act: 'ocr-cancel' }]
+  });
+  return {
+    sheet,
+    status(t) { const e = $('#ocrStatus'); if (e) e.textContent = t; },
+    progress(p, t) {
+      const pct = Math.round(clamp(p, 0, 1) * 100);
+      const bar = $('#ocrBar'); if (bar) bar.style.width = pct + '%';
+      const lab = $('#ocrPct'); if (lab) lab.textContent = pct + ' %';
+      if (t && $('#ocrStatus')) $('#ocrStatus').textContent = t;
+    },
+    close: closeSheet
+  };
+}
+
+/** OCR d'une liste de pages (objets {src,crop,rotate,filter}) → [{text, confidence}] */
+async function runOcr(pages, langs = Settings.get('ocrLangs')) {
+  if (location.protocol === 'file:') {
+    // fetch() est interdit sur file:// : les modèles de langue ne peuvent pas être lus.
+    const msg = "L'OCR nécessite que ScanPro AI soit servie en http(s) (la prévisualisation live ou " +
+      "un petit serveur local comme « python3 -m http.server 8080 »). Ouvert en double-clic (file://), " +
+      "le navigateur interdit la lecture des modèles de langue. Le reste de l'app (import, recadrage, PDF) fonctionne.";
+    toast(msg, 'err', 9000);
+    const s = openSheet({
+      title: 'OCR indisponible en mode fichier',
+      sub: "Cette page a été ouverte directement depuis le disque (file://).",
+      body: `<div class="banner warn">${ICON('i-alert', 'ico sm')}<span>${escapeHtml(msg)}</span></div>
+        <p class="small muted">Solutions : ouvrez l'application via la prévisualisation de l'environnement
+        (HTTPS) ou lancez un serveur local dans le dossier du projet.</p>
+        <div class="ai-out" style="font-size:12.5px">cd scanpro\npython3 -m http.server 8080\n# puis http://localhost:8080/</div>`,
+      actions: [{ label: 'Compris', cls: 'primary' }]
+    });
+    return null;
+  }
+  const ui = ocrOverlay();
+  let cancelled = false;
+  const cancelBtn = $('[data-act="ocr-cancel"]', ui.sheet);
+  if (cancelBtn) cancelBtn.addEventListener('click', () => { cancelled = true; OCR.terminate(); });
+  const results = [];
+  try {
+    const label = { 'fra+eng': 'français + anglais', fra: 'français', eng: 'anglais' }[langs] || langs;
+    ui.status('Chargement du moteur OCR (' + label + ')…');
+    await OCR.ensure(langs, (m) => {
+      if (cancelled) return;
+      if (m && m.status) {
+        const map = {
+          'loading tesseract core': 'Chargement du moteur…',
+          'initializing tesseract': 'Initialisation…',
+          'loading language traineddata': 'Téléchargement de la langue (' + label + ')…',
+          'loaded language traineddata': 'Langue prête',
+          'initializing api': 'Initialisation de l\'API…',
+          'recognizing text': 'Reconnaissance du texte…'
+        };
+        ui.status(map[m.status] || m.status);
+        ui.progress(m.progress || 0);
+      }
+    });
+    for (let i = 0; i < pages.length; i++) {
+      if (cancelled) throw new Error('annulé');
+      ui.status(`Reconnaissance — page ${i + 1}/${pages.length}`);
+      ui.progress(0);
+      let dataUrl;
+      if (typeof pages[i] === 'string') dataUrl = pages[i];
+      else {
+        const c = await ImageOps.render(pages[i], { maxPx: 2000, quality: 0.95 });
+        dataUrl = c.toDataURL('image/jpeg', 0.95);
+      }
+      const res = await OCR.run(dataUrl, langs, (m) => {
+        if (cancelled || !m) return;
+        if (m.status === 'recognizing text') {
+          ui.progress((i + (m.progress || 0)) / pages.length);
+          ui.status(`Reconnaissance — page ${i + 1}/${pages.length}`);
+        }
+      });
+      results.push(res);
+      ui.progress((i + 1) / pages.length);
+    }
+    ui.close();
+    return results;
+  } catch (err) {
+    ui.close();
+    if (String(err && err.message).includes('annulé')) { toast('OCR annulé'); return null; }
+    console.error('[OCR]', err);
+    toast("L'OCR n'a pas pu être effectué : " + (err.message || 'erreur inconnue'), 'err', 6000);
+    throw err;
+  }
+}
+
+/* Point d'entrée de débogage (console) — n'expose aucune donnée à l'extérieur. */
+window.ScanPro = {
+  get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
+  get AI() { return AI; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
+  version: '1.0.0'
+};
+
+/* ------------------------------------------------------- exécution d'acte -- */
+const Actions = {};   // rempli par views.js / ui.js
+
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const name = el.dataset.act;
+  if (name === 'ocr-cancel' || name === 'confirm-ok' || name === 'prompt-ok') return; // gérés localement
+  const fn = Actions[name];
+  if (typeof fn === 'function') {
+    e.preventDefault();
+    fn(el, e);
+  }
+});
+
+/* ------------------------------------------------------------- impression -- */
+function printPdf(blob) {
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, '_blank');
+  if (w) { toast('PDF ouvert : utilisez le menu du navigateur → Imprimer', 'ok', 5000); return; }
+  const f = document.createElement('iframe');
+  f.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0';
+  document.body.appendChild(f);
+  f.onload = () => {
+    try { f.contentWindow.focus(); f.contentWindow.print(); }
+    catch (err) { toast("Impression directe bloquée — utilisez « Télécharger » puis imprimer.", 'err', 5000); }
+    setTimeout(() => f.remove(), 60000);
+  };
+  f.src = url;
+}
+
+/* ------------------------------------------------------------- utilitaires -- */
+async function copyText(text) {
+  if (!text) { toast('Rien à copier', 'err'); return false; }
+  try {
+    if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); }
+    else {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    }
+    toast('Texte copié', 'ok');
+    return true;
+  } catch (e) { toast('Copie impossible sur ce navigateur', 'err'); return false; }
+}
+
+async function shareText(text, title = 'Texte reconnu — ScanPro AI') {
+  if (!text) { toast('Aucun texte à partager', 'err'); return; }
+  if (navigator.share) {
+    try { await navigator.share({ title, text }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  copyText(text);
+}
+
+function pdfName(doc, suffix = '') {
+  return slugify(doc.name || 'document') + (suffix ? '-' + suffix : '') + '.pdf';
+}
+
+/** Génère un PDF pour un document stocké. Retourne {blob, build:boolean} */
+async function buildDocPdf(doc, opts = {}) {
+  const noMods = !doc.modified;
+  if (doc.fileId && noMods) {
+    const blob = await Repo.file(doc.id);
+    if (blob) return { blob, original: true };
+  }
+  const pages = await Repo.pages(doc.id);
+  if (!pages.length) throw new Error('Ce document ne contient aucune page.');
+  const quality = Settings.get('quality') === 'high' ? 0.92 : 0.8;
+  const maxPx = Settings.get('quality') === 'high' ? 2400 : 1600;
+  const { blob } = await PDF.build(pages, {
+    name: doc.name, quality, maxPx,
+    onProgress: (p, label) => opts.onProgress && opts.onProgress(p, label)
+  });
+  return { blob, original: false };
+}
+
+</script>
+<script>
+/* =============================================================================
+ * ScanPro AI — vues : Accueil, Documents, Paramètres, Détail document
+ * ========================================================================== */
+'use strict';
+
+const ICON = (id, cls = 'ico') => `<svg class="${cls}"><use href="#${id}"/></svg>`;
+
+function emptyState({ icon = 'i-folder', title, text, action = '' }) {
+  return `<div class="empty"><div class="e-ico">${ICON(icon, 'ico lg')}</div>
+    <h3>${escapeHtml(title)}</h3><p>${text}</p>${action}</div>`;
+}
+
+function docCard(doc, { compact = false } = {}) {
+  const ocrTag = doc.ocr && doc.ocr.status === 'done'
+    ? `<span class="tag ok">${ICON('i-check', 'ico sm')} OCR</span>`
+    : (doc.ocr && doc.ocr.status === 'failed' ? `<span class="tag warn">OCR échoué</span>` : '');
+  const kindTag = doc.kind === 'pdf' ? `<span class="tag blue">PDF importé</span>` : '';
+  const thumb = doc.thumb
+    ? `<img src="${doc.thumb}" alt="">`
+    : `<svg class="ico lg muted"><use href="#i-file"/></svg>`;
+  return `<button class="doc-item" data-act="open-doc" data-id="${doc.id}">
+    <div class="doc-thumb">${thumb}</div>
+    <div class="doc-meta">
+      <b>${escapeHtml(doc.name)}</b>
+      <div class="meta-line">
+        <span>${fmtDate(doc.createdAt)}</span>
+        <span>·</span>
+        <span>${plural(doc.pageCount || 0, 'page', 'pages')}</span>
+        ${compact ? '' : `<span>·</span><span>${fmtBytes(doc.bytes)}</span>`}
+      </div>
+      <div class="meta-line" style="margin-top:5px">${kindTag}${ocrTag}</div>
+    </div>
+    <span class="doc-row-actions" role="button" aria-label="Actions" data-act="doc-menu" data-id="${doc.id}">
+      ${ICON('i-more', 'ico')}
+    </span>
+  </button>`;
+}
+
+/* =============================== ACCUEIL ================================= */
+function viewHome() {
+  const docs = App.docs;
+  const recent = docs.slice(0, 4);
+  const totalPages = docs.reduce((s, d) => s + (d.pageCount || 0), 0);
+  const firstName = Settings.get('userName') || '';
+  return `
+  <header class="appbar">
+    <div class="appbar-row">
+      <div class="brand">
+        <div class="brand-mark"><svg viewBox="0 0 24 24" class="ico"><use href="#i-scan"/></svg></div>
+        <div>
+          <div class="brand-name">ScanPro AI</div>
+          <div class="brand-sub">Scanner & OCR</div>
+        </div>
+      </div>
+      <button class="icon-btn" data-act="go-settings" aria-label="Paramètres">${ICON('i-settings')}</button>
+    </div>
+    <div class="hello">
+      <h2>${firstName ? 'Bonjour ' + escapeHtml(firstName) : 'Prêt à numériser'}</h2>
+      <p>Scannez, reconnaissez le texte et exportez en PDF.</p>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><b>${docs.length}</b><span>${docs.length > 1 ? 'documents' : 'document'}</span></div>
+      <div class="stat"><b>${totalPages}</b><span>${totalPages > 1 ? 'pages scannées' : 'page scannée'}</span></div>
+      <div class="stat"><b>100 %</b><span>local & privé</span></div>
+    </div>
+    <div class="local-chip">${ICON('i-shield', 'ico sm')} Traitement sur l'appareil</div>
+  </header>
+
+  <div class="content">
+    <section class="scan-cta">
+      <div class="cta-top">
+        <div class="cta-badge">${ICON('i-camera', 'ico')}</div>
+        <div>
+          <h3>Nouveau scan</h3>
+          <p>Caméra live, multi-pages, OCR et PDF</p>
+        </div>
+      </div>
+      <button class="btn btn-camera" data-act="scan-camera">
+        ${ICON('i-camera', 'ico')} Scanner avec la caméra
+      </button>
+      <div class="mini-row">
+        <button class="btn" data-act="import-image">${ICON('i-image', 'ico sm')} Importer une image</button>
+        <button class="btn" data-act="import-pdf">${ICON('i-pdf', 'ico sm')} Importer un PDF</button>
+      </div>
+    </section>
+
+    <div class="quick-grid">
+      <button class="quick" data-act="merge-pdfs">
+        <span class="q-ico">${ICON('i-merge', 'ico sm')}</span>
+        <span><b>Fusionner des PDF</b><span>2 fichiers ou plus</span></span>
+      </button>
+      <button class="quick" data-act="go-docs">
+        <span class="q-ico">${ICON('i-folder', 'ico sm')}</span>
+        <span><b>Mes documents</b><span>${plural(docs.length, 'fichier', 'fichiers')}</span></span>
+      </button>
+    </div>
+
+    <div class="section-head">
+      <h2>Rechercher</h2>
+    </div>
+    <label class="search">
+      ${ICON('i-search')}
+      <input id="homeSearch" type="search" placeholder="Nom du document ou texte reconnu…"
+        value="${escapeHtml(App.search)}" enterkeyhint="search" autocomplete="off">
+      ${App.search ? `<button class="clear" data-act="clear-search" aria-label="Effacer">${ICON('i-x', 'ico sm')}</button>` : ''}
+    </label>
+    <div id="searchResults">${App.search ? searchResultsHtml(App.search) : ''}</div>
+
+    <div class="section-head">
+      <h2>Derniers documents</h2>
+      ${docs.length > 4 ? `<button class="link" data-act="go-docs">Tout voir</button>` : ''}
+    </div>
+    <div class="doc-list">
+      ${recent.length
+        ? recent.map(d => docCard(d)).join('')
+        : emptyState({
+            icon: 'i-scan',
+            title: 'Aucun document pour l\'instant',
+            text: 'Scannez une page ou importez une image pour commencer. Tout reste sur votre téléphone.',
+            action: `<button class="btn primary" data-act="scan-camera">${ICON('i-camera', 'ico sm')} Commencer</button>`
+          })}
+    </div>
+    ${docs.length > 4 ? `<button class="btn ghost mt14" data-act="go-docs">Voir les ${docs.length} documents</button>` : ''}
+  </div>`;
+}
+
+function searchResultsHtml(q) {
+  const needle = q.toLowerCase();
+  const hits = App.docs.filter(d =>
+    (d.name || '').toLowerCase().includes(needle) ||
+    (d.text || '').toLowerCase().includes(needle));
+  if (!hits.length) {
+    return `<div class="banner info mt10">${ICON('i-info', 'ico sm')}
+      <span>Aucun résultat pour « ${escapeHtml(q)} ». La recherche porte sur le nom et sur le texte reconnu (OCR).</span></div>`;
+  }
+  return `<div class="doc-list mt10">${hits.slice(0, 6).map(d => docCard(d, { compact: true })).join('')}</div>`;
+}
+
+/* ============================== DOCUMENTS ================================ */
+function viewDocs() {
+  const filters = [['all', 'Tous'], ['scan', 'Scans'], ['pdf', 'PDF importés'], ['ocr', 'Avec OCR']];
+  let docs = App.docs.slice();
+  if (App.docFilter === 'scan') docs = docs.filter(d => d.kind !== 'pdf');
+  if (App.docFilter === 'pdf') docs = docs.filter(d => d.kind === 'pdf');
+  if (App.docFilter === 'ocr') docs = docs.filter(d => d.ocr && d.ocr.status === 'done');
+  if (App.search) {
+    const n = App.search.toLowerCase();
+    docs = docs.filter(d => (d.name || '').toLowerCase().includes(n) || (d.text || '').toLowerCase().includes(n));
+  }
+  const totalBytes = App.docs.reduce((s, d) => s + (d.bytes || 0), 0);
+  return `
+  <header class="appbar">
+    <div class="appbar-row">
+      <h1 style="margin-left:2px">Documents</h1>
+      <button class="icon-btn" data-act="merge-pdfs" aria-label="Fusionner des PDF">${ICON('i-merge')}</button>
+      <button class="icon-btn" data-act="scan-camera" aria-label="Nouveau scan">${ICON('i-plus')}</button>
+    </div>
+    <label class="search">${ICON('i-search')}
+      <input id="docsSearch" type="search" placeholder="Rechercher un document…" value="${escapeHtml(App.search)}"
+        autocomplete="off">
+      ${App.search ? `<button class="clear" data-act="clear-search" aria-label="Effacer">${ICON('i-x', 'ico sm')}</button>` : ''}
+    </label>
+    <div class="filters" id="docFilters" style="padding:12px 0 0">
+      ${filters.map(([k, l]) => `<button class="chip sm ${App.docFilter === k ? 'on' : ''}"
+        data-act="filter-docs" data-key="${k}">${l}</button>`).join('')}
+    </div>
+  </header>
+  <div class="content">
+    <div class="row small muted" style="margin:0 2px 10px">
+      <span class="grow">${plural(docs.length, 'document', 'documents')} · ${fmtBytes(totalBytes)}</span>
+    </div>
+    <div class="doc-list">
+      ${docs.length ? docs.map(d => docCard(d)).join('')
+        : emptyState({
+            icon: App.search ? 'i-search' : 'i-folder',
+            title: App.search ? 'Aucun résultat' : 'Votre bibliothèque est vide',
+            text: App.search ? 'Essayez un autre mot-clé (nom ou texte reconnu).' : 'Les documents que vous scannez apparaissent ici.',
+            action: App.search ? `<button class="btn ghost" data-act="clear-search">Effacer la recherche</button>`
+              : `<button class="btn primary" data-act="scan-camera">${ICON('i-camera', 'ico sm')} Scanner un document</button>`
+          })}
+    </div>
+  </div>`;
+}
+
+/* ============================== PARAMÈTRES =============================== */
+async function viewSettings() {
+  const st = await storageInfo();
+  const pct = st.quota ? clamp((st.usage / st.quota) * 100, 0.1, 100) : 0;
+  const langs = Settings.get('ocrLangs');
+  const langLabel = { 'fra+eng': 'Français + Anglais', fra: 'Français', eng: 'Anglais' }[langs];
+  const q = Settings.get('quality');
+  return `
+  <header class="appbar">
+    <div class="appbar-row"><h1 style="margin-left:2px">Paramètres</h1></div>
+    <div class="hello" style="margin-top:8px">
+      <h2 style="font-size:20px">Préférences</h2>
+      <p>Confidentialité, OCR et stockage local.</p>
+    </div>
+  </header>
+  <div class="content">
+    <div class="banner ok">${ICON('i-shield', 'ico sm')}
+      <span><b>Aucun envoi vers un serveur.</b> Les images, le texte et les PDF restent dans le stockage
+      du navigateur sur cet appareil. Aucun compte n'est requis.</span></div>
+
+    <div class="set-group">
+      <h3>Reconnaissance de texte</h3>
+      <button class="set-row" data-act="set-langs">
+        <span class="s-ico">${ICON('i-text', 'ico sm')}</span>
+        <span class="s-body"><b>Langues OCR</b><span>${langLabel}</span></span>
+        <span class="chev">${ICON('i-chevron', 'ico sm')}</span>
+      </button>
+      <button class="set-row" data-act="set-quality">
+        <span class="s-ico">${ICON('i-image', 'ico sm')}</span>
+        <span class="s-body"><b>Qualité des exports</b><span>${q === 'high' ? 'Élevée (2400 px)' : 'Standard (1600 px)'}</span></span>
+        <span class="chev">${ICON('i-chevron', 'ico sm')}</span>
+      </button>
+      <div class="set-row">
+        <span class="s-ico">${ICON('i-sparkles', 'ico sm')}</span>
+        <span class="s-body"><b>OCR automatique</b><span>Lancer l'OCR après chaque scan</span></span>
+        <button class="switch ${Settings.get('autoOcr') ? 'on' : ''}" data-act="toggle-autoocr"
+          role="switch" aria-checked="${Settings.get('autoOcr')}" aria-label="OCR automatique"></button>
+      </div>
+    </div>
+
+    <div class="set-group">
+      <h3>Stockage local</h3>
+      <div class="set-row" style="align-items:flex-start;flex-direction:column;gap:4px">
+        <div class="row" style="width:100%">
+          <span class="s-ico">${ICON('i-folder', 'ico sm')}</span>
+          <span class="s-body">
+            <b>${fmtBytes(App.docs.reduce((s, d) => s + (d.bytes || 0), 0))} utilisés</b>
+            <span>${st.quota ? 'Sur ' + fmtBytes(st.quota) + ' disponibles' : 'Quota navigateur inconnu'}
+            ${st.fallback ? ' — mode mémoire (non persistant)' : ''}</span>
+          </span>
+        </div>
+        <div class="meter" style="width:100%"><i style="width:${pct}%"></i></div>
+        <span class="tiny muted">${pct < 1 ? 'moins de 1' : pct.toFixed(1)} % du quota du navigateur utilisé.</span>
+      </div>
+      <button class="set-row" data-act="clear-all">
+        <span class="s-ico" style="color:#B91C1C;background:#FDECEC">${ICON('i-trash', 'ico sm')}</span>
+        <span class="s-body"><b>Supprimer tous les documents</b><span>Efface tout du stockage local</span></span>
+        <span class="chev">${ICON('i-chevron', 'ico sm')}</span>
+      </button>
+    </div>
+
+    <div class="set-group">
+      <h3>À propos & fonctionnalités à venir</h3>
+      <button class="set-row" data-act="show-permissions">
+        <span class="s-ico">${ICON('i-lock', 'ico sm')}</span>
+        <span class="s-body"><b>Permissions utilisées</b><span>Caméra, fichiers — à la demande</span></span>
+        <span class="chev">${ICON('i-chevron', 'ico sm')}</span>
+      </button>
+      <button class="set-row" data-act="show-roadmap">
+        <span class="s-ico">${ICON('i-sparkles', 'ico sm')}</span>
+        <span class="s-body"><b>Feuille de route V2 → V4</b><span>IA, détection de contours, APK Android</span></span>
+        <span class="chev">${ICON('i-chevron', 'ico sm')}</span>
+      </button>
+      <button class="set-row" data-act="show-help">
+        <span class="s-ico">${ICON('i-info', 'ico sm')}</span>
+        <span class="s-body"><b>Aide & bonnes pratiques</b><span>Conseils pour un bon OCR</span></span>
+        <span class="chev">${ICON('i-chevron', 'ico sm')}</span>
+      </button>
+    </div>
+    <div class="about">
+      <b>ScanPro AI</b> — version 1.0.0 (Web)<br>
+      OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · 100 % hors-ligne après le premier chargement<br>
+      ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
+    </div>
+  </div>`;
+}
+
+/* ============================ DÉTAIL DOCUMENT ============================ */
+function viewDocDetail() {
+  const doc = App.doc;
+  if (!doc) return emptyState({ icon: 'i-alert', title: 'Document introuvable', text: 'Il a peut-être été supprimé.' });
+  const pages = App.docPages;
+  const p = pages[App.detailPage] || pages[0];
+  const tab = App.detailTab;
+  const text = doc.text || '';
+  return `
+  <header class="appbar">
+    <div class="appbar-row">
+      <button class="icon-btn" data-act="go-back" aria-label="Retour">${ICON('i-back')}</button>
+      <h1>${escapeHtml(doc.name)}</h1>
+      <button class="icon-btn" data-act="doc-menu" data-id="${doc.id}" aria-label="Actions du document">${ICON('i-more')}</button>
+    </div>
+    <div class="row small" style="margin-top:10px;color:#A9BFDF;gap:8px">
+      <span>${plural(doc.pageCount || pages.length, 'page', 'pages')}</span><span>·</span>
+      <span>${fmtDate(doc.createdAt)}</span><span>·</span>
+      <span>${fmtBytes(doc.bytes)}</span>
+    </div>
+  </header>
+  <div class="content">
+    <div class="detail-tabs">
+      <button class="${tab === 'preview' ? 'on' : ''}" data-act="detail-tab" data-tab="preview">${ICON('i-eye')} Aperçu</button>
+      <button class="${tab === 'text' ? 'on' : ''}" data-act="detail-tab" data-tab="text">${ICON('i-text')} Texte OCR</button>
+      <button class="${tab === 'ai' ? 'on' : ''}" data-act="detail-tab" data-tab="ai">${ICON('i-sparkles')} Assistant IA</button>
+    </div>
+
+    ${tab === 'preview' ? previewTab(doc, pages, p) : ''}
+    ${tab === 'text' ? textTab(doc, text) : ''}
+    ${tab === 'ai' ? aiTab(doc) : ''}
+  </div>`;
+}
+
+function previewTab(doc, pages, p) {
+  if (!pages.length) {
+    // PDF importé / fusionné : pas de pages rendues, on affiche la vignette de la 1re page
+    return `
+    ${doc.thumb
+      ? `<div class="preview-box"><img id="previewImg" src="${doc.thumb}" alt="Première page du PDF"></div>
+         <div class="preview-nav"><span>Aperçu de la 1<sup>re</sup> page</span>
+           <span>${plural(doc.pageCount || 0, 'page', 'pages')}</span></div>`
+      : `<div class="banner info">${ICON('i-info', 'ico sm')}
+          <span>Ce PDF de ${plural(doc.pageCount || 0, 'page', 'pages')} est conservé intact.
+          Son aperçu n'a pas pu être généré sur cet appareil, mais le fichier reste téléchargeable,
+          partageable et imprimable.</span></div>`}
+    <div class="btn-col mt14">
+      <button class="btn primary" data-act="doc-pdf-download">${ICON('i-download', 'ico sm')} Télécharger le PDF</button>
+      <div class="btn-row">
+        <button class="btn ghost" data-act="doc-share-pdf">${ICON('i-share', 'ico sm')} Partager</button>
+        <button class="btn ghost" data-act="doc-print">${ICON('i-printer', 'ico sm')} Imprimer</button>
+      </div>
+      <button class="btn ghost" data-act="doc-rename">${ICON('i-edit', 'ico sm')} Renommer</button>
+      <button class="btn danger" data-act="doc-delete">${ICON('i-trash', 'ico sm')} Supprimer le document</button>
+    </div>
+    <div class="banner warn mt14">${ICON('i-alert', 'ico sm')}
+      <span><b>PDF importé :</b> il est conservé tel quel (l'original n'est pas réencodé).
+      L'OCR page par page des PDF importés et la modification de leurs pages arrivent en V2.</span></div>`;
+  }
+  return `
+  <div class="preview-box">
+    <img id="previewImg" src="${p.thumb || p.src}" alt="Aperçu de la page ${App.detailPage + 1}">
+  </div>
+  <div class="preview-nav">
+    <button class="btn xs ghost" data-act="preview-prev" ${App.detailPage <= 0 ? 'disabled' : ''}>${ICON('i-back', 'ico sm')} Préc.</button>
+    <span>Page ${App.detailPage + 1} / ${pages.length}</span>
+    <button class="btn xs ghost" data-act="preview-next" ${App.detailPage >= pages.length - 1 ? 'disabled' : ''}>Suiv. ${ICON('i-chevron', 'ico sm')}</button>
+  </div>
+  <div class="btn-col mt14">
+    <button class="btn primary" data-act="doc-pdf-download">${ICON('i-download', 'ico sm')} Télécharger le PDF</button>
+    <div class="btn-row">
+      <button class="btn ghost" data-act="doc-share-pdf">${ICON('i-share', 'ico sm')} Partager</button>
+      <button class="btn ghost" data-act="doc-print">${ICON('i-printer', 'ico sm')} Imprimer</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn soft" data-act="doc-export-images">${ICON('i-image', 'ico sm')} Exporter en images</button>
+      <button class="btn soft" data-act="doc-edit">${ICON('i-edit', 'ico sm')} Modifier</button>
+    </div>
+    <button class="btn ghost" data-act="doc-ocr">${ICON('i-text', 'ico sm')} ${doc.ocr && doc.ocr.status === 'done' ? 'Relancer l\'OCR' : 'Extraire le texte (OCR)'}</button>
+    <button class="btn ghost" data-act="doc-rename">${ICON('i-edit', 'ico sm')} Renommer</button>
+    <button class="btn danger" data-act="doc-delete">${ICON('i-trash', 'ico sm')} Supprimer le document</button>
+  </div>`;
+}
+
+function textTab(doc, text) {
+  const ok = doc.ocr && doc.ocr.status === 'done';
+  return `
+  ${ok ? '' : `<div class="banner warn">${ICON('i-alert', 'ico sm')}
+    <span><b>Aucun texte reconnu pour ce document.</b> Lancez l'extraction OCR : elle s'exécute localement
+    et peut prendre quelques secondes par page.</span></div>
+    <button class="btn primary mb14" data-act="doc-ocr">${ICON('i-text', 'ico sm')} Extraire le texte (OCR)</button>`}
+  <textarea class="textarea" id="ocrEditor" spellcheck="false"
+    placeholder="Le texte reconnu apparaîtra ici. Vous pourrez le corriger, le copier et le partager.">${escapeHtml(text)}</textarea>
+  <div class="text-meta">
+    <span>${text ? plural(text.trim().split(/\s+/).filter(Boolean).length, 'mot', 'mots') + ' · ' + plural(text.length, 'caractère', 'caractères') : 'Aucun texte'}
+    ${ok && doc.ocr.confidence ? ' · confiance ' + doc.ocr.confidence + ' %' : ''}</span>
+    <span id="saveHint" class="tiny"></span>
+  </div>
+  <div class="btn-row mt10">
+    <button class="btn ghost" data-act="text-copy">${ICON('i-copy', 'ico sm')} Copier</button>
+    <button class="btn ghost" data-act="text-share">${ICON('i-share', 'ico sm')} Partager</button>
+  </div>
+  <div class="btn-row mt10">
+    <button class="btn soft" data-act="text-save">${ICON('i-check', 'ico sm')} Enregistrer</button>
+    <button class="btn soft" data-act="text-find">${ICON('i-search', 'ico sm')} Rechercher</button>
+  </div>
+  ${ok ? `<div class="row mt14 small muted" style="gap:6px">${ICON('i-info', 'ico sm')}
+    <span>Texte extrait le ${fmtDate(doc.ocr.at || doc.createdAt)} · ${doc.ocr.confidence || 0} % de confiance.</span></div>` : ''}`;
+}
+
+function aiTab(doc) {
+  const text = doc.text || '';
+  const hasText = text.trim().length > 40;
+  return `
+  <div class="ai-note mb14">${ICON('i-alert', 'ico sm')}
+    <span><b>Assistant IA — aperçu.</b> Les analyses ci-dessous fonctionnent <b>hors-ligne</b> avec des règles
+    déterministes (pas de modèle de langage). Les résumés avancés, l'extraction intelligente de factures et
+    la classification fine nécessiteront un serveur ou une clé API : ces fonctions sont marquées
+    <span class="soon">À venir</span> et ne prétendent pas fonctionner.</span></div>
+
+  ${hasText ? '' : `<div class="banner warn">${ICON('i-text', 'ico sm')}
+    <span>Lancez d'abord l'OCR : l'assistant analyse le texte reconnu.</span></div>
+    <button class="btn primary mb14" data-act="doc-ocr">${ICON('i-text', 'ico sm')} Extraire le texte</button>`}
+
+  <div class="ai-card">
+    <h4>${ICON('i-sparkles', 'ico sm')} Classification du document
+      <span class="tag ok" style="margin-left:auto">Hors-ligne</span></h4>
+    <div id="aiClass">${hasText ? '' : '<p class="small muted mb0">Disponible après l\'OCR.</p>'}</div>
+    ${hasText ? `<button class="btn xs soft mt10" data-act="ai-classify">Analyser</button>` : ''}
+  </div>
+
+  <div class="ai-card">
+    <h4>${ICON('i-text', 'ico sm')} Entités détectées
+      <span class="tag ok" style="margin-left:auto">Hors-ligne</span></h4>
+    <div id="aiEntities">${hasText ? '' : '<p class="small muted mb0">Disponible après l\'OCR.</p>'}</div>
+    ${hasText ? `<button class="btn xs soft mt10" data-act="ai-entities">Extraction dates, montants, références</button>` : ''}
+  </div>
+
+  <div class="ai-card">
+    <h4>${ICON('i-file', 'ico sm')} Résumé automatique
+      <span class="tag ok" style="margin-left:auto">Hors-ligne</span></h4>
+    <div id="aiSummary">${hasText ? '' : '<p class="small muted mb0">Disponible après l\'OCR.</p>'}</div>
+    ${hasText ? `<button class="btn xs soft mt10" data-act="ai-summary">Générer un résumé</button>` : ''}
+  </div>
+
+  <div class="ai-card">
+    <h4>${ICON('i-search', 'ico sm')} Recherche dans le document</h4>
+    <div class="field" style="margin:2px 0 0">
+      <input id="aiQuery" placeholder="Ex. : numéro de facture, montant, date…" autocomplete="off">
+    </div>
+    <button class="btn xs soft mt10" data-act="ai-search">Rechercher</button>
+    <div id="aiSearchOut" class="mt10"></div>
+  </div>
+
+  <div class="ai-card">
+    <h4>${ICON('i-sparkles', 'ico sm')} Facture → données structurées
+      <span class="soon" style="margin-left:auto">Serveur / API requis</span></h4>
+    <p class="small muted" style="margin:0">Extraction fiable du fournisseur, des lignes d'articles, de la TVA
+      et du total avec un modèle de vision. Nécessite un backend ou une clé API côté serveur —
+      <b>non implémenté en V1</b>.</p>
+    <button class="btn xs ghost mt10" data-act="ai-invoice-demo">Voir l'extraction locale approximative</button>
+    <div id="aiInvoiceOut" class="mt10"></div>
+  </div>
+
+  <div class="ai-card">
+    <h4>${ICON('i-sparkles', 'ico sm')} Résumé IA avancé &amp; questions-réponses
+      <span class="soon" style="margin-left:auto">Serveur / API requis</span></h4>
+    <p class="small muted" style="margin:0">Requiert un service externe (LLM). ScanPro AI n'envoie
+      <b>aucun</b> document à un serveur sans votre accord explicite ; cette connexion n'est pas configurée.</p>
+    <button class="btn xs ghost mt10" data-act="show-ia-requirements">Ce qu'il faut pour l'activer</button>
+  </div>`;
+}
+
+/* -------------------------------------------------- rendu d'une vue (route) -- */
+async function render() {
+  const view = $('#view');
+  document.body.classList.toggle('detail-open', App.route === 'detail');
+  $$('.nav-item').forEach(b => b.classList.toggle('active',
+    (App.route === 'docs' && b.dataset.nav === 'docs') ||
+    (App.route === 'settings' && b.dataset.nav === 'settings') ||
+    (['home', 'detail'].includes(App.route) && b.dataset.nav === 'home')));
+
+  if (App.route === 'home') view.innerHTML = viewHome();
+  else if (App.route === 'docs') view.innerHTML = viewDocs();
+  else if (App.route === 'settings') { view.innerHTML = await viewSettings(); }
+  else if (App.route === 'detail') view.innerHTML = viewDocDetail();
+
+  if (App.route === 'home' || App.route === 'docs') {
+    const inp = $('#homeSearch') || $('#docsSearch');
+    if (inp) {
+      const target = inp.id;
+      if (App._focusSearch) { setTimeout(() => inp.focus(), 60); App._focusSearch = false; }
+      if (inp.value) inp.setSelectionRange(inp.value.length, inp.value.length);
+    }
+    if (App._focusSearch) { const i = $('#homeSearch') || $('#docsSearch'); if (i) setTimeout(() => i.focus(), 80); }
+  }
+  if (App.route === 'detail') {
+    const bar = $('.appbar .row'); // rien
+  }
+  // aperçu HD + analyses IA déjà calculées
+  if (App.route === 'detail' && App.detailTab === 'preview' && App.docPages.length) showFullPreview();
+  if (App.route === 'detail' && App.detailTab === 'ai') rerenderAiPanels();
+  // écouteur de saisie OCR
+  const ed = $('#ocrEditor');
+  if (ed) {
+    let t = null;
+    ed.addEventListener('input', () => {
+      const hint = $('#saveHint');
+      if (hint) hint.textContent = 'Modifications non enregistrées';
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        App.doc.text = ed.value;
+        App.doc.modified = true;
+        await Repo.update(App.doc);
+        if (hint) hint.textContent = 'Enregistré automatiquement ✓';
+      }, 900);
+    });
+  }
+  window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+}
+
+</script>
+<script>
+/* =============================================================================
+ * ScanPro AI — interactions : navigation, capture caméra, éditeur de pages,
+ * actions documents, OCR, export PDF, assistant local.
+ * ========================================================================== */
+'use strict';
+
+/* ------------------------------------------------------------ navigation -- */
+const NAV = { home: 'Accueil', docs: 'Documents', settings: 'Paramètres' };
+
+async function go(route, param = null, { push = true, focusSearch = false } = {}) {
+  if (App.route === 'capture') closeCamera();
+  App.route = route; App.param = param;
+  App._focusSearch = focusSearch;
+  if (route === 'detail') {
+    App.doc = await Repo.doc(param);
+    App.docPages = App.doc ? await Repo.pages(param) : [];
+    App.detailPage = 0;
+    App.detailTab = App.detailTab || 'preview';
+  }
+  $('#bottomNav').style.display = (route === 'capture' || App.route === 'editor') ? 'none' : 'flex';
+  if (push) {
+    try { history.pushState({ route, param }, '', '#' + route + (param ? '/' + param : '')); } catch (e) {}
+  }
+  await render();
+}
+
+window.addEventListener('popstate', (e) => {
+  const st = e.state || { route: 'home' };
+  if (App.route === 'capture' || $('#editorScreen')) { closeCamera(); $('#captureRoot').innerHTML = ''; App.draft = null; }
+  go(st.route || 'home', st.param || null, { push: false });
+});
+
+/* ================================================================ CAMÉRA == */
+function cameraSupported() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+async function openCamera() {
+  const root = $('#captureRoot');
+  App.draft = App.draft || { name: 'Scan ' + new Date().toLocaleDateString('fr-FR'), pages: [], active: 0 };
+  App.route = 'capture';
+  $('#bottomNav').style.display = 'none';
+  root.innerHTML = `
+  <div class="capture" id="cameraScreen">
+    <div class="cam-stage">
+      <video id="camVideo" playsinline autoplay muted></video>
+      <div class="cam-topbar">
+        <button class="icon-btn" data-act="camera-close" aria-label="Fermer">${ICON('i-x')}</button>
+        <span class="spacer"></span>
+        <span class="pill" id="camPagesPill">${plural(App.draft.pages.length, 'page', 'pages')}</span>
+        <button class="icon-btn" data-act="camera-torch" aria-label="Torche" id="torchBtn">${ICON('i-sun')}</button>
+      </div>
+      <div class="cam-overlay" id="camOverlay">
+        <div class="cam-frame"><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="cam-hint" id="camHint">Placez le document dans le cadre — restez stable</div>
+    </div>
+    <div class="cam-bottom">
+      <div id="camPages" class="cam-pages" style="display:none"></div>
+      <div id="camError"></div>
+      <div class="shutter-row">
+        <button class="side-action" data-act="camera-import-gallery">
+          <span class="sa-btn">${ICON('i-image', 'ico sm')}</span>Galerie
+        </button>
+        <button class="shutter" data-act="camera-shoot" aria-label="Prendre une photo"><i></i></button>
+        <button class="side-action" data-act="camera-done">
+          <span class="sa-btn">${ICON('i-check', 'ico sm')}</span>Terminer
+        </button>
+      </div>
+    </div>
+  </div>`;
+  updateCamPages();
+  await startStream();
+}
+
+async function startStream() {
+  const video = $('#camVideo');
+  const errBox = $('#camError');
+  const overlay = $('#camOverlay');
+  if (!cameraSupported()) {
+    overlay.style.display = 'none';
+    errBox.innerHTML = `<div class="cam-warn">${ICON('i-alert', 'ico sm')}
+      <span>Ce navigateur ne permet pas l'accès direct à la caméra (API absente).
+      Utilisez <b>Galerie</b> pour photographier via l'application Appareil photo, ou ouvrez l'app en HTTPS.</span></div>`;
+    return;
+  }
+  if (!window.isSecureContext) {
+    overlay.style.display = 'none';
+    errBox.innerHTML = `<div class="cam-warn">${ICON('i-alert', 'ico sm')}
+      <span><b>Contexte non sécurisé :</b> la caméra n'est autorisée qu'en <b>HTTPS</b> (ou localhost).
+      Utilisez le bouton <b>Galerie</b> en attendant.</span></div>`;
+    return;
+  }
+  try {
+    const constraints = {
+      audio: false,
+      video: App.camera.facing === 'environment'
+        ? { facingMode: { ideal: 'environment' }, width: { ideal: 2048 }, height: { ideal: 1536 } }
+        : { facingMode: 'user', width: { ideal: 1280 } }
+    };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    App.camera.stream = stream;
+    video.srcObject = stream;
+    await video.play().catch(() => {});
+    const track = stream.getVideoTracks()[0];
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    $('#torchBtn').style.display = caps.torch ? 'grid' : 'none';
+    errBox.innerHTML = '';
+    overlay.style.display = 'grid';
+  } catch (err) {
+    overlay.style.display = 'none';
+    const map = {
+      NotAllowedError: "L'accès à la caméra a été refusé. Autorisez la caméra dans les réglages du navigateur (icône cadenas → Autorisations), puis réessayez.",
+      PermissionDeniedError: "L'accès à la caméra a été refusé par le système.",
+      NotFoundError: 'Aucune caméra détectée sur cet appareil.',
+      NotReadableError: "La caméra est déjà utilisée par une autre application.",
+      OverconstrainedError: 'La caméra ne prend pas en charge la résolution demandée.'
+    };
+    errBox.innerHTML = `<div class="cam-warn">${ICON('i-alert', 'ico sm')}
+      <span>${escapeHtml(map[err.name] || ('Caméra indisponible : ' + err.message))}<br>
+      Vous pouvez importer une photo avec <b>Galerie</b>.</span></div>`;
+  }
+}
+
+function closeCamera() {
+  if (App.camera.stream) {
+    App.camera.stream.getTracks().forEach(t => t.stop());
+    App.camera.stream = null;
+  }
+  const v = $('#camVideo'); if (v) v.srcObject = null;
+  App.route = App.route === 'capture' ? 'home' : App.route;
+  $('#bottomNav').style.display = 'flex';
+}
+
+function updateCamPages() {
+  const box = $('#camPages'); if (!box) return;
+  const pages = App.draft ? App.draft.pages : [];
+  box.style.display = pages.length ? 'flex' : 'none';
+  box.innerHTML = pages.map((p, i) =>
+    `<div class="cam-page"><b>${i + 1}</b><img src="${p.thumb || p.src}" alt=""></div>`).join('');
+  const pill = $('#camPagesPill');
+  if (pill) pill.textContent = pages.length ? plural(pages.length, 'page', 'pages') : 'Aucune page';
+  const hint = $('#camHint');
+  if (hint) hint.textContent = pages.length
+    ? plural(pages.length, 'page capturée', 'pages capturées') + ' — continuez ou appuyez sur Terminer'
+    : 'Placez le document dans le cadre — restez stable';
+}
+
+async function capturePhoto() {
+  const video = $('#camVideo');
+  if (!video || !video.videoWidth) {
+    toast('La caméra n\'est pas encore prête', 'err');
+    return;
+  }
+  const c = document.createElement('canvas');
+  c.width = video.videoWidth; c.height = video.videoHeight;
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+  const dataUrl = c.toDataURL('image/jpeg', 0.92);
+  await addPageFromDataUrl(dataUrl);
+  // flash visuel
+  const app = $('#cameraScreen');
+  if (app) {
+    const fl = document.createElement('div');
+    fl.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:70;opacity:.85;transition:opacity .35s';
+    document.body.appendChild(fl);
+    requestAnimationFrame(() => { fl.style.opacity = '0'; setTimeout(() => fl.remove(), 400); });
+  }
+  if (navigator.vibrate) navigator.vibrate(18);
+}
+
+async function addPageFromDataUrl(src) {
+  const norm = await normalizeSource(src);
+  const thumb = await ImageOps.thumb(norm);
+  App.draft.pages.push({
+    id: uid('pg'), src: norm, crop: { x: 0, y: 0, w: 1, h: 1 }, rotate: 0,
+    filter: Settings.get('defaultFilter') || 'none', thumb, adj: { b: 1, c: 1 }
+  });
+  App.draft.active = App.draft.pages.length - 1;
+  updateCamPages();
+  return App.draft.pages[App.draft.pages.length - 1];
+}
+async function normalizeSource(src) {
+  const img = await ImageOps.load(src);
+  const maxPx = 2400;
+  const scale = Math.min(1, maxPx / Math.max(img.naturalWidth, img.naturalHeight));
+  if (scale === 1 && src.length < 2.5e6) return src;
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * scale);
+  c.height = Math.round(img.naturalHeight * scale);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.9);
+}
+
+async function importImagesToDraft(files) {
+  if (!files || !files.length) return 0;
+  let added = 0;
+  for (const f of files) {
+    try {
+      const { dataUrl } = await ImageOps.fileToDataUrl(f, 2400, 0.9);
+      await addPageFromDataUrl(dataUrl);
+      added++;
+    } catch (e) {
+      toast(e.message || 'Import impossible', 'err');
+    }
+  }
+  return added;
+}
+
+/* =============================================================== ÉDITEUR == */
+function renderEditor() {
+  const d = App.draft;
+  if (!d) return;
+  const p = d.pages[d.active] || null;
+  const root = $('#captureRoot');
+  $('#bottomNav').style.display = 'none';
+  root.innerHTML = `
+  <div id="editorScreen" style="position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;
+       flex-direction:column;max-width:600px;margin:0 auto;overflow:hidden">
+    <header class="appbar plain" style="border-radius:0;padding-bottom:14px">
+      <div class="appbar-row">
+        <button class="icon-btn" data-act="editor-exit" aria-label="Fermer">${ICON('i-x')}</button>
+        <div class="grow" style="min-width:0">
+          <input id="draftName" value="${escapeHtml(d.name)}" aria-label="Nom du document"
+            style="width:100%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);
+            color:#fff;border-radius:11px;min-height:38px;padding:0 11px;font-size:14px;font-weight:650">
+          <div class="tiny" style="color:#A9BFDF;margin-top:5px">${plural(d.pages.length, 'page', 'pages')} · traitement local</div>
+        </div>
+        <button class="icon-btn" data-act="editor-save" aria-label="Enregistrer">${ICON('i-check')}</button>
+      </div>
+    </header>
+
+    <div class="editor-wrap">
+      <div class="editor-stage" id="editorStage">
+        ${p ? `<div id="cropHost" style="position:relative;display:inline-block;line-height:0">
+            <canvas id="editorCanvas"></canvas>
+            <div id="cropLayer"><div id="cropRect">
+              <i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i>
+            </div></div>
+          </div>`
+        : `<div class="stage-empty">Aucune page pour le moment.<br>Ajoutez une photo pour commencer.</div>`}
+      </div>
+      <div class="crop-toolbar" id="cropToolbar" style="display:none">
+        <button class="btn" data-act="crop-cancel">Annuler</button>
+        <button class="btn" data-act="crop-full">Toute l'image</button>
+        <button class="btn go" data-act="crop-apply">Valider le recadrage</button>
+      </div>
+    </div>
+
+    <div style="flex:1;overflow:auto;background:var(--bg);padding-bottom:8px;display:flex;flex-direction:column">
+      <div class="filters" id="filterRow">
+        ${[['doc', 'Document', '#fff'], ['color', 'Couleur', '#F87171'], ['gray', 'Gris', '#9CA3AF'],
+           ['bw', 'Noir & blanc', '#111827'], ['none', 'Original', '#BFD3F6']]
+          .map(([k, l, c]) => `<button class="chip sm ${(p && p.filter) === k ? 'on' : ''}"
+            data-act="editor-filter" data-f="${k}"><span class="dot" style="background:${c}"></span>${l}</button>`).join('')}
+      </div>
+      <div class="tool-row">
+        <button class="tool" data-act="editor-crop">${ICON('i-crop')}Recadrer</button>
+        <button class="tool" data-act="editor-rotate">${ICON('i-rotate')}Pivoter</button>
+        <button class="tool" data-act="editor-adjust">${ICON('i-sun')}Luminosité</button>
+        <button class="tool" data-act="editor-duplicate">${ICON('i-copy')}Dupliquer</button>
+        <button class="tool" data-act="editor-delete-page">${ICON('i-trash')}Supprimer</button>
+      </div>
+      <div class="section-head" style="margin:12px 18px 0">
+        <h2 style="font-size:13px">Pages</h2>
+        <span class="tiny muted">Glissez pour défiler</span>
+      </div>
+      <div class="pages-strip" id="pagesStrip">
+        ${d.pages.map((pg, i) => `
+          <div class="page-thumb ${i === d.active ? 'on' : ''}" data-act="editor-select-page" data-i="${i}">
+            <div class="pt-img"><img src="${pg.thumb || pg.src}" alt="Page ${i + 1}">
+              ${d.pages.length > 1 ? `<button class="del" data-act="editor-remove-page" data-i="${i}"
+                aria-label="Supprimer la page ${i + 1}">${ICON('i-x')}</button>` : ''}
+            </div>
+            <span>Page ${i + 1}</span>
+          </div>`).join('')}
+        <button class="add-page" data-act="editor-add-page" aria-label="Ajouter une page">${ICON('i-plus')}</button>
+      </div>
+      <div class="sticky-actions">
+        <button class="btn ghost" data-act="editor-ocr">${ICON('i-text', 'ico sm')} Extraire le texte</button>
+        <button class="btn primary" data-act="editor-pdf">${ICON('i-pdf', 'ico sm')} Générer le PDF</button>
+      </div>
+    </div>
+  </div>`;
+  drawEditorCanvas();
+}
+
+let editorRenderToken = 0;
+async function drawEditorCanvas() {
+  const d = App.draft;
+  const canvas = $('#editorCanvas');
+  if (!d || !canvas) return;
+  const p = d.pages[d.active];
+  if (!p) return;
+  const token = ++editorRenderToken;
+  const tmp = d.cropMode
+    ? Object.assign({}, p, { crop: { x: 0, y: 0, w: 1, h: 1 } })
+    : p;
+  const c = await ImageOps.render(tmp, { maxPx: 1400, quality: 0.9 });
+  if (token !== editorRenderToken) return;
+  canvas.width = c.width; canvas.height = c.height;
+  canvas.getContext('2d').drawImage(c, 0, 0);
+  canvas.style.maxHeight = '38dvh';
+  if (d.cropMode) mountCropUI();
+}
+
+/* ------------------------------------------------------------ recadrage -- */
+function mountCropUI() {
+  const d = App.draft;
+  const layer = $('#cropLayer'), rectEl = $('#cropRect'), host = $('#cropHost');
+  if (!layer || !rectEl || !host) return;
+  layer.classList.add('on');
+  layer.style.cssText = 'position:absolute;inset:0;touch-action:none;overflow:hidden';
+  const r = d.cropRect || Object.assign({}, d.pages[d.active].crop);
+  const paint = () => {
+    rectEl.style.cssText = `position:absolute;left:${r.x * 100}%;top:${r.y * 100}%;
+      width:${r.w * 100}%;height:${r.h * 100}%;border:2px solid #7FB2FF;
+      box-shadow:0 0 0 9999px rgba(2,6,16,.55);box-sizing:border-box;cursor:move`;
+    $$('#cropRect i').forEach(h => {
+      const pos = h.dataset.h;
+      h.style.cssText = `position:absolute;width:22px;height:22px;background:#fff;border:2px solid #2563EB;
+        border-radius:6px;${pos.includes('n') ? 'top:-11px' : 'bottom:-11px'};
+        ${pos.includes('w') ? 'left:-11px' : 'right:-11px'};cursor:${pos === 'nw' || pos === 'se' ? 'nwse-resize' : 'nesw-resize'}`;
+    });
+  };
+  paint();
+  const box = layer.getBoundingClientRect();
+  let mode = null, start = null, base = null;
+  const px = (v) => v / ((host.querySelector('canvas') || {}).clientWidth || box.width);
+  const py = (v) => v / ((host.querySelector('canvas') || {}).clientHeight || box.height);
+
+  layer.onpointerdown = (e) => {
+    const cw = host.querySelector('canvas').clientWidth || box.width;
+    const ch = host.querySelector('canvas').clientHeight || box.height;
+    const rect = host.querySelector('canvas').getBoundingClientRect();
+    mode = e.target.dataset.h || (e.target === rectEl ? 'move' : null);
+    if (!mode) return;
+    e.preventDefault();
+    layer.setPointerCapture(e.pointerId);
+    start = { x: e.clientX, y: e.clientY, cw, ch, rect };
+    base = Object.assign({}, r);
+  };
+  layer.onpointermove = (e) => {
+    if (!mode) return;
+    const dx = (e.clientX - start.x) / start.cw;
+    const dy = (e.clientY - start.y) / start.ch;
+    const min = 0.06;
+    if (mode === 'move') {
+      r.x = clamp(base.x + dx, 0, 1 - r.w);
+      r.y = clamp(base.y + dy, 0, 1 - r.h);
+    } else {
+      let x1 = base.x, y1 = base.y, x2 = base.x + base.w, y2 = base.y + base.h;
+      if (mode.includes('w')) x1 = clamp(base.x + dx, 0, x2 - min);
+      if (mode.includes('e')) x2 = clamp(base.x + base.w + dx, x1 + min, 1);
+      if (mode.includes('n')) y1 = clamp(base.y + dy, 0, y2 - min);
+      if (mode.includes('s')) y2 = clamp(base.y + base.h + dy, y1 + min, 1);
+      r.x = x1; r.y = y1; r.w = x2 - x1; r.h = y2 - y1;
+    }
+    paint();
+  };
+  layer.onpointerup = () => { mode = null; };
+  d.cropRect = r;
+  $('#cropToolbar').style.display = 'flex';
+  const cancel = () => { d.cropMode = false; delete d.cropRect; $('#cropToolbar').style.display = 'none';
+    $('#cropLayer').classList.remove('on'); drawEditorCanvas(); };
+  Actions['crop-cancel'] = cancel;
+  Actions['crop-full'] = () => { d.cropRect = { x: 0, y: 0, w: 1, h: 1 }; paint(); };
+  Actions['crop-apply'] = async () => {
+    const pg = d.pages[d.active];
+    pg.crop = Object.assign({}, d.cropRect);
+    pg.thumb = await ImageOps.thumb(await ImageOps.render(pg, { maxPx: 400, quality: 0.7 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+    d.cropMode = false; d.cropRect = null;
+    $('#cropToolbar').style.display = 'none';
+    renderEditor();
+  };
+}
+
+/* -------------------------------------------------------------- éditeur -- */
+async function editorSetFilter(f) {
+  const d = App.draft, p = d.pages[d.active];
+  p.filter = f;
+  renderEditor();
+}
+async function editorRotate() {
+  const d = App.draft, p = d.pages[d.active];
+  p.rotate = ((p.rotate || 0) + 90) % 360;
+  // le recadrage reste cohérent : on repart de l'image complète si rotation
+  p.crop = { x: 0, y: 0, w: 1, h: 1 };
+  p.thumb = await ImageOps.thumb(await ImageOps.render(p, { maxPx: 400, quality: 0.7 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+  renderEditor();
+}
+function editorAdjust() {
+  const p = App.draft.pages[App.draft.active];
+  p.adj = p.adj || { b: 1, c: 1 };
+  const s = openSheet({
+    title: 'Réglages de l\'image',
+    sub: 'Ajustez la luminosité et le contraste, puis validez.',
+    body: `
+      <div class="field"><label>Luminosité <b id="bv">${Math.round((p.adj.b - 1) * 100)}</b></label>
+        <input id="adjB" type="range" min="60" max="150" value="${Math.round(p.adj.b * 100)}" style="min-height:32px"></div>
+      <div class="field"><label>Contraste <b id="cv">${Math.round((p.adj.c - 1) * 100)}</b></label>
+        <input id="adjC" type="range" min="60" max="180" value="${Math.round(p.adj.c * 100)}" style="min-height:32px"></div>`,
+    actions: [{ label: 'Réinitialiser', cls: 'ghost', act: 'adj-reset' },
+              { label: 'Appliquer', cls: 'primary', act: 'adj-apply', close: true }]
+  });
+  const b = $('#adjB', s), c = $('#adjC', s);
+  const upd = () => {
+    $('#bv', s).textContent = b.value - 100;
+    $('#cv', s).textContent = c.value - 100;
+    p.adj = { b: b.value / 100, c: c.value / 100 };
+    drawEditorCanvas();
+  };
+  b.addEventListener('input', upd); c.addEventListener('input', upd);
+  $('[data-act="adj-reset"]', s).addEventListener('click', () => {
+    p.adj = { b: 1, c: 1 }; b.value = 100; c.value = 100; upd();
+  });
+  $('[data-act="adj-apply"]', s).addEventListener('click', () => { closeSheet(); renderEditor(); });
+}
+
+async function editorAddPage() {
+  const files = await pickFiles({ accept: 'image/*', multiple: true });
+  if (!files.length) return;
+  const n = await importImagesToDraft(files);
+  if (n) { renderEditor(); toast(plural(n, 'page ajoutée', 'pages ajoutées'), 'ok'); }
+}
+
+async function saveDraft({ silent = false } = {}) {
+  const d = App.draft;
+  if (!d || !d.pages.length) { toast('Ajoutez au moins une page', 'err'); return null; }
+  d.name = ($('#draftName') && $('#draftName').value.trim()) || d.name || 'Document';
+  // recalcule les vignettes à jour
+  for (const p of d.pages) {
+    if (!p.thumb) p.thumb = await ImageOps.thumb(await ImageOps.render(p, { maxPx: 400, quality: 0.7 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+  }
+  let doc;
+  if (d.docId) {
+    doc = await Repo.doc(d.docId);
+    doc.name = d.name;
+    doc.modified = true;
+    doc.thumb = d.pages[0].thumb;
+    doc.bytes = await Repo.replacePages(d.docId, d.pages);
+    doc.pageCount = d.pages.length;
+    doc.ocr = { status: 'none', at: null, confidence: 0 };
+    doc.text = '';
+    await Repo.update(doc);
+  } else {
+    doc = await Repo.create({ name: d.name, pages: d.pages, source: 'scan' });
+  }
+  if (!silent) toast('Document enregistré dans « Mes documents »', 'ok');
+  return doc;
+}
+
+async function editorExit() {
+  const d = App.draft;
+  if (d && d.pages.length) {
+    confirmSheet({
+      title: 'Quitter le scan ?',
+      sub: 'Enregistrez votre travail pour retrouver les pages dans « Mes documents ».',
+      okLabel: 'Enregistrer et quitter',
+      onOk: async () => {
+        await saveDraft({ silent: true });
+        App.draft = null;
+        $('#captureRoot').innerHTML = '';
+        go('home');
+        toast('Document enregistré', 'ok');
+      }
+    });
+    const sheet = $('#modalRoot .sheet');
+    if (sheet) {
+      const cancel = document.createElement('button');
+      cancel.className = 'btn danger wide';
+      cancel.textContent = 'Abandonner le scan';
+      cancel.addEventListener('click', () => {
+        closeSheet();
+        App.draft = null;
+        $('#captureRoot').innerHTML = '';
+        go('home');
+      });
+      sheet.querySelector('.sheet-actions').after(cancel);
+    }
+  } else {
+    App.draft = null;
+    $('#captureRoot').innerHTML = '';
+    go('home');
+  }
+}
+
+async function editorGeneratePdf({ save = true, download = true } = {}) {
+  const d = App.draft;
+  if (!d || !d.pages.length) { toast('Aucune page à exporter', 'err'); return null; }
+  let doc = null;
+  try {
+    busyBar(true);
+    const quality = Settings.get('quality') === 'high' ? 0.92 : 0.8;
+    const maxPx = Settings.get('quality') === 'high' ? 2400 : 1600;
+    d.name = ($('#draftName') && $('#draftName').value.trim()) || d.name;
+    const { blob } = await PDF.build(d.pages, {
+      name: d.name, quality, maxPx,
+      onProgress: (p, label) => { const hint = $('#draftName'); if (hint && label) hint.setAttribute('aria-label', label); }
+    });
+    if (download) downloadBlob(blob, slugify(d.name) + '.pdf');
+    if (save) doc = await saveDraft({ silent: true });
+    busyBar(false);
+    toast('PDF généré (' + plural(d.pages.length, 'page', 'pages') + ', ' + fmtBytes(blob.size) + ')', 'ok');
+    App.draft = null;
+    $('#captureRoot').innerHTML = '';
+    if (doc) go('detail', doc.id);
+    else go('home');
+    return blob;
+  } catch (err) {
+    busyBar(false);
+    console.error(err);
+    toast('Génération PDF impossible : ' + (err.message || 'erreur'), 'err', 5000);
+    return null;
+  }
+}
+
+async function editorOcr() {
+  const d = App.draft;
+  if (!d || !d.pages.length) return;
+  let results;
+  try {
+    results = await runOcr(d.pages);
+  } catch (e) { return; }
+  if (!results) return;
+  const full = results.map((r, i) => `— Page ${i + 1} —\n${r.text}`).join('\n\n').trim();
+  const avg = Math.round(results.reduce((s, r) => s + r.confidence, 0) / results.length);
+  const s = openSheet({
+    title: 'Texte reconnu',
+    sub: `${plural(results.length, 'page analysée', 'pages analysées')} · confiance moyenne ${avg} %`,
+    body: `<textarea class="textarea" id="draftOcrText" style="min-height:200px">${escapeHtml(full)}</textarea>
+      <div class="btn-row mt10">
+        <button class="btn ghost" data-act="draft-ocr-copy">${ICON('i-copy', 'ico sm')} Copier</button>
+        <button class="btn ghost" data-act="draft-ocr-share">${ICON('i-share', 'ico sm')} Partager</button>
+      </div>`,
+    actions: [{ label: 'Fermer', cls: 'ghost' }, { label: 'Enregistrer le document', cls: 'primary', act: 'draft-ocr-save' }]
+  });
+  const ta = $('#draftOcrText', s);
+  $('[data-act="draft-ocr-copy"]', s).addEventListener('click', () => copyText(ta.value));
+  $('[data-act="draft-ocr-share"]', s).addEventListener('click', () => shareText(ta.value));
+  $('[data-act="draft-ocr-save"]', s).addEventListener('click', async () => {
+    const text = ta.value;
+    closeSheet();
+    const doc = await saveDraft({ silent: true });
+    if (!doc) return;
+    await Repo.update(Object.assign(doc, {
+      text, ocr: { status: 'done', at: Date.now(), confidence: avg }
+    }));
+    App.draft = null;
+    $('#captureRoot').innerHTML = '';
+    toast('Document enregistré avec le texte', 'ok');
+    App.detailTab = 'text';
+    go('detail', doc.id);
+  });
+}
+
+/* ====================================================== ACTIONS DOCUMENTS = */
+async function openDocMenu(id) {
+  const doc = App.docs.find(d => d.id === id) || await Repo.doc(id);
+  if (!doc) return;
+  const s = openSheet({
+    title: doc.name,
+    sub: `${plural(doc.pageCount, 'page', 'pages')} · ${fmtBytes(doc.bytes)} · ${doc.kind === 'pdf' ? 'PDF importé' : 'Scan'}`,
+    body: `<div class="sheet-list">
+      <button data-act="doc-open"><svg class="ico"><use href="#i-eye"/></svg>Ouvrir</button>
+      <button data-act="doc-download"><svg class="ico"><use href="#i-download"/></svg>Télécharger le PDF</button>
+      <button data-act="doc-share"><svg class="ico"><use href="#i-share"/></svg>Partager le PDF</button>
+      <button data-act="doc-print-sheet"><svg class="ico"><use href="#i-printer"/></svg>Imprimer</button>
+      <button data-act="doc-images"><svg class="ico"><use href="#i-image"/></svg>Exporter les images</button>
+      <button data-act="doc-rename-sheet"><svg class="ico"><use href="#i-edit"/></svg>Renommer</button>
+      <button data-act="doc-edit-sheet"><svg class="ico"><use href="#i-crop"/></svg>Modifier les pages</button>
+      <button data-act="doc-ocr-sheet"><svg class="ico"><use href="#i-text"/></svg>${doc.ocr && doc.ocr.status === 'done' ? 'Relancer l\'OCR' : 'Extraire le texte (OCR)'}</button>
+      <button class="danger" data-act="doc-delete-sheet"><svg class="ico"><use href="#i-trash"/></svg>Supprimer</button>
+    </div>`
+  });
+  const bind = (act, fn) => $(`[data-act="${act}"]`, s).addEventListener('click', () => { closeSheet(); setTimeout(fn, 10); });
+  bind('doc-open', () => { App.detailTab = 'preview'; go('detail', doc.id); });
+  bind('doc-download', () => docDownloadPdf(doc.id));
+  bind('doc-share', () => docSharePdf(doc.id));
+  bind('doc-print-sheet', () => docPrint(doc.id));
+  bind('doc-images', () => docExportImages(doc.id));
+  bind('doc-rename-sheet', () => docRename(doc.id));
+  bind('doc-edit-sheet', () => docEdit(doc.id));
+  bind('doc-ocr-sheet', () => docRunOcr(doc.id));
+  bind('doc-delete-sheet', () => docDelete(doc.id));
+}
+
+async function withPdf(docId) {
+  const doc = await Repo.doc(docId);
+  if (!doc) throw new Error('Document introuvable');
+  busyBar(true);
+  try {
+    const { blob, original } = await buildDocPdf(doc);
+    return { doc, blob, original };
+  } finally { busyBar(false); }
+}
+
+async function docDownloadPdf(docId) {
+  try {
+    const { doc, blob } = await withPdf(docId);
+    downloadBlob(blob, pdfName(doc));
+    toast('PDF téléchargé (' + fmtBytes(blob.size) + ')', 'ok');
+  } catch (e) { toast('Export impossible : ' + e.message, 'err', 5000); }
+}
+async function docSharePdf(docId) {
+  try {
+    const { doc, blob } = await withPdf(docId);
+    await shareFile(blob, pdfName(doc), doc.name);
+    toast('PDF partagé', 'ok');
+  } catch (e) {
+    if (String(e.name) === 'AbortError') return;
+    toast(e.message + ' — utilisez « Télécharger ».', 'err', 5000);
+  }
+}
+async function docPrint(docId) {
+  try {
+    const { blob } = await withPdf(docId);
+    printPdf(blob);
+  } catch (e) { toast('Impression impossible : ' + e.message, 'err', 5000); }
+}
+async function docExportImages(docId) {
+  try {
+    const doc = await Repo.doc(docId);
+    const pages = await Repo.pages(docId);
+    if (!pages.length) throw new Error('aucune page');
+    busyBar(true);
+    if (pages.length === 1) {
+      const c = await ImageOps.render(pages[0], { maxPx: 2400 });
+      const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
+      downloadBlob(blob, slugify(doc.name) + '-page1.jpg');
+    } else if (typeof JSZip !== 'undefined') {
+      const zip = new JSZip();
+      for (let i = 0; i < pages.length; i++) {
+        const c = await ImageOps.render(pages[i], { maxPx: 2400 });
+        const data = c.toDataURL('image/jpeg', 0.92).split(',')[1];
+        zip.file(`${slugify(doc.name)}-page${String(i + 1).padStart(2, '0')}.jpg`, data, { base64: true });
+      }
+      const blob = await zip.generateAsync({ type: 'blob' });
+      downloadBlob(blob, slugify(doc.name) + '-images.zip');
+    } else {
+      for (let i = 0; i < pages.length; i++) {
+        const c = await ImageOps.render(pages[i], { maxPx: 2400 });
+        const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.92));
+        downloadBlob(blob, `${slugify(doc.name)}-page${i + 1}.jpg`);
+        await sleep(250);
+      }
+    }
+    busyBar(false);
+    toast(plural(pages.length, 'image exportée', 'images exportées') + (pages.length > 1 ? ' (ZIP)' : ''), 'ok');
+  } catch (e) { busyBar(false); toast('Export images impossible : ' + e.message, 'err', 5000); }
+}
+async function docRename(docId) {
+  const doc = await Repo.doc(docId);
+  if (!doc) return;
+  promptSheet({
+    title: 'Renommer le document', label: 'Nom du fichier', value: doc.name,
+    onOk: async (v) => {
+      doc.name = v;
+      await Repo.update(doc);
+      if (App.route === 'detail' && App.param === docId) App.doc = doc;
+      await render();
+      toast('Document renommé', 'ok');
+    }
+  });
+}
+async function docDelete(docId) {
+  const doc = await Repo.doc(docId);
+  if (!doc) return;
+  confirmSheet({
+    title: 'Supprimer « ' + doc.name + ' » ?',
+    sub: 'Cette action est définitive : les pages et le texte associé sont effacés du stockage local de cet appareil.',
+    okLabel: 'Supprimer', danger: true,
+    onOk: async () => {
+      await Repo.remove(docId);
+      toast('Document supprimé', 'ok');
+      go('docs');
+    }
+  });
+}
+async function refreshPdfPageCount(docId) {
+  try {
+    const doc = await Repo.doc(docId);
+    if (!doc || doc.kind !== 'pdf') return doc;
+    const blob = await Repo.file(docId);
+    if (!blob) return doc;
+    const f = new File([blob], doc.name + '.pdf', { type: 'application/pdf' });
+    const info = await PDF.inspect(f);
+    if (info.pageCount) { doc.pageCount = info.pageCount; await Repo.update(doc); }
+    return doc;
+  } catch (e) { return null; }
+}
+
+async function docEdit(docId) {
+  const doc = await Repo.doc(docId);
+  const pages = await Repo.pages(docId);
+  if (!doc) return;
+  if (!pages.length) { toast('Ce PDF importé ne peut pas être modifié page par page', 'err', 4500); return; }
+  App.draft = { docId, name: doc.name, pages: pages.map(p => Object.assign({}, p)), active: 0 };
+  renderEditor();
+}
+async function docRunOcr(docId) {
+  const doc = await Repo.doc(docId);
+  const pages = await Repo.pages(docId);
+  if (!doc) return;
+  if (!pages.length) {
+    toast('Aucune image à analyser. Les PDF importés conservent leur texte d\'origine.', 'err', 5000);
+    return;
+  }
+  let results;
+  try { results = await runOcr(pages); } catch (e) {
+    doc.ocr = { status: 'failed', at: Date.now(), confidence: 0 };
+    await Repo.update(doc);
+    return;
+  }
+  if (!results) return;
+  const text = results.map((r, i) => (pages.length > 1 ? `— Page ${i + 1} —\n` : '') + r.text).join('\n\n').trim();
+  const avg = Math.round(results.reduce((s, r) => s + r.confidence, 0) / Math.max(1, results.length));
+  doc.text = text;
+  doc.ocr = { status: text ? 'done' : 'empty', at: Date.now(), confidence: avg };
+  await Repo.update(doc);
+  for (let i = 0; i < pages.length; i++) {
+    pages[i].text = results[i].text; pages[i].ocrConf = results[i].confidence;
+    await Store.put('pages', pages[i]);
+  }
+  App.doc = doc; App.docPages = pages; App.detailTab = 'text';
+  await render();
+  if (text) toast('OCR terminé · ' + plural(text.split(/\s+/).filter(Boolean).length, 'mot', 'mots') + ' · confiance ' + avg + ' %', 'ok', 4500);
+  else toast("OCR terminé mais aucun texte détecté. Essayez un meilleur éclairage ou le mode « Document ».", 'err', 6000);
+}
+
+/* ------------------------------------------------- import / fusion PDF -- */
+async function importImages() {
+  const files = await pickFiles({ accept: 'image/*', multiple: true });
+  if (!files.length) return;
+  App.draft = { name: 'Scan ' + new Date().toLocaleDateString('fr-FR'), pages: [], active: 0 };
+  const n = await importImagesToDraft(files);
+  if (!n) { App.draft = null; return; }
+  if (n === 1) toast('Image importée — recadrez ou ajustez', 'ok');
+  else toast(plural(n, 'image importée', 'images importées'), 'ok');
+  renderEditor();
+}
+
+async function importPdf() {
+  const files = await pickFiles({ accept: 'application/pdf,.pdf', multiple: false });
+  if (!files.length) return;
+  const f = files[0];
+  if (f.size > 40 * 1024 * 1024) { toast('PDF trop volumineux (limite 40 Mo)', 'err'); return; }
+  busyBar(true);
+  const info = await PDF.inspect(f);
+  busyBar(false);
+  const name = f.name.replace(/\.pdf$/i, '') || 'PDF importé';
+  const doc = await Repo.create({
+    name, pages: [], file: f, thumb: info.thumb, source: 'import-pdf'
+  });
+  doc.pageCount = info.pageCount || doc.pageCount;
+  doc.kind = 'pdf';
+  await Repo.update(doc);
+  if (!doc.pageCount) await refreshPdfPageCount(doc.id);
+  toast('PDF importé (' + plural(info.pageCount || 0, 'page', 'pages') + ', ' + fmtBytes(f.size) + ')', 'ok', 4000);
+  App.detailTab = 'preview';
+  go('detail', doc.id);
+}
+
+async function mergePdfs() {
+  const files = await pickFiles({ accept: 'application/pdf,.pdf', multiple: true });
+  if (!files.length) return;
+  if (files.length < 2) { toast('Sélectionnez au moins 2 PDF pour fusionner', 'err'); return; }
+  busyBar(true);
+  const list = [];
+  for (const f of files) {
+    try { list.push({ file: f, name: f.name.replace(/\.pdf$/i, ''), bytes: new Uint8Array(await f.arrayBuffer()) }); }
+    catch (e) { toast('Lecture impossible : ' + f.name, 'err'); }
+  }
+  busyBar(false);
+  if (list.length < 2) { toast('Il faut au moins 2 PDF valides', 'err'); return; }
+  const s = openSheet({
+    title: 'Fusionner ' + list.length + ' PDF',
+    sub: 'Les documents seront assemblés dans cet ordre.',
+    body: `<div class="sheet-list">${list.map((f, i) =>
+        `<div class="row" style="padding:9px 6px"><span class="tag blue">${i + 1}</span>
+          <span class="grow small" style="font-weight:600">${escapeHtml(f.name)}</span>
+          <span class="tiny muted">${fmtBytes(f.file.size)}</span></div>`).join('')}</div>
+      <div class="field"><label>Nom du fichier fusionné</label>
+        <input id="mergeName" value="${escapeHtml('Fusion ' + new Date().toLocaleDateString('fr-FR'))}"></div>`,
+    actions: [{ label: 'Annuler', cls: 'ghost' }, { label: 'Fusionner', cls: 'primary', act: 'merge-go', close: true }],
+    onMount: (sheet) => {
+      $('[data-act="merge-go"]', sheet).addEventListener('click', async () => {
+        const name = ($('#mergeName').value || 'Fusion').trim();
+        try {
+          busyBar(true);
+          const { blob, pageCount } = await PDF.merge(list.map(l => ({ bytes: l.bytes, name: l.name })), { name });
+          busyBar(false);
+          const file = new File([blob], slugify(name) + '.pdf', { type: 'application/pdf' });
+          const info = await PDF.inspect(file);
+          const doc = await Repo.create({ name, pages: [], file, thumb: info.thumb || null, source: 'merge' });
+          doc.kind = 'pdf'; doc.pageCount = pageCount;
+          await Repo.update(doc);
+          await refreshPdfPageCount(doc.id);
+          toast('Fusion réussie : ' + plural(pageCount, 'page', 'pages') + ' · ' + fmtBytes(blob.size), 'ok', 4500);
+          App.detailTab = 'preview';
+          setTimeout(() => go('detail', doc.id), 120);
+        } catch (e) {
+          busyBar(false);
+          toast('Fusion impossible : ' + e.message, 'err', 6000);
+        }
+      });
+    }
+  });
+}
+
+/* --------------------------------------------------------- assistant local -- */
+const AI = {
+  classify(text) {
+    const t = (text || '').toLowerCase();
+    const rules = [
+      { key: 'Facture', icon: 'i-pdf', words: ['facture', 'invoice', 'total ttc', 'tva', 'montant ht', 'à payer', 'échéance', 'numéro de facture', 'siret', 'paiement'] },
+      { key: 'Contrat', icon: 'i-file', words: ['contrat', 'clause', 'signataire', 'les parties', 'engagement', 'durée du contrat', 'résiliation', 'bail'] },
+      { key: 'Identité', icon: 'i-shield', words: ['passeport', 'carte nationale', 'identité', 'date de naissance', 'nationalité', 'prénom', 'né le', 'permis de conduire', 'séjour'] },
+      { key: 'Bulletin de paie', icon: 'i-docs', words: ['bulletin de paie', 'salaire brut', 'net à payer', 'cotisations', 'urssaf', 'cumul imposable', 'employeur', 'salaire net'] },
+      { key: 'Courrier', icon: 'i-folder', words: ['madame', 'monsieur', 'objet :', 'cordialement', 'nous vous informons', 'lettre', 'cher client'] }
+    ];
+    const scores = rules.map(r => {
+      let hits = 0; const found = [];
+      for (const w of r.words) if (t.includes(w)) { hits += (w.length > 8 ? 2 : 1); found.push(w); }
+      return { key: r.key, icon: r.icon, score: hits, found };
+    }).sort((a, b) => b.score - a.score);
+    const best = scores[0];
+    const total = scores.reduce((s, x) => s + x.score, 0) || 1;
+    if (best.score < 2) return { label: 'Autre', icon: 'i-file', confidence: Math.min(60, 25 + total * 3), found: [] };
+    return {
+      label: best.key, icon: best.icon,
+      confidence: clamp(Math.round((best.score / total) * 100), 35, 97),
+      found: best.found.slice(0, 6),
+      others: scores.slice(1, 3).filter(s => s.score > 0)
+    };
+  },
+  entities(text) {
+    const t = text || '';
+    const grab = (re, transform = (m) => m[0]) => {
+      const out = new Set(); let m;
+      const r = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+      let guard = 0;
+      while ((m = r.exec(t)) && guard++ < 200) { const v = transform(m); if (v) out.add(String(v).trim()); }
+      return Array.from(out).slice(0, 8);
+    };
+    const dates = grab(/\b(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\b/);
+    grab(/\b(\d{1,2}\s+(?:janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+\d{4})\b/i,
+      m => m[0]).forEach(d => dates.push(d));
+    const amounts = grab(/(?:\d{1,3}(?:[ .]\d{3})+|\d+)(?:[.,]\d{2})?\s?(?:€|EUR|euros?|\$|USD)/i, m => m[0]);
+    const refs = grab(/\b(?:fact(?:ure)?|fac|ref|réf|ref|devis|commande|cmd|dossier|contrat|police)[\s:#\-]*([A-Z0-9][A-Z0-9\-\/]{3,20})/gi,
+      m => m[0]);
+    const siret = grab(/\b(?:siret|siren)\s*:?\s*(\d[\d ]{8,20})/gi, m => m[0]);
+    const iban = grab(/\bFR\d{2}(?:[ ]?\d{4}){5}[ ]?\d{3}\b/gi, m => m[0]);
+    const mails = grab(/[\w.+-]+@[\w-]+\.[\w.-]{2,}/gi, m => m[0]);
+    const phones = grab(/\b(?:0\d(?:[ .\-]?\d{2}){4})\b/g, m => m[0]);
+    const names = (() => {
+      const lines = t.split('\n').map(l => l.trim()).filter(Boolean);
+      const cands = [];
+      for (const l of lines) {
+        const m = l.match(/\b(?:M\.|Mme|Monsieur|Madame|Client|Nom|Destinataire)\s*:?\s*([A-ZÉÈÀÂÎÔÛ][\wéèàâîôûç'\-]+(?:\s+[A-ZÉÈÀÂÎÔÛ][\wéèàâîôûç'\-]+){0,2})/);
+        if (m) cands.push(m[1]);
+      }
+      return Array.from(new Set(cands)).slice(0, 5);
+    })();
+    return { dates, amounts, refs, siret, iban, mails, phones, names };
+  },
+  summary(text, maxSentences = 4) {
+    const clean = (text || '').replace(/\s+/g, ' ').trim();
+    if (!clean) return '';
+    const sentences = clean.split(/(?<=[.!?])\s+/).filter(s => s.length > 25);
+    if (!sentences.length) return clean.slice(0, 400) + (clean.length > 400 ? '…' : '');
+    const stop = new Set(('le la les de des du un une et en à au aux pour par sur avec dans est sont a ont ce cette ces que qui quoi dont où il elle ils elles nous vous se sa son ses leur leurs plus moins très être avoir fait comme tout tous toute toutes mais ou donc or ni car si ne pas y d l qu c j n s t m').split(' '));
+    const freq = new Map();
+    for (const w of clean.toLowerCase().match(/[a-zàâçéèêëîïôûùüÿœæ]{4,}/g) || []) {
+      if (stop.has(w)) continue;
+      freq.set(w, (freq.get(w) || 0) + 1);
+    }
+    const top = Array.from(freq.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12).map(e => e[0]);
+    const scored = sentences.map((s, i) => {
+      const lw = s.toLowerCase();
+      let sc = top.reduce((acc, w) => acc + (lw.includes(w) ? 1 : 0), 0);
+      sc += Math.max(0, 6 - i) * 0.6;                    // début de document
+      sc += /facture|total|montant|date|contrat|objet|référence/i.test(s) ? 1.5 : 0;
+      return { s, sc, i };
+    }).sort((a, b) => b.sc - a.sc).slice(0, maxSentences).sort((a, b) => a.i - b.i);
+    return scored.map(x => '• ' + x.s.trim()).join('\n');
+  },
+  search(text, q) {
+    if (!q || q.trim().length < 2) return [];
+    const t = text || '';
+    const needle = q.trim().toLowerCase();
+    const out = [];
+    let idx = t.toLowerCase().indexOf(needle), guard = 0;
+    while (idx !== -1 && guard++ < 25) {
+      const start = Math.max(0, idx - 60), end = Math.min(t.length, idx + needle.length + 60);
+      out.push({ before: t.slice(start, idx), match: t.substr(idx, needle.length), after: t.slice(idx + needle.length, end) });
+      idx = t.toLowerCase().indexOf(needle, idx + needle.length);
+    }
+    return out;
+  }
+};
+
+function rerenderAiPanels() {
+  const doc = App.doc;
+  if (!doc) return;
+  const text = doc.text || '';
+  const hasText = text.trim().length > 20;
+  if (!hasText) return;
+  const c = AI.classify(text);
+  const elC = $('#aiClass');
+  if (elC) elC.innerHTML = `
+    <div class="row" style="gap:9px;align-items:center">
+      <span class="tag blue" style="font-size:12px;padding:5px 10px">${ICON(c.icon, 'ico sm')} ${escapeHtml(c.label)}</span>
+      <span class="tiny muted">confiance estimée ${c.confidence} %</span>
+    </div>
+    ${c.found && c.found.length ? `<p class="tiny muted mt6 mb0">Indices : ${c.found.map(escapeHtml).join(', ')}</p>` : ''}`;
+  const e = AI.entities(text);
+  const elE = $('#aiEntities');
+  if (elE) {
+    const block = (label, arr) => arr && arr.length
+      ? `<div class="mt10"><div class="tiny muted mb6" style="font-weight:700;text-transform:uppercase;letter-spacing:.4px">${label}</div>
+         <div class="row wrap" style="gap:6px">${arr.map(v => `<span class="tag" style="font-size:11px;padding:4px 8px">${escapeHtml(v)}</span>`).join('')}</div></div>`
+      : '';
+    const html = block('Dates', e.dates) + block('Montants', e.amounts) + block('Références', e.refs) +
+      block('Noms', e.names) + block('E-mails', e.mails) + block('Téléphones', e.phones) +
+      block('SIRET / SIREN', e.siret) + block('IBAN', e.iban);
+    elE.innerHTML = html || '<p class="small muted mb0">Aucune entité détectée automatiquement dans ce texte.</p>';
+  }
+  const elS = $('#aiSummary');
+  if (elS) elS.innerHTML = `<div class="ai-out">${escapeHtml(AI.summary(text) || '—')}</div>`;
+}
+
+/* ============================================================= PARAMÈTRES == */
+function settingLangs() {
+  const s = openSheet({
+    title: 'Langues OCR',
+    sub: 'Choisissez les langues à reconnaître. Le pack de langue est téléchargé une seule fois.',
+    body: `<div class="sheet-list">
+      ${[['fra+eng', 'Français + Anglais', 'recommandé'], ['fra', 'Français', ''], ['eng', 'Anglais', '']].map(([k, l, tag]) =>
+        `<button data-lang="${k}"><svg class="ico"><use href="#i-text"/></svg>
+          <span class="grow">${l}</span>${tag ? `<span class="tag blue">${tag}</span>` : ''}
+          ${Settings.get('ocrLangs') === k ? `<span class="tag ok">actif</span>` : ''}</button>`).join('')}
+      </div>`,
+    actions: [{ label: 'Fermer', cls: 'ghost' }]
+  });
+  $$('[data-lang]', s).forEach(b => b.addEventListener('click', async () => {
+    Settings.set('ocrLangs', b.dataset.lang);
+    closeSheet();
+    await render();
+    toast('Langues OCR mises à jour', 'ok');
+  }));
+}
+function settingQuality() {
+  const s = openSheet({
+    title: 'Qualité des exports',
+    sub: 'Elle influe sur la netteté du PDF et la taille du fichier.',
+    body: `<div class="sheet-list">
+      ${[['high', 'Élevée', '2400 px · fichiers plus lourds'], ['standard', 'Standard', '1600 px · plus rapide']].map(([k, l, d]) =>
+        `<button data-q="${k}"><svg class="ico"><use href="#i-image"/></svg>
+          <span class="grow"><b>${l}</b><br><span class="tiny muted">${d}</span></span>
+          ${Settings.get('quality') === k ? `<span class="tag ok">actif</span>` : ''}</button>`).join('')}
+      </div>`,
+    actions: [{ label: 'Fermer', cls: 'ghost' }]
+  });
+  $$('[data-q]', s).forEach(b => b.addEventListener('click', async () => {
+    Settings.set('quality', b.dataset.q); closeSheet(); await render();
+    toast('Qualité enregistrée', 'ok');
+  }));
+}
+function showInfoSheet(kind) {
+  const content = {
+    roadmap: `<h3 style="font-size:15px">V2 — Capture avancée</h3>
+      <p class="small muted">Détection automatique des contours (vision), correction de perspective à 4 points,
+      filtres avancés, réorganisation des pages par glisser-déposer.</p>
+      <h3 style="font-size:15px">V3 — Assistant IA</h3>
+      <p class="small muted">Résumé par modèle de langage, extraction structurée de factures, classement automatique
+      et recherche sémantique. <b>Nécessite un backend</b> : la clé API ne doit jamais être dans le navigateur.</p>
+      <h3 style="font-size:15px">V4 — Application Android native</h3>
+      <p class="small muted">Kotlin + CameraX + ML Kit Text Recognition + PdfDocument/Ghostscript, APK signé,
+      stockage scoped, partage Android, mode hors-ligne complet.</p>`,
+    permissions: `<div class="sheet-list" style="gap:10px">
+      <div><b>Caméra</b><span class="tiny muted">Demandée uniquement au clic sur « Scanner avec la caméra ».
+      Refus possible : l'import depuis la galerie reste disponible.</span></div>
+      <div><b>Fichiers</b><span class="tiny muted">Le sélecteur du navigateur ne donne accès qu'aux fichiers
+      que vous choisissez explicitement.</span></div>
+      <div><b>Presse-papiers</b><span class="tiny muted">Uniquement lors d'un clic sur « Copier ».</span></div>
+      <div><b>Réseau</b><span class="tiny muted">Nécessaire au premier chargement des bibliothèques et du pack de
+      langue OCR. Aucun document n'est transmis.</span></div></div>`,
+    help: `<ul class="small" style="padding-left:18px;margin:0;line-height:1.7">
+      <li>Éclairez uniformément, évitez les ombres et les reflets.</li>
+      <li>Cadrez le document entier, sans doigts sur le texte.</li>
+      <li>Utilisez le mode <b>Document</b> pour un contraste net.</li>
+      <li>Gardez le téléphone parallèle à la feuille (moins de perspective).</li>
+      <li>Pour les factures, un scan droit améliore beaucoup l'extraction.</li>
+      <li>Le français et l'anglais sont reconnus ; les autres langues ne sont pas encore incluses.</li></ul>`,
+    ia: `<p class="small">Pour activer l'assistant IA avancé, il faut :</p>
+      <ul class="small" style="padding-left:18px;line-height:1.7">
+        <li>un backend (Node, Python ou serverless) qui détient la clé API ;</li>
+        <li>une politique claire de consentement affichée avant tout envoi ;</li>
+        <li>un mode « traitement local uniquement » par défaut.</li></ul>
+      <p class="small muted">Aucune clé API n'est intégrée dans cette version.</p>`
+  }[kind] || '';
+  const titles = { roadmap: 'Feuille de route', permissions: 'Permissions', help: 'Aide & bonnes pratiques', ia: 'Activer l\'IA avancée' };
+  openSheet({ title: titles[kind], body: content, actions: [{ label: 'Fermer', cls: 'ghost' }] });
+}
+
+/* ================================================================ ACTIONS == */
+Object.assign(Actions, {
+  /* navigation */
+  'go-home': () => go('home'),
+  'go-docs': () => { App.search = ''; go('docs'); },
+  'go-settings': () => go('settings'),
+  'go-back': () => {
+    if (App.route === 'detail') go('docs'); else go('home');
+  },
+  'filter-docs': (el) => { App.docFilter = el.dataset.key; render(); },
+  'clear-search': () => { App.search = ''; render(); },
+  'open-doc': (el) => { App.detailTab = 'preview'; go('detail', el.dataset.id); },
+  'doc-menu': (el, e) => { e.stopPropagation(); openDocMenu(el.dataset.id); },
+
+  /* scan */
+  'scan-camera': () => openCamera(),
+  'import-image': () => importImages(),
+  'import-pdf': () => importPdf(),
+  'merge-pdfs': () => mergePdfs(),
+
+  /* caméra */
+  'camera-close': () => { closeCamera(); $('#captureRoot').innerHTML = ''; App.draft = null; go('home'); },
+  'camera-shoot': () => capturePhoto(),
+  'camera-done': async () => {
+    closeCamera();
+    if (!App.draft || !App.draft.pages.length) { toast('Aucune page capturée', 'err'); $('#captureRoot').innerHTML = ''; go('home'); return; }
+    renderEditor();
+  },
+  'camera-import-gallery': async () => {
+    const files = await pickFiles({ accept: 'image/*', multiple: true });
+    if (!files.length) return;
+    const n = await importImagesToDraft(files);
+    if (n) toast(plural(n, 'page ajoutée', 'pages ajoutées'), 'ok');
+  },
+  'camera-torch': async () => {
+    const track = App.camera.stream && App.camera.stream.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      App.camera.torch = !App.camera.torch;
+      await track.applyConstraints({ advanced: [{ torch: App.camera.torch }] });
+      $('#torchBtn').style.background = App.camera.torch ? 'rgba(255,255,255,.35)' : '';
+    } catch (e) { toast('Torche non disponible sur cet appareil', 'err'); }
+  },
+
+  /* éditeur */
+  'editor-exit': () => editorExit(),
+  'editor-save': async () => {
+    const doc = await saveDraft();
+    if (!doc) return;
+    App.draft = null;
+    $('#captureRoot').innerHTML = '';
+    App.detailTab = 'preview';
+    go('detail', doc.id);
+  },
+  'editor-select-page': (el) => { App.draft.active = +el.dataset.i; App.draft.cropMode = false; renderEditor(); },
+  'editor-remove-page': async (el, e) => {
+    e.stopPropagation();
+    const i = +el.dataset.i;
+    App.draft.pages.splice(i, 1);
+    App.draft.active = clamp(App.draft.active, 0, Math.max(0, App.draft.pages.length - 1));
+    renderEditor();
+  },
+  'editor-delete-page': async () => {
+    const d = App.draft;
+    if (d.pages.length <= 1) { toast('Un document doit conserver au moins une page', 'err'); return; }
+    d.pages.splice(d.active, 1);
+    d.active = clamp(d.active, 0, d.pages.length - 1);
+    renderEditor();
+  },
+  'editor-add-page': () => editorAddPage(),
+  'editor-rotate': () => editorRotate(),
+  'editor-crop': () => {
+    App.draft.cropMode = true;
+    App.draft.cropRect = Object.assign({}, App.draft.pages[App.draft.active].crop);
+    drawEditorCanvas();
+  },
+  'editor-adjust': () => editorAdjust(),
+  'editor-filter': (el) => editorSetFilter(el.dataset.f),
+  'editor-duplicate': async () => {
+    const d = App.draft, p = d.pages[d.active];
+    d.pages.splice(d.active + 1, 0, Object.assign({}, p, { id: uid('pg') }));
+    d.active++;
+    renderEditor();
+    toast('Page dupliquée', 'ok');
+  },
+  'editor-ocr': () => editorOcr(),
+  'editor-pdf': () => editorGeneratePdf(),
+
+  /* détail */
+  'detail-tab': async (el) => {
+    App.detailTab = el.dataset.tab;
+    await render();
+    if (App.detailTab === 'ai') rerenderAiPanels();
+  },
+  'preview-prev': async () => { App.detailPage = Math.max(0, App.detailPage - 1); await render(); showFullPreview(); },
+  'preview-next': async () => { App.detailPage = Math.min(App.docPages.length - 1, App.detailPage + 1); await render(); showFullPreview(); },
+  'doc-pdf-download': () => docDownloadPdf(App.doc.id),
+  'doc-share-pdf': () => docSharePdf(App.doc.id),
+  'doc-print': () => docPrint(App.doc.id),
+  'doc-export-images': () => docExportImages(App.doc.id),
+  'doc-ocr': () => docRunOcr(App.doc.id),
+  'doc-rename': () => docRename(App.doc.id),
+  'doc-delete': () => docDelete(App.doc.id),
+  'doc-edit': () => docEdit(App.doc.id),
+
+  /* texte */
+  'text-copy': () => copyText(($('#ocrEditor') || {}).value || App.doc.text || ''),
+  'text-share': () => shareText(($('#ocrEditor') || {}).value || App.doc.text || ''),
+  'text-save': async () => {
+    const ta = $('#ocrEditor');
+    if (!ta) return;
+    App.doc.text = ta.value;
+    if (App.doc.ocr && App.doc.ocr.status === 'done') App.doc.ocr.at = App.doc.ocr.at || Date.now();
+    await Repo.update(App.doc);
+    toast('Texte enregistré', 'ok');
+  },
+  'text-find': () => {
+    const ta = $('#ocrEditor');
+    const q = prompt('Rechercher dans le texte :');
+    if (!q) return;
+    const hay = (ta.value || '').toLowerCase();
+    const i = hay.indexOf(q.toLowerCase());
+    if (i === -1) { toast('« ' + q + ' » introuvable dans ce texte', 'err'); return; }
+    ta.focus();
+    ta.setSelectionRange(i, i + q.length);
+    const line = ta.value.slice(0, i).split('\n').length;
+    ta.scrollTop = Math.max(0, (line - 3) * 22);
+    toast('Trouvé (ligne ' + line + ')', 'ok');
+  },
+
+  /* IA locale */
+  'ai-classify': () => { rerenderAiPanels(); toast('Analyse locale effectuée', 'ok'); },
+  'ai-entities': () => { rerenderAiPanels(); toast('Entités extraites', 'ok'); },
+  'ai-summary': () => {
+    const el = $('#aiSummary');
+    if (el) el.innerHTML = `<div class="ai-out">${escapeHtml(AI.summary(App.doc.text) || '—')}</div>`;
+    toast('Résumé généré (extractif, hors-ligne)', 'ok');
+  },
+  'ai-search': () => {
+    const q = ($('#aiQuery') || {}).value || '';
+    const out = $('#aiSearchOut');
+    const hits = AI.search(App.doc.text || '', q);
+    if (!out) return;
+    if (!hits.length) { out.innerHTML = `<div class="banner info">${ICON('i-info', 'ico sm')}
+      <span>Aucune occurrence${q ? ' pour « ' + escapeHtml(q) + ' »' : ''}.</span></div>`; return; }
+    out.innerHTML = `<div class="tiny muted mb6">${plural(hits.length, 'occurrence', 'occurrences')}</div>` +
+      hits.slice(0, 8).map(h => `<div class="ai-out" style="margin-bottom:6px;font-size:12.5px">…${escapeHtml(h.before)}
+        <b style="background:#FEF3C7">${escapeHtml(h.match)}</b>${escapeHtml(h.after)}…</div>`).join('');
+  },
+  'ai-invoice-demo': () => {
+    const e = AI.entities(App.doc.text || '');
+    const out = $('#aiInvoiceOut');
+    if (!out) return;
+    out.innerHTML = `<div class="banner warn" style="margin-bottom:8px">${ICON('i-alert', 'ico sm')}
+      <span>Aperçu <b>heuristique</b> : utile comme point de départ, pas comme extraction comptable fiable.</span></div>
+      <dl class="kv">
+        <dt>Dates</dt><dd>${escapeHtml(e.dates.join(', ') || '—')}</dd>
+        <dt>Montants</dt><dd>${escapeHtml(e.amounts.join(', ') || '—')}</dd>
+        <dt>Références</dt><dd>${escapeHtml(e.refs.join(', ') || '—')}</dd>
+        <dt>SIRET</dt><dd>${escapeHtml(e.siret.join(', ') || '—')}</dd>
+        <dt>IBAN</dt><dd>${escapeHtml(e.iban.join(', ') || '—')}</dd>
+        <dt>E-mails</dt><dd>${escapeHtml(e.mails.join(', ') || '—')}</dd>
+      </dl>`;
+  },
+  'show-ia-requirements': () => showInfoSheet('ia'),
+
+  /* paramètres */
+  'set-langs': () => settingLangs(),
+  'set-quality': () => settingQuality(),
+  'toggle-autoocr': async (el) => {
+    Settings.set('autoOcr', !Settings.get('autoOcr'));
+    el.classList.toggle('on', Settings.get('autoOcr'));
+    el.setAttribute('aria-checked', Settings.get('autoOcr'));
+    toast('OCR automatique ' + (Settings.get('autoOcr') ? 'activé' : 'désactivé'), 'ok');
+  },
+  'clear-all': () => confirmSheet({
+    title: 'Tout supprimer ?',
+    sub: 'Tous les documents, pages et textes stockés dans ce navigateur seront effacés définitivement.',
+    okLabel: 'Tout supprimer', danger: true,
+    onOk: async () => {
+      await Store.clearAll();
+      App.docs = [];
+      toast('Stockage local vidé', 'ok');
+      go('home');
+    }
+  }),
+  'show-permissions': () => showInfoSheet('permissions'),
+  'show-roadmap': () => showInfoSheet('roadmap'),
+  'show-help': () => showInfoSheet('help')
+});
+
+/* aperçu : rendu HD (recadrage + filtre appliqués) */
+async function showFullPreview() {
+  const p = App.docPages[App.detailPage];
+  const img = $('#previewImg');
+  if (!img || !p) return;
+  try {
+    const token = (App._previewToken = (App._previewToken || 0) + 1);
+    const c = await ImageOps.render(p, { maxPx: 1300, quality: 0.92 });
+    if (token !== App._previewToken) return;
+    img.src = c.toDataURL('image/jpeg', 0.92);
+  } catch (e) { img.src = p.src || p.thumb; }
+}
+
+/* ============================================================== RECHERCHE == */
+let searchTimer = null;
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (!t || (t.id !== 'homeSearch' && t.id !== 'docsSearch')) return;
+  App.search = t.value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    if (App.route === 'home') {
+      const box = $('#searchResults');
+      if (box) box.innerHTML = App.search ? searchResultsHtml(App.search) : '';
+    } else {
+      render();
+      const inp = $('#docsSearch');
+      if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+    }
+  }, 220);
+});
+
+/* ============================================ navigation inférieure / FAB == */
+document.addEventListener('click', (e) => {
+  const nav = e.target.closest('[data-nav]');
+  if (nav) {
+    e.preventDefault();
+    App.search = '';
+    App.detailTab = 'preview';
+    go(nav.dataset.nav);
+    return;
+  }
+  if (e.target.closest('#fabScan')) { e.preventDefault(); openCamera(); }
+});
+
+/* =================================================================== INIT == */
+async function init() {
+  Settings.load();
+  await Store.open();
+  App.docs = await Repo.list();
+  if (!location.hash) { try { history.replaceState({ route: 'home' }, '', '#home'); } catch (e) {} }
+  await go('home', null, { push: false });
+  App.ready = true;
+
+  if (!Settings.get('seenOnboarding')) {
+    Settings.set('seenOnboarding', true);
+    openSheet({
+      title: 'Bienvenue dans ScanPro AI',
+      sub: 'Votre scanner de documents, 100 % sur cet appareil.',
+      body: `<div class="sheet-list">
+        <div class="row" style="align-items:flex-start;gap:10px;padding:6px 2px">
+          ${ICON('i-camera', 'ico')}<span class="small"><b>Scannez ou importez</b><br>
+          Caméra live, galerie ou PDF existant.</span></div>
+        <div class="row" style="align-items:flex-start;gap:10px;padding:6px 2px">
+          ${ICON('i-text', 'ico')}<span class="small"><b>Extrayez le texte (OCR)</b><br>
+          Français et anglais, exécuté localement par Tesseract.</span></div>
+        <div class="row" style="align-items:flex-start;gap:10px;padding:6px 2px">
+          ${ICON('i-pdf', 'ico')}<span class="small"><b>Exportez en PDF</b><br>
+          Téléchargement, partage ou impression.</span></div>
+        <div class="row" style="align-items:flex-start;gap:10px;padding:6px 2px">
+          ${ICON('i-shield', 'ico')}<span class="small"><b>Aucun compte, aucun serveur</b><br>
+          Vos documents restent dans le stockage du navigateur.</span></div>
+      </div>`,
+      actions: [{ label: 'Commencer', cls: 'primary' }]
+    });
+  }
+}
+
+document.addEventListener('DOMContentLoaded', init);
+
+</script>
+<script>
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

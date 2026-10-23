@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch();
+const p = await b.newPage({ viewport: { width: 1280, height: 900 }, locale: 'fr-FR' });
+const errs = [];
+p.on('pageerror', e => errs.push(e.message));
+await p.goto('http://localhost:8080/index.html', { waitUntil: 'networkidle' });
+await p.waitForTimeout(800);
+await p.locator('.sheet .btn.primary').click().catch(()=>{});
+await p.waitForTimeout(400);
+await p.screenshot({ path: 'tests/out/30-desktop.png' });
+const w = await p.evaluate(() => ({ app: document.querySelector('#app').getBoundingClientRect().width, nav: document.querySelector('.bottom-nav').getBoundingClientRect().width }));
+console.log('largeurs desktop:', JSON.stringify(w), '| erreurs:', errs.length ? errs : 'aucune');
+await b.close();
