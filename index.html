@@ -857,7 +857,9 @@ const ImageOps = {
 /* Certains hébergeurs (aperçus GitHub, githack, etc.) bloquent les gros fichiers
    binaires. On sonde les fichiers locaux puis on bascule, si besoin, sur le CDN
    jsDelivr du dépôt public. En local (http://localhost) rien ne change. */
-const CDN_VENDOR = 'https://cdn.jsdelivr.net/gh/azharshahim/Scanpro-ai@main/vendor/';
+/* Version figée des fichiers binaires : le CDN jsDelivr met @main en cache ~12 h,
+   un tag immuable garantit des fichiers frais et reproductibles. */
+const CDN_VENDOR = 'https://cdn.jsdelivr.net/gh/azharshahim/Scanpro-ai@v1.0.0/vendor/';
 /* Un Web Worker ne peut pas être instancié depuis une URL d'un autre domaine.
    On charge alors le script du worker en Blob (jsDelivr/Pages autorisent le CORS). */
 const Assets = {
