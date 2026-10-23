@@ -7,6 +7,18 @@ de classification — **100 % sur l'appareil, sans compte ni serveur**.
 👉 **Tester maintenant :** ouvrez la prévisualisation live du workspace (dossier `scanpro`),
 ou `docs/GUIDE-TEST.md` pour la procédure pas à pas sur téléphone.
 
+## Hébergement
+
+| URL | État | Remarque |
+|---|---|---|
+| Prévisualisation live du workspace | ✅ recommandée pour tester | HTTPS, caméra + OCR + service worker |
+| `https://azharshahim.github.io/Scanpro-ai/` | ⏳ à activer | **Settings → Pages → Source : « GitHub Actions »** (le workflow `.github/workflows/pages.yml` est déjà en place) ou « Deploy from a branch : main / (root) ». Le jeton utilisé pour le push n'avait pas la permission *Pages*. |
+| `https://htmlpreview.github.io/?https://github.com/azharshahim/Scanpro-ai/blob/v1.0.0/index.html` | ✅ fonctionne | Rendu du dépôt public via un service tiers (OCR vérifié : 712 caractères). À utiliser en dépannage. |
+
+Les modèles OCR et bibliothèques sont servis localement (`vendor/`). Si un hébergeur bloque les
+fichiers binaires lourds, l'app bascule automatiquement sur le CDN jsDelivr du dépôt (tag `v1.0.0`,
+fichiers immuables) — et instancie alors le Worker OCR via Blob pour rester compatible CORS.
+
 ## Démarrage rapide
 
 ```bash
