@@ -858,6 +858,8 @@ const ImageOps = {
    binaires. On sonde les fichiers locaux puis on bascule, si besoin, sur le CDN
    jsDelivr du dépôt public. En local (http://localhost) rien ne change. */
 const CDN_VENDOR = 'https://cdn.jsdelivr.net/gh/azharshahim/Scanpro-ai@main/vendor/';
+/* Un Web Worker ne peut pas être instancié depuis une URL d'un autre domaine.
+   On charge alors le script du worker en Blob (jsDelivr/Pages autorisent le CORS). */
 const Assets = {
   _base: null,
   localBase() { return new URL('vendor/', location.href).href; },
@@ -908,11 +910,13 @@ const OCR = {
     if (this.worker && this.langs === langs) return this.worker;
     if (this.worker) { try { await this.worker.terminate(); } catch (e) {} this.worker = null; }
     onProgress && onProgress({ status: 'initialisation du moteur OCR', progress: 0.02 });
+    const crossOrigin = !this.workerPath().startsWith(location.origin);
+    const fileMode = location.protocol === 'file:';
     this.worker = await Tesseract.createWorker(langs, 1, {
       workerPath: this.workerPath(),
       corePath: this.corePath(),
       langPath: this.langPath(),
-      workerBlobURL: false,
+      workerBlobURL: crossOrigin && !fileMode,
       logger: (m) => onProgress && onProgress(m),
       errorHandler: (e) => console.warn('[OCR]', e)
     });
