@@ -210,3 +210,14 @@ Sens achat/vente toujours proposé et modifiable ; tableaux OCR dégradés perfe
 
 ### Limites
 Positions dépendantes de Tesseract (documents très inclinés ou OCR dégradé => repli texte) ; échéanciers/immobilisations/paie utilisent encore principalement les lignes reconstruites par le texte (les positions alimentent zones et futurs raffinements) ; aucun test Android physique.
+
+---
+
+## V2.14.1 — Correctifs terrain (24/10/2026, retour utilisateur mobile, fusion directe autorisée)
+
+Deux défauts signalés par captures d'écran Android et corrigés :
+
+1. **Fausse alerte « Mode hors-ligne incomplet (4 ressources manquantes) »** — cause racine : le contrôle au démarrage inspectait `caches.keys()` et ouvrait le **dernier** cache préfixé `scanpro-ai-`, qui est `scanpro-ai-meta` (ne contient que l'état `__offline_status`) : les 4 ressources « essentielles » y étaient donc toujours absentes. Correctif : inspection du vrai cache de version (celui qui contient `./`), et **auto-réparation en ligne** des ressources manquantes avant toute alerte (message de confirmation quand la réparation réussit).
+2. **« À vérifier en priorité » inutilisable sur mobile** — doubles causes : (a) `.grow{flex:1}` sans `min-width:0` : les noms de fichiers longs sans espaces poussaient le bouton « Ouvrir » hors écran et tronquaient le texte ; (b) le clic « Ouvrir » sélectionnait bien le document mais son détail s'affichait **sous la liste des documents**, hors écran, sans aucun retour visuel. Correctifs : `min-width:0; overflow-wrap:anywhere` sur `.grow`, ancre `#accDetail`, défilement doux + surbrillance temporaire après sélection.
+
+Tests (`tests/e2e-v2141.mjs`, mobile émulé 360 px) : **8/8** — pas de fausse alerte, cache de version complet, ressource supprimée réparée automatiquement, aucun débordement horizontal, bouton visible, clic « Ouvrir » amenant le détail à l'écran. Non-régressions : fiabilité 13/13, V2.14 15/15, L6 14/14, V2.13 17/17. Aucun test sur appareil Android physique (émulation navigateur uniquement).

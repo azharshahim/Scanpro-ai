@@ -296,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.14.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.14.1 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -625,7 +625,7 @@ function viewAcc() {
     <h3 class="sect">Documents</h3>
     ${docs.length ? docs.map(d => `<div class="card row"><div class="grow"><b>${escapeHtml(d.name)}</b><br><span class="tiny muted">${d.acc ? 'Type : ' + escapeHtml((Acc.TYPES.find(x => x[0] === d.acc.data.docType) || [])[1] || d.acc.data.docType) + (d.acc.edited ? ' · corrigé' : '') : (d.text ? 'OCR présent, non analysé' : 'Sans OCR')}</span></div>
       <button class="btn xs ${sel && sel.id === d.id ? 'go' : 'soft'}" data-act="acc-select" data-id="${d.id}">${sel && sel.id === d.id ? 'Sélectionné' : 'Choisir'}</button></div>`).join('') : '<p class="muted">Aucun document. Scannez ou importez d\'abord un document comptable.</p>'}
-    ${detail}
+    <div id="accDetail">${detail}</div>
   </div>`;
 }
 
