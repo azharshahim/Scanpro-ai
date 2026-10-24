@@ -449,7 +449,8 @@ const OCR = {
   async run(dataUrl, langs, onProgress) {
     const w = await this.ensure(langs, onProgress);
     const { data } = await w.recognize(dataUrl);
-    const text = (data.text || '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    let text = (data.text || '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    text = text.split('\n').map(line => { const t=line.trim(); return (t.length>=4 && t.length<=70 && t===t.toUpperCase() && /[A-ZÀ-Ý]{3,}/.test(t)) ? t : line; }).join('\n');
     const uncertain = (data.words || []).filter(w => (w.confidence || 100) < 60 && (w.text || '').trim()).slice(0, 40).map(w => ({ text: w.text, confidence: Math.round(w.confidence || 0) }));
     return { text, confidence: Math.round(data.confidence || 0), words: (data.words || []).length, lines: (data.lines || []).length, uncertain };
   },

@@ -28,7 +28,7 @@ function docCard(doc, { compact = false } = {}) {
         <span>${plural(doc.pageCount || 0, 'page', 'pages')}</span>
         ${compact ? '' : `<span>·</span><span>${fmtBytes(doc.bytes)}</span>`}
       </div>
-      <div class="meta-line" style="margin-top:5px">${kindTag}${ocrTag}${doc.favorite ? '<span class="tag warn">★ Favori</span>' : ''}${doc.category ? `<span class="tag">${escapeHtml(doc.category)}</span>` : ''}${(doc.tags || []).slice(0,3).map(t => `<span class="tag">#${escapeHtml(t)}</span>`).join('')}</div>
+      <div class="meta-line" style="margin-top:5px">${kindTag}${ocrTag}${App.selectionMode ? `<span class="tag ${App.selectedDocs.has(doc.id)?'blue':''}">${App.selectedDocs.has(doc.id)?'☑ Sélectionné':'☐ À sélectionner'}</span>` : ''}${doc.favorite ? '<span class="tag warn">★ Favori</span>' : ''}${doc.category ? `<span class="tag">${escapeHtml(doc.category)}</span>` : ''}${(doc.tags || []).slice(0,3).map(t => `<span class="tag">#${escapeHtml(t)}</span>`).join('')}</div>
     </div>
     <span class="doc-row-actions" role="button" aria-label="Actions" data-act="doc-menu" data-id="${doc.id}">
       ${ICON('i-more', 'ico')}
@@ -148,6 +148,8 @@ function viewDocs() {
     const n = App.search.toLowerCase();
     docs = docs.filter(d => (d.name || '').toLowerCase().includes(n) || (d.text || '').toLowerCase().includes(n));
   }
+  const sorters = { 'date-desc':(a,b)=>(b.createdAt||0)-(a.createdAt||0), 'date-asc':(a,b)=>(a.createdAt||0)-(b.createdAt||0), name:(a,b)=>String(a.name).localeCompare(String(b.name),'fr'), pages:(a,b)=>(b.pageCount||0)-(a.pageCount||0), size:(a,b)=>(b.bytes||0)-(a.bytes||0), type:(a,b)=>String(a.kind).localeCompare(String(b.kind)) || String(a.name).localeCompare(String(b.name),'fr') };
+  docs.sort(sorters[App.docSort] || sorters['date-desc']);
   const totalBytes = App.docs.reduce((s, d) => s + (d.bytes || 0), 0);
   return `
   <header class="appbar">
@@ -170,6 +172,18 @@ function viewDocs() {
     <div class="row small muted" style="margin:0 2px 10px">
       <span class="grow">${plural(docs.length, 'document', 'documents')} · ${fmtBytes(totalBytes)}</span>
     </div>
+    <div class="row wrap" style="gap:7px;margin-bottom:10px">
+      <button class="btn xs soft" data-act="docs-sort">Trier : ${{ 'date-desc':'Date ↓', 'date-asc':'Date ↑', name:'Nom', pages:'Pages', size:'Taille', type:'Type' }[App.docSort] || 'Date ↓'}</button>
+      <button class="btn xs soft" data-act="docs-select-mode">${App.selectionMode ? 'Terminer la sélection' : 'Sélection multiple'}</button>
+      <button class="btn xs ghost" data-act="docs-duplicates">Doublons documents</button>
+    </div>
+    ${App.selectionMode ? `<div class="banner info" style="margin-bottom:10px"><span><b>${App.selectedDocs.size} sélectionné(s).</b> Touchez les documents pour les cocher.</span></div>
+    <div class="row wrap" style="gap:7px;margin-bottom:10px">
+      <button class="btn xs soft" data-act="docs-batch-rename">Renommer par lots</button>
+      <button class="btn xs soft" data-act="docs-batch-fav">Favoris</button>
+      <button class="btn xs soft" data-act="docs-batch-cat">Catégorie</button>
+      <button class="btn xs danger" data-act="docs-batch-delete">Supprimer</button>
+    </div>` : ''}
     <div class="doc-list">
       ${docs.length ? docs.map(d => docCard(d)).join('')
         : emptyState({
@@ -235,6 +249,12 @@ async function viewSettings() {
     </div>
 
     <div class="set-group">
+      <h3>Sauvegarde et restauration</h3>
+      <button class="set-row" data-act="backup-export"><span class="s-ico">${ICON('i-download', 'ico sm')}</span><span class="s-body"><b>Exporter la bibliothèque</b><span>Archive ZIP : documents, pages, OCR et PDF importés</span></span><span class="chev">${ICON('i-chevron', 'ico sm')}</span></button>
+      <button class="set-row" data-act="backup-import"><span class="s-ico">${ICON('i-folder', 'ico sm')}</span><span class="s-body"><b>Importer une sauvegarde</b><span>Ajoute les documents sans écraser la bibliothèque actuelle</span></span><span class="chev">${ICON('i-chevron', 'ico sm')}</span></button>
+    </div>
+
+    <div class="set-group">
       <h3>Stockage local</h3>
       <div class="set-row" style="align-items:flex-start;flex-direction:column;gap:4px">
         <div class="row" style="width:100%">
@@ -274,7 +294,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.3.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.4.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}

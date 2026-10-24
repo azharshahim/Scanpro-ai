@@ -1673,7 +1673,7 @@ Object.assign(Actions, {
   },
   'filter-docs': (el) => { App.docFilter = el.dataset.key; render(); },
   'clear-search': () => { App.search = ''; render(); },
-  'open-doc': (el) => { App.detailTab = 'preview'; go('detail', el.dataset.id); },
+  'open-doc': (el) => { if (App.selectionMode) { const id=el.dataset.id; App.selectedDocs.has(id) ? App.selectedDocs.delete(id) : App.selectedDocs.add(id); render(); return; } App.detailTab = 'preview'; go('detail', el.dataset.id); },
   'doc-menu': (el, e) => { e.stopPropagation(); openDocMenu(el.dataset.id); },
 
   /* scan */
@@ -1849,6 +1849,16 @@ Object.assign(Actions, {
   'ai-invoice-demo': () => renderInvoicePanel(),
   'show-ia-requirements': () => showInfoSheet('ia'),
 
+  'docs-sort': () => { const order=['date-desc','date-asc','name','pages','size','type']; App.docSort=order[(order.indexOf(App.docSort)+1)%order.length]; render(); },
+  'docs-select-mode': () => { App.selectionMode=!App.selectionMode; if(!App.selectionMode) App.selectedDocs.clear(); render(); },
+  'docs-duplicates': () => findDocumentDuplicates(),
+  'docs-batch-rename': () => { const docs=selectedDocs(); if(!docs.length) return toast('Sélectionnez au moins un document','err'); promptSheet({ title:'Renommer par lots', label:'Préfixe commun', value:'Document', sub:'Les documents seront nommés Préfixe 01, Préfixe 02…', onOk: async (v) => { for(let i=0;i<docs.length;i++){ docs[i].name=v+' '+String(i+1).padStart(2,'0'); docs[i].history=[...(docs[i].history||[]),{at:Date.now(),action:'Renommé par lots'}]; await Repo.update(docs[i]); } App.selectionMode=false; App.selectedDocs.clear(); await render(); toast('Renommage par lots terminé','ok'); } }); },
+  'docs-batch-fav': async () => { const docs=selectedDocs(); if(!docs.length) return toast('Sélectionnez au moins un document','err'); for(const d of docs){ d.favorite=true; await Repo.update(d); } await render(); toast('Favoris mis à jour','ok'); },
+  'docs-batch-cat': () => { const docs=selectedDocs(); if(!docs.length) return toast('Sélectionnez au moins un document','err'); promptSheet({ title:'Catégorie par lots', label:'Catégorie', value:'', onOk: async (v) => { for(const d of docs){ d.category=v; await Repo.update(d); } App.selectionMode=false; App.selectedDocs.clear(); await render(); } }); },
+  'docs-batch-delete': () => { const docs=selectedDocs(); if(!docs.length) return toast('Sélectionnez au moins un document','err'); confirmSheet({ title:'Supprimer '+docs.length+' document(s) ?', sub:'Suppression définitive du stockage local.', okLabel:'Supprimer', danger:true, onOk: async () => { for(const d of docs) await Repo.remove(d.id); App.selectedDocs.clear(); App.selectionMode=false; await render(); toast('Documents supprimés','ok'); } }); },
+  'backup-export': () => exportLibraryBackup(),
+  'backup-import': () => importLibraryBackup(),
+
   /* paramètres */
   'set-langs': () => settingLangs(),
   'set-quality': () => settingQuality(),
@@ -1912,6 +1922,63 @@ async function answerLocalAssistant() {
   out.innerHTML = hits.length ? hits.slice(0,5).map(h=>`…${escapeHtml(h.before)}<b>${escapeHtml(h.match)}</b>${escapeHtml(h.after)}…`).join('<br><br>') : 'Aucun passage correspondant trouvé dans le texte OCR.';
 }
 
+/* --------------------------------------- V2.4 sauvegarde / bibliothèque -- */
+async function blobToDataUrl(blob) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(blob); }); }
+async function exportLibraryBackup() {
+  if (typeof JSZip === 'undefined') { toast('JSZip indisponible pour la sauvegarde', 'err'); return; }
+  try {
+    busyBar(true);
+    const docs = await Store.all('docs'); const pages = await Store.all('pages'); const rawFiles = await Store.all('files');
+    const files = [];
+    for (const f of rawFiles) if (f.blob) files.push({ id: f.id, name: f.name, dataUrl: await blobToDataUrl(f.blob) });
+    const manifest = { app: 'ScanPro AI', kind: 'scanpro-backup', version: 1, exportedAt: new Date().toISOString(), docs, pages, files };
+    const zip = new JSZip(); zip.file('scanpro-backup.json', JSON.stringify(manifest));
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    busyBar(false); downloadBlob(blob, 'scanpro-sauvegarde-' + new Date().toISOString().slice(0,10) + '.zip');
+    toast('Sauvegarde exportée : ' + plural(docs.length, 'document', 'documents'), 'ok');
+  } catch (e) { busyBar(false); toast('Sauvegarde impossible : ' + e.message, 'err', 6000); }
+}
+async function importLibraryBackup() {
+  const files = await pickFiles({ accept: '.zip,application/zip', multiple: false });
+  if (!files.length) return;
+  try {
+    if (typeof JSZip === 'undefined') throw new Error('JSZip indisponible');
+    busyBar(true);
+    const zip = await JSZip.loadAsync(files[0]);
+    const entry = zip.file('scanpro-backup.json');
+    if (!entry) throw new Error('archive invalide : scanpro-backup.json introuvable');
+    const manifest = JSON.parse(await entry.async('string'));
+    if (manifest.kind !== 'scanpro-backup' || !Array.isArray(manifest.docs) || !Array.isArray(manifest.pages)) throw new Error('archive ScanPro non reconnue');
+    const idMap = new Map();
+    for (const d of manifest.docs) idMap.set(d.id, uid('doc'));
+    let imported = 0;
+    for (const old of manifest.docs) {
+      const doc = { ...old, id: idMap.get(old.id), history: [...(old.history || []), { at: Date.now(), action: 'Restauré depuis une sauvegarde' }] };
+      await Store.put('docs', doc); imported++;
+    }
+    for (const pg of manifest.pages) if (idMap.has(pg.docId)) await Store.put('pages', { ...pg, id: uid('pg'), docId: idMap.get(pg.docId) });
+    for (const f of manifest.files || []) if (idMap.has(f.id) && f.dataUrl) await Store.put('files', { id: idMap.get(f.id), name: f.name, blob: dataUrlToBlob(f.dataUrl) });
+    App.docs = await Repo.list(); busyBar(false);
+    toast('Sauvegarde restaurée : ' + plural(imported, 'document ajouté', 'documents ajoutés'), 'ok', 5000);
+    go('docs');
+  } catch (e) { busyBar(false); toast('Restauration impossible : ' + e.message, 'err', 7000); }
+}
+async function findDocumentDuplicates() {
+  const entries = [];
+  busyBar(true);
+  for (const d of App.docs) {
+    const ps = await Repo.pages(d.id);
+    const src = ps[0]?.src || d.thumb;
+    if (src) { try { entries.push({ doc: d, fp: await Vision.fingerprint(src) }); } catch (e) {} }
+  }
+  busyBar(false);
+  const pairs = [];
+  for (let i=0;i<entries.length;i++) for (let j=i+1;j<entries.length;j++) { const dist=Vision.hamming(entries[i].fp.bits, entries[j].fp.bits); if (dist<=10) pairs.push({a:entries[i].doc,b:entries[j].doc,dist}); }
+  const sh = openSheet({ title:'Documents en double', sub:pairs.length?'Documents dont la première page est visuellement très proche.':'Aucun document en double détecté.', body:pairs.length?pairs.map((x,i)=>`<div class="row" style="justify-content:space-between;gap:8px;padding:8px 0"><span>« ${escapeHtml(x.a.name)} » ≈ « ${escapeHtml(x.b.name)} » <span class="tiny muted">(distance ${x.dist})</span></span><button class="btn xs danger" data-del-doc-dup="${i}">Supprimer le 2e</button></div>`).join(''):'<p class="small muted">Comparaison effectuée sur la première page de chaque document.</p>', actions:[{label:'Fermer',cls:'ghost'}] });
+  $$('[data-del-doc-dup]', sh).forEach(b=>b.addEventListener('click', async () => { const x=pairs[+b.dataset.delDocDup]; await Repo.remove(x.b.id); App.selectedDocs.delete(x.b.id); closeSheet(); await render(); toast('Document en double supprimé', 'ok'); }));
+}
+function selectedDocs() { return App.docs.filter(d => App.selectedDocs.has(d.id)); }
+
 /* ---------------------------------------------- exports texte / facture -- */
 async function makeDocxBlob(text, title = 'Document ScanPro AI') {
   if (typeof JSZip === 'undefined') throw new Error('JSZip indisponible pour le DOCX');
@@ -1952,10 +2019,12 @@ function openPdfTools() {
   const s = openSheet({
     title: 'Outils PDF avancés', sub: 'Les originaux sont conservés. Les options ci-dessous créent un nouveau PDF.',
     body: `<label class="row" style="gap:8px"><input type="checkbox" id="pdfNums"> Ajouter les numéros de page</label>
+      <div class="field"><label>Compression PDF</label><select id="pdfQuality"><option value="low">Légère (fichier plus petit)</option><option value="med" selected>Équilibrée</option><option value="high">Qualité maximale</option></select><span class="tiny muted" id="pdfSizeHint">La taille réelle sera affichée après génération.</span></div>
       <div class="field"><label>Filigrane (optionnel)</label><input id="pdfWatermark" placeholder="Ex. CONFIDENTIEL"></div>
       <div class="field"><label>Signature manuscrite</label><canvas id="sigCanvas" width="520" height="160" style="width:100%;background:#fff;border:1px solid var(--line);border-radius:10px;touch-action:none"></canvas></div>
       <div class="btn-row"><button class="btn xs ghost" id="sigClear">Effacer la signature</button><button class="btn xs primary" id="pdfToolsGo">Créer le PDF enrichi</button></div>
-      ${doc.kind === 'pdf' && doc.fileId ? `<hr><div class="field"><label>Extraire des pages du PDF importé</label><input id="pdfExtractSel" placeholder="Ex. 1-2, 4"><span class="tiny muted">Crée un nouveau document, sans modifier l'original.</span></div><button class="btn xs soft" id="pdfExtractGo">Extraire ces pages</button>` : '<p class="tiny muted">Pour extraire des pages d’un PDF importé, ouvrez un document de type PDF importé.</p>'}`,
+      ${doc.kind === 'pdf' && doc.fileId ? `<hr><div class="field"><label>Extraire des pages du PDF importé</label><input id="pdfExtractSel" placeholder="Ex. 1-2, 4"><span class="tiny muted">Crée un nouveau document, sans modifier l'original.</span></div><button class="btn xs soft" id="pdfExtractGo">Extraire ces pages</button>` : '<p class="tiny muted">Pour extraire des pages d’un PDF importé, ouvrez un document de type PDF importé.</p>'}
+      <hr><div class="field"><label>Extraire des pages d’un scan</label><input id="scanExtractSel" placeholder="Ex. 1, 3"><span class="tiny muted">Crée un nouveau document à partir des pages choisies, sans modifier l’original.</span></div><button class="btn xs soft" id="scanExtractGo">Extraire les pages du scan</button>`,
     actions: [{ label: 'Fermer', cls: 'ghost' }]
   });
   const cv = $('#sigCanvas', s); let drawing = false;
@@ -1968,8 +2037,17 @@ function openPdfTools() {
   }
   $('#pdfToolsGo', s).addEventListener('click', async () => {
     try { const pages = await Repo.pages(doc.id); if (!pages.length) throw new Error('Convertissez d’abord ce PDF en pages modifiables pour appliquer ces options.');
-      busyBar(true); const { blob } = await PDF.build(pages, { name: doc.name, quality: .9, maxPx: 2000, pageNumbers: $('#pdfNums', s).checked, watermark: $('#pdfWatermark', s).value.trim(), signature }); busyBar(false); downloadBlob(blob, slugify(doc.name) + '-enrichi.pdf'); toast('PDF enrichi téléchargé', 'ok');
+      const qv=$('#pdfQuality', s).value; const qmap={low:{quality:.62,maxPx:1200},med:{quality:.82,maxPx:1800},high:{quality:.94,maxPx:2600}}; busyBar(true); const { blob } = await PDF.build(pages, { name: doc.name, ...qmap[qv], pageNumbers: $('#pdfNums', s).checked, watermark: $('#pdfWatermark', s).value.trim(), signature }); busyBar(false); const hint=$('#pdfSizeHint', s); if(hint) hint.textContent='Taille générée : '+fmtBytes(blob.size); downloadBlob(blob, slugify(doc.name) + '-enrichi.pdf'); toast('PDF enrichi téléchargé ('+fmtBytes(blob.size)+')', 'ok');
     } catch (e) { busyBar(false); toast(e.message, 'err', 5000); }
+  });
+  const scanEx = $('#scanExtractGo', s);
+  if (scanEx) scanEx.addEventListener('click', async () => {
+    try { const pages = await Repo.pages(doc.id); if (!pages.length) throw new Error('Ce document n’a pas de pages image extractibles.');
+      const idx = PDF.parsePageSelection($('#scanExtractSel', s).value, pages.length); if (!idx.length) throw new Error('Sélection de pages vide ou invalide.');
+      const chosen = idx.map(i => ({ ...pages[i], id: uid('pg') }));
+      const nd = await Repo.create({ name: doc.name + ' — pages extraites', pages: chosen, source: 'extract-pages' });
+      toast('Document créé avec ' + chosen.length + ' page(s)', 'ok'); closeSheet(); go('detail', nd.id);
+    } catch (e) { toast('Extraction impossible : ' + e.message, 'err', 6000); }
   });
   const ex = $('#pdfExtractGo', s);
   if (ex) ex.addEventListener('click', async () => {
