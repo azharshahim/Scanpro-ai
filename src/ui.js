@@ -2778,6 +2778,7 @@ Object.assign(Actions, {
   'go-home': () => go('home'),
   'go-docs': () => { App.search = ''; go('docs'); },
   'go-settings': () => go('settings'),
+  'go-acc': () => go('acc'),
   'go-back': () => {
     if (App.route === 'detail') go('docs'); else go('home');
   },

@@ -52,19 +52,12 @@ function viewHome() {
           <div class="brand-sub">Scanner & OCR</div>
         </div>
       </div>
-      <button class="icon-btn" data-act="toggle-theme" aria-label="Basculer mode nuit / jour">${ICON(Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon')}</button>
       <button class="icon-btn" data-act="go-settings" aria-label="Paramètres">${ICON('i-settings')}</button>
     </div>
     <div class="hello">
       <h2>${firstName ? 'Bonjour ' + escapeHtml(firstName) : 'Prêt à numériser'}</h2>
-      <p>Scannez, reconnaissez le texte et exportez en PDF.</p>
+      <p>Scannez, reconnaissez le texte et exportez en PDF. ${ICON('i-shield', 'ico sm')} Tout reste sur l'appareil · ${docs.length} document(s), ${totalPages} page(s).</p>
     </div>
-    <div class="stat-row">
-      <div class="stat"><b>${docs.length}</b><span>${docs.length > 1 ? 'documents' : 'document'}</span></div>
-      <div class="stat"><b>${totalPages}</b><span>${totalPages > 1 ? 'pages scannées' : 'page scannée'}</span></div>
-      <div class="stat"><b>100 %</b><span>local & privé</span></div>
-    </div>
-    <div class="local-chip">${ICON('i-shield', 'ico sm')} Traitement sur l'appareil</div>
   </header>
 
   <div class="content">
@@ -90,9 +83,9 @@ function viewHome() {
         <span class="q-ico">${ICON('i-merge', 'ico sm')}</span>
         <span><b>Fusionner des PDF</b><span>2 fichiers ou plus</span></span>
       </button>
-      <button class="quick" data-act="go-docs">
-        <span class="q-ico">${ICON('i-folder', 'ico sm')}</span>
-        <span><b>Mes documents</b><span>${plural(docs.length, 'fichier', 'fichiers')}</span></span>
+      <button class="quick" data-act="go-tools">
+        <span class="q-ico">${ICON('i-grid', 'ico sm')}</span>
+        <span><b>Outils</b><span>Convertir, modifier, utilitaires</span></span>
       </button>
     </div>
 
@@ -220,7 +213,22 @@ async function viewSettings() {
       Seules les bibliothèques et modèles OCR publics peuvent être téléchargés depuis le CDN jsDelivr si les fichiers locaux sont bloqués par l'hébergeur — aucun document n'est transmis dans ce cas.</span></div>
 
     <div class="set-group">
-      <h3>Reconnaissance de texte</h3>
+      <h3>1 · Apparence</h3>
+      <div class="set-row"><span class="s-ico">${ICON('i-sun', 'ico sm')}</span><span class="s-body"><b>Mode sombre</b><span>Interface adaptée aux environnements peu éclairés</span></span><button class="switch ${Settings.get('theme')==='dark'?'on':''}" data-act="toggle-theme" role="switch" aria-checked="${Settings.get('theme')==='dark'}"><i></i></button></div>
+    </div>
+
+    <div class="set-group">
+      <h3>2 · Scan et caméra</h3>
+      <div class="set-row">
+        <span class="s-ico">${ICON('i-corners', 'ico sm')}</span>
+        <span class="s-body"><b>Détection automatique des contours</b><span>Redresser la perspective à la capture</span></span>
+        <button class="switch ${Settings.get('autoDetect') !== false ? 'on' : ''}" data-act="toggle-autodetect"
+          role="switch" aria-checked="${Settings.get('autoDetect') !== false}" aria-label="Détection des contours"></button>
+      </div>
+    </div>
+
+    <div class="set-group">
+      <h3>3 · OCR et langues</h3>
       <button class="set-row" data-act="set-langs">
         <span class="s-ico">${ICON('i-text', 'ico sm')}</span>
         <span class="s-body"><b>Langues OCR</b><span>${langLabel}</span></span>
@@ -237,27 +245,13 @@ async function viewSettings() {
         <button class="switch ${Settings.get('autoOcr') ? 'on' : ''}" data-act="toggle-autoocr"
           role="switch" aria-checked="${Settings.get('autoOcr')}" aria-label="OCR automatique"></button>
       </div>
-      <div class="set-row">
-        <span class="s-ico">${ICON('i-corners', 'ico sm')}</span>
-        <span class="s-body"><b>Détection automatique des contours</b><span>Redresser la perspective à la capture</span></span>
-        <button class="switch ${Settings.get('autoDetect') !== false ? 'on' : ''}" data-act="toggle-autodetect"
-          role="switch" aria-checked="${Settings.get('autoDetect') !== false}" aria-label="Détection des contours"></button>
-      </div>
     </div>
 
     <div class="set-group">
-      <h3>Apparence</h3>
-      <div class="set-row"><span class="s-ico">${ICON('i-sun', 'ico sm')}</span><span class="s-body"><b>Mode sombre</b><span>Interface adaptée aux environnements peu éclairés</span></span><button class="switch ${Settings.get('theme')==='dark'?'on':''}" data-act="toggle-theme" role="switch" aria-checked="${Settings.get('theme')==='dark'}"><i></i></button></div>
-    </div>
-
-    <div class="set-group">
-      <h3>Sauvegarde et restauration</h3>
+      <h3>4 · Stockage local et sauvegardes</h3>
       <button class="set-row" data-act="backup-export"><span class="s-ico">${ICON('i-download', 'ico sm')}</span><span class="s-body"><b>Exporter la bibliothèque</b><span>Archive ZIP : documents, pages, OCR et PDF importés</span></span><span class="chev">${ICON('i-chevron', 'ico sm')}</span></button>
       <button class="set-row" data-act="backup-import"><span class="s-ico">${ICON('i-folder', 'ico sm')}</span><span class="s-body"><b>Importer une sauvegarde</b><span>Ajoute les documents sans écraser la bibliothèque actuelle</span></span><span class="chev">${ICON('i-chevron', 'ico sm')}</span></button>
-    </div>
 
-    <div class="set-group">
-      <h3>Stockage local</h3>
       <div class="set-row" style="align-items:flex-start;flex-direction:column;gap:4px">
         <div class="row" style="width:100%">
           <span class="s-ico">${ICON('i-folder', 'ico sm')}</span>
@@ -278,12 +272,21 @@ async function viewSettings() {
     </div>
 
     <div class="set-group">
-      <h3>À propos & fonctionnalités à venir</h3>
+      <h3>5 · Confidentialité et permissions</h3>
       <button class="set-row" data-act="show-permissions">
         <span class="s-ico">${ICON('i-lock', 'ico sm')}</span>
         <span class="s-body"><b>Permissions utilisées</b><span>Caméra, fichiers — à la demande</span></span>
         <span class="chev">${ICON('i-chevron', 'ico sm')}</span>
       </button>
+    </div>
+
+    <div class="set-group">
+      <h3>6 · Comptabilité et plan comptable</h3>
+      <button class="set-row" data-act="go-acc"><span class="s-ico">${ICON('i-calc', 'ico sm')}</span><span class="s-body"><b>Plan comptable, journaux et règles</b><span>Configurés dans l'écran Comptabilité (source unique)</span></span><span class="chev">${ICON('i-chevron', 'ico sm')}</span></button>
+    </div>
+
+    <div class="set-group">
+      <h3>7 · Aide et version</h3>
       <button class="set-row" data-act="show-roadmap">
         <span class="s-ico">${ICON('i-sparkles', 'ico sm')}</span>
         <span class="s-body"><b>Feuille de route V2 → V4</b><span>IA, détection de contours, APK Android</span></span>
@@ -296,7 +299,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.18.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.19.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -509,9 +512,7 @@ function viewTools() {
   return `
   <header class="appbar tools-head"><div class="appbar-row">
     <h1>Outils</h1>
-    <button class="icon-btn" data-act="toggle-theme" aria-label="Basculer mode nuit / jour">${ICON(Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon')}</button>
-    <button class="icon-btn" data-act="go-settings" aria-label="Paramètres">${ICON('i-settings')}</button>
-  </div><p class="tiny" style="color:#A9BFDF;margin:6px 2px 0">Toutes les fonctions disponibles, sans bouton décoratif.</p></header>
+  </div><p class="tiny" style="color:#A9BFDF;margin:6px 2px 0">Fonctions avancées, regroupées par objectif. Les réglages sont dans Paramètres (icône sur l'Accueil).</p></header>
   <div class="content">
     <h2 class="tools-section">Scanner</h2><div class="tools-grid">
       ${toolItem('scan-camera','i-camera','Scanner')}
@@ -541,9 +542,6 @@ function viewTools() {
       ${toolItem('backup-import','i-folder','Restaurer')}
       ${toolItem('docs-duplicates','i-copy','Doublons documents')}
       ${toolItem('tool-doc-print','i-printer','Imprimer')}
-      ${toolItem('set-langs','i-text','Langues OCR')}
-      ${toolItem('toggle-theme', Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon','Nuit / Jour','orange')}
-      ${toolItem('go-settings','i-settings','Paramètres')}
       ${toolItem('tool-assistant','i-sparkles','Assistant local','green')}
     </div>
     <div class="banner info">${ICON('i-info','ico sm')}<span>Assistant IA génératif distant : prévu plus tard, lorsqu’une clé API et un backend sécurisé seront disponibles. Aucun outil ci-dessus n’envoie vos documents.</span></div>
