@@ -1594,7 +1594,7 @@ function settingLangs() {
     title: 'Langues OCR',
     sub: 'Choisissez les langues à reconnaître. Le pack de langue est téléchargé une seule fois.',
     body: `<div class="sheet-list">
-      ${[['fra+eng', 'Français + Anglais', 'recommandé'], ['fra', 'Français', ''], ['eng', 'Anglais', '']].map(([k, l, tag]) =>
+      ${[['fra+eng', 'Français + Anglais', 'recommandé'], ['fra', 'Français', ''], ['eng', 'Anglais', ''], ['spa', 'Espagnol', 'nouveau'], ['deu', 'Allemand', 'nouveau'], ['ita', 'Italien', 'nouveau'], ['por', 'Portugais', 'nouveau'], ['fra+eng+spa', 'Français + Anglais + Espagnol', 'multi'], ['fra+eng+deu', 'Français + Anglais + Allemand', 'multi']].map(([k, l, tag]) =>
         `<button data-lang="${k}"><svg class="ico"><use href="#i-text"/></svg>
           <span class="grow">${l}</span>${tag ? `<span class="tag blue">${tag}</span>` : ''}
           ${Settings.get('ocrLangs') === k ? `<span class="tag ok">actif</span>` : ''}</button>`).join('')}

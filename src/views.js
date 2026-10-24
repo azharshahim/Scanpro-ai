@@ -52,6 +52,7 @@ function viewHome() {
           <div class="brand-sub">Scanner & OCR</div>
         </div>
       </div>
+      <button class="icon-btn" data-act="toggle-theme" aria-label="Basculer mode nuit / jour">${ICON(Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon')}</button>
       <button class="icon-btn" data-act="go-settings" aria-label="Paramètres">${ICON('i-settings')}</button>
     </div>
     <div class="hello">
@@ -155,6 +156,7 @@ function viewDocs() {
   <header class="appbar">
     <div class="appbar-row">
       <h1 style="margin-left:2px">Documents</h1>
+      <button class="icon-btn" data-act="toggle-theme" aria-label="Basculer mode nuit / jour">${ICON(Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon')}</button>
       <button class="icon-btn" data-act="merge-pdfs" aria-label="Fusionner des PDF">${ICON('i-merge')}</button>
       <button class="icon-btn" data-act="scan-camera" aria-label="Nouveau scan">${ICON('i-plus')}</button>
     </div>
@@ -202,7 +204,7 @@ async function viewSettings() {
   const st = await storageInfo();
   const pct = st.quota ? clamp((st.usage / st.quota) * 100, 0.1, 100) : 0;
   const langs = Settings.get('ocrLangs');
-  const langLabel = { 'fra+eng': 'Français + Anglais', fra: 'Français', eng: 'Anglais' }[langs];
+  const langLabel = ({ 'fra+eng':'Français + Anglais', fra:'Français', eng:'Anglais', spa:'Espagnol', deu:'Allemand', ita:'Italien', por:'Portugais', 'fra+eng+spa':'Français + Anglais + Espagnol', 'fra+eng+deu':'Français + Anglais + Allemand' })[langs] || langs;
   const q = Settings.get('quality');
   return `
   <header class="appbar">
@@ -294,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.4.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.5.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}

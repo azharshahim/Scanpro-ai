@@ -1,4 +1,4 @@
-# ScanPro AI — V2.4 (sauvegarde, bibliothèque pro et PDF)
+# ScanPro AI — V2.5 (en-tête mobile, langues OCR, nuit/jour)
 
 Scanner de documents pour Android (web app installable) : caméra, **détection automatique des
 contours**, **correction de perspective**, redressement, recadrage, filtres avancés,
@@ -88,3 +88,5 @@ Licences des composants tiers : Tesseract.js (Apache-2.0), jsPDF (MIT), pdf-lib 
 pdf.js (Apache-2.0), JSZip (MIT/GPLv3).
 
 - V2.4 `tests/e2e-v24.mjs` : **8/8 OK** (sauvegarde/restauration ZIP, doublons de documents, sélection multiple, tri)
+
+- V2.5 `tests/e2e-v25.mjs` : **8/8 OK** (en-tête non fixe, mode nuit/jour, OCR espagnol réel)
