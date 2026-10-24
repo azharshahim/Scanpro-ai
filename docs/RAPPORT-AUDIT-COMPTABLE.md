@@ -196,3 +196,17 @@ Résultat imprimé ≠ recalculé → écart ; résultat imprimé absent → à 
 
 ### Limites restantes
 Sens achat/vente toujours proposé et modifiable ; tableaux OCR dégradés perfectibles ; pas de FEC ni de rapprochement bancaire ; écritures proposées non validées par un expert-comptable.
+
+---
+
+## V2.14 — Reconnaissance structurée par positions OCR (24/10/2026, PR vers `main`)
+
+### Réalisé et testé (`tests/e2e-v214.mjs` : **15/15**, navigateur émulé)
+- **Pipeline OCR** : en plus des mots (`wordBoxes`), les **lignes OCR avec coordonnées** (`lineBoxes`) sont conservées par `OCR.run` et persistées par page (`ocrLines`, listes blanches de création/remplacement de pages corrigées en conséquence). Aucune coordonnée n'est fabriquée : sans positions, `findZone` renvoie `null` (testé).
+- **Reconstruction de tableaux par positions** (`Acc.groupWordLines`, `Acc.positionRows`) : regroupement des mots en lignes par ordonnée, tri par abscisse. **Relevés bancaires** : en-tête Débit/Crédit/Solde détectée, chaque montant affecté à la colonne la plus proche — un libellé neutre sans mot-clé est correctement classé par sa seule position (testé). **Bilans/comptes de résultat** : colonnes déterminées par l'en-tête (années ou N/N-1, dans l'ordre imprimé) — un montant seul sous « 2025 » va en N-1, on ne suppose plus « les deux derniers montants = N et N-1 » (testé). Source « positions OCR » enregistrée par ligne/opération ; repli texte inchangé sans positions.
+- **Métadonnées par champ** : valeur, confiance, **source** (« OCR Tesseract (local) »), statut reconnu/calculé (contrôles)/corrigé/non reconnu.
+- **Écran de vérification** (bouton dédié) : page d'origine avec zone surlignée au clic sur un champ, liste des **champs incertains**, contrôles arithmétiques statutaires, **corrections manuelles** ; empilé et lisible sans zoom sur mobile 360 px (testé).
+- **Précision mesurée séparément** : champs 5/5 et lignes 1/1 sur la facture synthétique de référence ; aucun pourcentage de confiance affiché sans mesure (les confidences restent des heuristiques étiquetées comme telles).
+
+### Limites
+Positions dépendantes de Tesseract (documents très inclinés ou OCR dégradé => repli texte) ; échéanciers/immobilisations/paie utilisent encore principalement les lignes reconstruites par le texte (les positions alimentent zones et futurs raffinements) ; aucun test Android physique.

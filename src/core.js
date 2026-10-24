@@ -492,7 +492,12 @@ const OCR = {
       x: imgW ? +(w.bbox.x0 / imgW).toFixed(4) : 0, y: imgH ? +(w.bbox.y0 / imgH).toFixed(4) : 0,
       w: imgW ? +((w.bbox.x1 - w.bbox.x0) / imgW).toFixed(4) : 0, h: imgH ? +((w.bbox.y1 - w.bbox.y0) / imgH).toFixed(4) : 0
     }));
-    return { text, confidence: Math.round(data.confidence || 0), words: (data.words || []).length, lines: (data.lines || []).length, uncertain, wordBoxes };
+    const lineBoxes = (data.lines || []).filter(l => (l.text || '').trim() && l.bbox).slice(0, 500).map(l => ({
+      t: l.text.trim(), c: Math.round(l.confidence || 0),
+      x: imgW ? +(l.bbox.x0 / imgW).toFixed(4) : 0, y: imgH ? +(l.bbox.y0 / imgH).toFixed(4) : 0,
+      w: imgW ? +((l.bbox.x1 - l.bbox.x0) / imgW).toFixed(4) : 0, h: imgH ? +((l.bbox.y1 - l.bbox.y0) / imgH).toFixed(4) : 0
+    }));
+    return { text, confidence: Math.round(data.confidence || 0), words: (data.words || []).length, lines: (data.lines || []).length, uncertain, wordBoxes, lineBoxes };
   },
   async terminate() { if (this.worker) { try { await this.worker.terminate(); } catch (e) {} this.worker = null; this.langs = null; } }
 };

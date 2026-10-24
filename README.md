@@ -1,4 +1,4 @@
-# ScanPro AI — V2.13 (scanner + espace Comptabilité local)
+# ScanPro AI — V2.14 (scanner + espace Comptabilité local)
 
 Scanner de documents pour Android (web app installable) : caméra, **détection automatique des
 contours**, **correction de perspective**, redressement, recadrage, filtres avancés,

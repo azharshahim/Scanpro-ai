@@ -1,6 +1,6 @@
 /* ScanPro AI — service worker : app + bibliothèques + pack de langue en cache
    pour un fonctionnement hors-ligne après la première visite. */
-const CACHE = 'scanpro-ai-v2.13.0';
+const CACHE = 'scanpro-ai-v2.14.0';
 const ASSETS = [
   './', './manifest.webmanifest', './assets/icon.svg',
   './vendor/tesseract.min.js', './vendor/tesseract-worker.min.js',
