@@ -572,12 +572,16 @@ async function editorCorners() {
   const host = document.createElement('div');
   host.id = 'cornerHost';
   host.style.cssText = 'position:relative;display:inline-block;line-height:0;max-width:100%';
+  const frame = document.createElement('div');
+  frame.style.cssText = 'position:relative;line-height:0;width:min(620px,100%);margin:0 auto';
   const cv = document.createElement('canvas');
   cv.width = canvas.width; cv.height = canvas.height;
-  const k = Math.min(1, 620 / Math.max(canvas.width, canvas.height));
-  cv.style.cssText = `width:${Math.round(canvas.width * k)}px;height:${Math.round(canvas.height * k)}px;border-radius:8px;display:block`;
+  cv.style.cssText = 'width:100%;height:auto;max-height:none;border-radius:8px;display:block';
   cv.getContext('2d').drawImage(canvas, 0, 0);
-  host.appendChild(cv);
+  frame.appendChild(cv);
+  host.style.display = 'block';
+  host.style.width = '100%';
+  host.appendChild(frame);
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('viewBox', '0 0 100 100');
@@ -588,7 +592,7 @@ async function editorCorners() {
   poly.setAttribute('stroke', '#3B82F6');
   poly.setAttribute('stroke-width', '0.7');
   svg.appendChild(poly);
-  host.appendChild(svg);
+  frame.appendChild(svg);
 
   const order = ['tl', 'tr', 'br', 'bl'];
   const handles = {};
@@ -629,7 +633,7 @@ async function editorCorners() {
       h.addEventListener('pointercancel', up);
     });
     handles[n] = h;
-    host.appendChild(h);
+    frame.appendChild(h);
   });
   paint();
 
@@ -662,7 +666,8 @@ async function editorCorners() {
     page.crop = { x: 0, y: 0, w: 1, h: 1 };
     try {
       const warped = Vision.warp(canvas, ordered, { maxPx: 900 });
-      page.deskew = Vision.deskewAngle(warped);
+      const est = Vision.deskewAngleDetailed(warped);
+      page.deskew = (Math.abs(est.angle) >= 1 && est.improvement >= 0.15) ? est.angle : 0;
     } catch (e) {}
     page.thumb = await ImageOps.thumb(await ImageOps.render(page, { maxPx: 400, quality: 0.7 }).then(c => c.toDataURL('image/jpeg', 0.7)));
     toast('Perspective appliquée', 'ok');
@@ -862,6 +867,7 @@ async function openCleanStudio() {
         <button class="btn xs primary" id="cleanMagic">Nettoyage magique</button>
         <button class="btn xs soft" id="cleanBW">Noir et blanc</button>
         <button class="btn xs ghost" id="cleanRestore">Restaurer l'original</button>
+        <button class="btn xs soft" id="cleanWatermark">Atténuer le filigrane</button>
       </div>
       <div class="row wrap" style="gap:7px;margin:8px 0">
         <button class="btn xs ghost" id="cleanUndo">↩ Annuler</button>
@@ -896,6 +902,7 @@ async function openCleanStudio() {
   $('#cleanMagic', sheet).addEventListener('click', () => mutate(() => { candidate.filter = 'doc'; candidate.cleanup = { enabled: true, strength: +($('#cleanStrength', sheet).value) / 100, denoise: true, sharpen: true, illumination: true }; }));
   $('#cleanBW', sheet).addEventListener('click', () => mutate(() => { candidate.filter = 'bw'; candidate.cleanup = { enabled: true, strength: 0.35, denoise: true, sharpen: true, illumination: true }; }));
   $('#cleanRestore', sheet).addEventListener('click', () => mutate(() => { candidate.filter = 'none'; candidate.adj = { b: 1, c: 1 }; candidate.cleanup = null; candidate.eraser = []; }));
+  const wmBtn = $('#cleanWatermark', sheet); if (wmBtn) wmBtn.addEventListener('click', () => mutate(() => { candidate.filter = 'doc'; candidate.cleanup = { enabled: true, strength: +($('#cleanStrength', sheet).value) / 100, denoise: true, sharpen: true, illumination: true, watermark: true }; }));
   $('#cleanStrength', sheet).addEventListener('input', (e) => { $('#cleanStrengthVal', sheet).textContent = e.target.value + ' %'; if (candidate.cleanup) { candidate.cleanup.strength = e.target.value / 100; refresh(); } });
   $('#cleanUndo', sheet).addEventListener('click', () => { if (!undoStack.length) return toast('Rien à annuler'); redoStack.push(snap()); applyCleanSettings(candidate, JSON.parse(undoStack.pop())); refresh(); });
   $('#cleanRedo', sheet).addEventListener('click', () => { if (!redoStack.length) return toast('Rien à rétablir'); undoStack.push(snap()); applyCleanSettings(candidate, JSON.parse(redoStack.pop())); refresh(); });
