@@ -1622,22 +1622,41 @@ const Precompta = {
      « remboursement »…) ne font jamais partie de l'identité du bénéficiaire :
      impossible d'apprendre une règle « tous les virements ». */
   LEARN_STOP: new Set('vir virement inst instantane web carte cb prlv prelevement sepa vers de du des la le les pour par ref reference n numero eur chez au aux en'.split(' ')),
-  LEARN_NATURE: new Set('salaire salaires paie paye remuneration appointements remboursement rembourse avance acompte pret facture reglement encaissement fournisseur client interne alimentation compte frais cotisation loyer prime echeance'.split(' ')),
+  LEARN_NATURE: new Set('salaire salaires paie paye remuneration appointements remboursement rembourse avance acompte pret facture reglement encaissement fournisseur client interne alimentation compte frais cotisation loyer prime echeance mensuel mensuelle janvier fevrier mars avril mai juin juillet aout septembre octobre novembre decembre'.split(' ')),
   beneficiaryTokens(label) {
     return [...new Set(Precompta.normName(label).split(' ')
       .filter(w => w.length >= 2 && !/^\d+$/.test(w) && !Precompta.LEARN_STOP.has(w) && !Precompta.LEARN_NATURE.has(w)))].slice(0, 5);
   },
-  learnKey(label, direction) {
+  NATURES: ['salaire', 'remboursement/avance', 'virement interne', 'encaissement client', 'paiement fournisseur', 'autre virement'],
+  canonNature(n) {
+    const s = Precompta.normName(n);
+    if (/salaire|paie|paye/.test(s)) return 'salaire';
+    if (/remboursement|avance|acompte/.test(s)) return 'remboursement/avance';
+    if (/interne|entre comptes/.test(s)) return 'virement interne';
+    if (/encaissement|client/.test(s)) return 'encaissement client';
+    if (/fournisseur/.test(s)) return 'paiement fournisseur';
+    if (/autre/.test(s)) return 'autre virement';
+    return 'inconnue';
+  },
+  natureOf(label, sens, explicit) {
+    if (explicit && Precompta.canonNature(explicit) !== 'inconnue') return Precompta.canonNature(explicit);
+    return Precompta.detectNature(label, sens);
+  },
+  learnKey(label, direction, nature) {
     const toks = Precompta.beneficiaryTokens(label).slice().sort();
     if (!toks.length) return '';
     if (toks.length === 1 && toks[0].length < 3) return ''; // identité trop faible
-    return (direction || 'tout-sens') + '|' + toks.join(' ');
+    // V2.18 : la nature (quand elle est établie) fait partie de l'identité de la règle :
+    // « salaire » et « remboursement » du même bénéficiaire sont DEUX règles distinctes.
+    const nat = nature && Precompta.canonNature(nature) !== 'inconnue' ? Precompta.canonNature(nature) : null;
+    return (direction || 'tout-sens') + '|' + (nat ? nat + '|' : '') + toks.join(' ');
   },
   detectNature(label, sens) {
     const s = ' ' + Precompta.normName(label) + ' ';
-    if (/salaire|paie|paye|remuneration|appointements/.test(s)) return 'salaire';
-    if (/virement interne|vir interne|entre comptes|alimentation/.test(s)) return 'virement interne';
+    // V2.18 : « avance sur salaire » et « remboursement » priment sur le mot « salaire »
     if (/remboursement|avance|acompte|note de frais/.test(s)) return 'remboursement/avance';
+    if (/virement interne|vir interne|entre comptes|alimentation/.test(s)) return 'virement interne';
+    if (/salaire|paie|paye|remuneration|appointements/.test(s)) return 'salaire';
     if (sens === 'entree' && /facture|reglement|encaissement|client/.test(s)) return 'encaissement client';
     if (sens === 'sortie' && /fournisseur|facture/.test(s)) return 'paiement fournisseur';
     return 'inconnue';
@@ -1646,14 +1665,15 @@ const Precompta = {
     // Normalise l'ancien format (chaîne) et le format V2.17 (objet).
     return Object.entries(Precompta.learned()).map(([key, v]) => {
       if (typeof v === 'string') return { key, account: v, direction: null, tokens: key.split('|').slice(1).join(' ').split(' ').filter(Boolean), nature: null, legacy: true };
-      return { key, account: v.account || null, direction: v.direction || null, tokens: v.tokens || [], nature: v.nature || null, label: v.label || '', conflictAccounts: v.conflictAccounts || null };
+      return { key, account: v.account || null, direction: v.direction || null, tokens: v.tokens || [], nature: v.nature || null, label: v.label || '', dossier: v.dossier || null, conflictAccounts: v.conflictAccounts || null };
     });
   },
   _saveLearned(map) { Precompta._save(Precompta.LEARNED_KEY, map); },
   learnFromLabel(label, account, opts = {}) {
     const direction = opts.direction || null;
     const toks = Precompta.beneficiaryTokens(label);
-    const key = Precompta.learnKey(label, direction);
+    const nature = opts.nature ? Precompta.canonNature(opts.nature) : Precompta.detectNature(label, direction);
+    const key = Precompta.learnKey(label, direction, nature);
     if (!account) return { ok: false, reason: 'compte absent' };
     if (!key) return { ok: false, reason: 'bénéficiaire non identifiable (libellé trop générique) : règle non apprise' };
     const map = Precompta.learned();
@@ -1667,7 +1687,7 @@ const Precompta = {
       Precompta._saveLearned(map);
       return { ok: false, conflict: true, key, reason: 'conflit avec la règle apprise existante (' + prevAccount + ' ≠ ' + account + ') : correction explicite requise' };
     }
-    map[key] = { account: String(account), direction, tokens: toks.slice().sort(), nature: opts.nature || Precompta.detectNature(label, direction), label: String(label || '').slice(0, 90), updatedAt: Date.now(), dossier: (Precompta.rules().journalBanque || 'BQ') + '/' + Precompta.rules().banque };
+    map[key] = { account: String(account), direction, tokens: toks.slice().sort(), nature, label: String(label || '').slice(0, 90), updatedAt: Date.now(), dossier: (Precompta.rules().journalBanque || 'BQ') + '/' + Precompta.rules().banque };
     Precompta._saveLearned(map);
     return { ok: true, key };
   },
@@ -2392,55 +2412,74 @@ const Acc = {
     const txs = data.transactions || [];
     const benef = txs.map(tx => Precompta.beneficiaryTokens(tx.label || ''));
     const sensOf = (tx) => tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
-    // Appariement bénéficiaire : exact (mêmes jetons, ordre indifférent) = certain ;
-    // recouvrement partiel d'un seul jeton ou recouvrement croisé = INCERTAIN (à confirmer).
+    // V2.18 — Appariement bénéficiaire + SENS + NATURE. La nature stockée dans la
+    // règle est désormais réellement comparée à celle de l'opération :
+    // natures connues différentes = règle INCOMPATIBLE (jamais appliquée) ;
+    // nature de l'opération inconnue face à une règle typée (ou compte sensible
+    // 421/425/467 sans nature établie) = SUGGESTION à confirmer, pas d'automatisme.
+    // Une règle d'un autre dossier comptable (journal/banque différents) est ignorée.
+    const dossierId = (R.journalBanque || 'BQ') + '/' + R.banque;
+    const SENSITIVE = /^(421|425|467)/;
+    const natures = txs.map(tx => Precompta.natureOf(tx.label || '', sensOf(tx), tx.nature));
     const matchLearned = (i) => {
-      const toks = benef[i], sens = sensOf(txs[i]); const exact = [], partial = [];
+      const toks = benef[i], sens = sensOf(txs[i]), nat = natures[i];
+      const auto = [], suggest = [], blocked = [], partial = [];
       for (const r of learnedRules) {
+        if (r.dossier && r.dossier !== dossierId) continue;
         if (r.direction && sens && r.direction !== sens) continue;
         const rt = new Set(r.tokens || []); if (!rt.size || !toks.length) continue;
         const inter = toks.filter(x => rt.has(x));
         const isExact = inter.length === rt.size && inter.length === toks.length;
         const isSubset = inter.length === rt.size || inter.length === toks.length;
-        if (isExact || (isSubset && inter.length >= 2)) exact.push(r);
-        else if (inter.length >= 1) partial.push(r);
+        if (!(isExact || (isSubset && inter.length >= 2))) { if (inter.length >= 1) partial.push(r); continue; }
+        const rNat = r.nature ? Precompta.canonNature(r.nature) : 'inconnue';
+        if (rNat !== 'inconnue' && nat !== 'inconnue') {
+          if (rNat === nat) auto.push(r); else blocked.push(r);
+        } else if (rNat !== 'inconnue' && nat === 'inconnue') suggest.push(r);
+        else if (rNat === 'inconnue' && nat !== 'inconnue') blocked.push(r);
+        else if (SENSITIVE.test(String(r.account))) suggest.push(r);
+        else auto.push(r);
       }
-      return { exact, partial };
+      return { auto, suggest, blocked, partial };
     };
     return txs.map((tx, i) => {
       const sens = sensOf(tx);
       const amount = tx.debit ?? tx.credit ?? null;
-      const nature = Precompta.detectNature(tx.label || '', sens);
-      // Opérations similaires dans CE relevé : même bénéficiaire exact qu'une autre ligne.
-      const similar = txs.map((o, j) => j).filter(j => j !== i && benef[j].length && benef[i].length
-        && benef[j].slice().sort().join(' ') === benef[i].slice().sort().join(' ') && sensOf(txs[j]) === sens);
+      const nature = natures[i];
       let counter = tx.account || null, conf = counter ? 65 : 0, why = counter ? 'Compte affecté/corrigé explicitement par l\u2019utilisateur' : null,
-        alternatives = [], learnedHit = false, origin = counter ? 'utilisateur' : null, suggestion = null;
-      const { exact, partial } = counter ? { exact: [], partial: [] } : matchLearned(i);
+        alternatives = [], learnedHit = false, origin = counter ? 'utilisateur' : null, suggestion = null, natureBlocked = [];
+      const m = counter ? { auto: [], suggest: [], blocked: [], partial: [] } : matchLearned(i);
+      const exact = m.auto; natureBlocked = m.blocked;
       if (!counter && exact.length) {
         const accounts = [...new Set(exact.map(r => r.account))];
         const conflictRule = exact.find(r => r.conflictAccounts && r.conflictAccounts.length > 1);
         if (conflictRule || accounts.length > 1) {
-          suggestion = { account: null, accounts: (conflictRule ? conflictRule.conflictAccounts : accounts), confidence: 30, reason: 'Conflit entre règles apprises pour ce bénéficiaire : choisir explicitement le bon compte (aucune résolution automatique).' };
+          suggestion = { account: null, accounts: (conflictRule ? conflictRule.conflictAccounts : accounts), confidence: 30, reason: 'Conflit entre règles apprises pour ce bénéficiaire et cette nature : choisir explicitement le bon compte (aucune résolution automatique).' };
         } else {
           counter = exact[0].account; conf = 90; learnedHit = true; origin = 'apprentissage';
-          why = 'Règle apprise de vos corrections validées (bénéficiaire « ' + (exact[0].tokens || []).join(' ') + ' »' + (exact[0].direction ? ', sens ' + exact[0].direction : '') + ')';
+          why = 'Règle apprise de vos corrections validées (bénéficiaire « ' + (exact[0].tokens || []).join(' ') + ' »' + (exact[0].direction ? ', sens ' + exact[0].direction : '') + ', nature ' + (exact[0].nature || 'inconnue') + ')';
         }
+      }
+      if (!counter && !suggestion && m.suggest.length) {
+        const accounts = [...new Set(m.suggest.map(r => r.account))];
+        if (accounts.length === 1) suggestion = { account: accounts[0], nature: m.suggest[0].nature || null, confidence: 55, reason: 'Bénéficiaire reconnu par une règle apprise, mais la nature de cette opération n\u2019est pas établie par le libellé : confirmez qu\u2019il s\u2019agit bien d\u2019un(e) « ' + (m.suggest[0].nature || 'opération de même nature') + ' » avant d\u2019appliquer le compte ' + accounts[0] + '.' };
       }
       if (!counter && !suggestion) for (const r of rules) {
         if (r.sens && sens && r.sens !== sens) continue;
+        if (nature === 'remboursement/avance' && String(r.account) === '421000') continue; // un remboursement/avance n'est pas un salaire net
         let re; try { re = new RegExp(r.pattern, 'i'); } catch (e) { continue; }
         if (re.test(tx.label || '')) { counter = r.account; conf = r.conf || 50; why = r.why || 'Règle configurable du dossier'; alternatives = r.alternatives || []; origin = 'règle du dossier'; break; }
       }
-      if (!counter && !suggestion && partial.length) {
-        const accounts = [...new Set(partial.map(r => r.account))];
-        suggestion = { account: accounts.length === 1 ? accounts[0] : null, accounts, confidence: 40, reason: 'Correspondance incertaine avec une règle apprise (nom partiellement commun : « ' + (partial[0].tokens || []).join(' ') + ' ») : proposition à confirmer explicitement, jamais appliquée automatiquement.' };
+      if (!counter && !suggestion && m.partial.length) {
+        const accounts = [...new Set(m.partial.map(r => r.account))];
+        suggestion = { account: accounts.length === 1 ? accounts[0] : null, accounts, confidence: 40, reason: 'Correspondance incertaine avec une règle apprise (nom partiellement commun : « ' + (m.partial[0].tokens || []).join(' ') + ' ») : proposition à confirmer explicitement, jamais appliquée automatiquement.' };
       }
       const acct = counter ? acctOf(counter) : null;
       const issues = [];
       if (!sens || amount == null) issues.push('sens ou montant non reconnu');
       if (!counter && !suggestion) issues.push('aucune contrepartie proposée : à affecter manuellement');
       if (suggestion) issues.push('proposition incertaine à confirmer (non exportée tant qu\u2019elle n\u2019est pas acceptée)');
+      if (!counter && natureBlocked.length) issues.push('règle apprise existante pour ce bénéficiaire mais nature différente (' + (natureBlocked[0].nature || 'inconnue') + ' ≠ ' + nature + ') : non appliquée');
       if (counter && !acct) issues.push('compte ' + counter + ' absent du plan du dossier');
       if (counter && acct && !acct.active) issues.push('compte ' + counter + ' inactif dans le plan du dossier');
       const bankNum = R.banque, bankAcct = acctOf(bankNum);
@@ -2448,6 +2487,13 @@ const Acc = {
       else if (!bankAcct.active) issues.push('compte banque ' + bankNum + ' inactif dans le plan du dossier');
       // Écriture : sortie = contrepartie débitée / 512 crédité ; entrée = inverse.
       // Jamais d'écriture si la contrepartie ou la banque est absente/inactive du plan.
+      // V2.18 — Similaires « appliquables » : bénéficiaire EXACT, même sens, même
+      // nature, et nature établie si le compte est sensible (421/425/467). Les
+      // correspondances partielles/homonymes ne sont jamais dans cette liste.
+      const similar = counter ? txs.map((o, j) => j).filter(j => j !== i && benef[j].length && benef[i].length
+        && benef[j].slice().sort().join(' ') === benef[i].slice().sort().join(' ')
+        && sensOf(txs[j]) === sens && natures[j] === nature
+        && !(/^(421|425|467)/.test(String(counter)) && nature === 'inconnue')) : [];
       const usable = counter && acct && acct.active && bankAcct && bankAcct.active;
       const entries = (usable && sens && amount != null) ? (sens === 'sortie'
         ? [{ account: counter, debit: amount, credit: 0 }, { account: bankNum, debit: 0, credit: amount }]
@@ -2458,7 +2504,7 @@ const Acc = {
         counterExists: !!acct, counterActive: acct ? !!acct.active : false,
         confidence: conf, explanation: why || 'Aucune règle reconnue pour ce libellé : compte laissé en attente (jamais inventé).',
         alternatives: alternatives.map(fmtA), learned: learnedHit, origin, suggestion,
-        similarIndexes: similar, similarLabels: similar.map(j => txs[j].label),
+        similarIndexes: similar, similarLabels: similar.map(j => txs[j].label + ' [' + natures[j] + ']'),
         issues, entries,
         status: 'proposée (non validée)' };
     });
@@ -3226,7 +3272,7 @@ async function accReadForm(doc) {
   $$('[data-acc-tx]').forEach(i => {
     const [idx, field] = i.dataset.accTx.split(':');
     const x = (data.transactions || [])[+idx]; if (!x) return;
-    x[field] = (field === 'label' || field === 'date' || field === 'valueDate' || field === 'account') ? i.value : Acc.parseAmount(i.value);
+    x[field] = (field === 'label' || field === 'date' || field === 'valueDate' || field === 'account' || field === 'nature') ? i.value : Acc.parseAmount(i.value);
     x.status = 'corrige';
   });
   $$('[data-acc-line]').forEach(i => {
@@ -3262,9 +3308,13 @@ async function accSave(docId) {
     (doc.acc.data.transactions || []).forEach((tx, i) => {
       if (!tx.account) return;
       const auto = baseline[i] && baseline[i].counterAccount;
-      if (auto && String(auto) === String(tx.account)) return; // simple confirmation d'une proposition : pas un nouvel apprentissage
+      const prevTx = (prevDataSnapshot.transactions || [])[i] || {};
+      // V2.18 : classer explicitement la nature est aussi un acte de validation
+      // qui fonde une règle bénéficiaire+nature, même si le compte proposé était déjà le bon.
+      const explicitNature = tx.nature && Precompta.canonNature(tx.nature) !== 'inconnue' && tx.nature !== prevTx.nature;
+      if (auto && String(auto) === String(tx.account) && !explicitNature) { delete tx.account; return; } // proposition automatique non modifiée : elle reste une proposition, pas une affectation utilisateur
       const direction = tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
-      results.push(Precompta.learnFromLabel(tx.label, tx.account, { direction }));
+      results.push(Precompta.learnFromLabel(tx.label, tx.account, { direction, nature: Precompta.natureOf(tx.label, direction, tx.nature) }));
     });
     for (const r of results) if (r && (r.ok || r.conflict)) learnLog.push(r);
   }
@@ -3285,7 +3335,9 @@ async function accAcceptSuggestion(docId, idx, account) {
   const tx = (doc.acc.data.transactions || [])[idx]; if (!tx) return;
   tx.account = account;
   const direction = tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
-  const r = Precompta.learnFromLabel(tx.label, account, { direction });
+  const prop = Acc.bankProposals(doc.acc.data)[idx];
+  if (prop && prop.suggestion && prop.suggestion.nature && Precompta.canonNature(tx.nature || '') === 'inconnue') tx.nature = prop.suggestion.nature;
+  const r = Precompta.learnFromLabel(tx.label, account, { direction, nature: Precompta.natureOf(tx.label, direction, tx.nature) });
   doc.acc.edited = true; doc.history = doc.history || [];
   doc.history.push({ at: Date.now(), action: 'Suggestion comptable acceptée explicitement (' + account + ')' + (r && r.ok ? ' et apprise' : '') });
   await Repo.update(doc); App.docs = await Repo.list(); await render();
@@ -3294,13 +3346,25 @@ async function accAcceptSuggestion(docId, idx, account) {
 async function accApplySimilar(docId, idx) {
   const doc = await Repo.doc(docId); if (!doc || !doc.acc) return;
   const props = Acc.bankProposals(doc.acc.data); const pr = props[idx];
-  if (!pr || !pr.counterAccount || !pr.similarIndexes.length) return;
-  let n = 0;
-  for (const j of pr.similarIndexes) { const tx = doc.acc.data.transactions[j]; if (tx && !tx.account) { tx.account = pr.counterAccount; n++; } }
+  if (!pr || !pr.counterAccount) return;
+  // V2.18 — Revérification ligne par ligne au moment de l'application (l'aperçu
+  // affiché peut être obsolète) : bénéficiaire EXACT (jetons triés identiques),
+  // même sens, même nature, et nature établie pour les comptes sensibles.
+  const P = Precompta, A = Acc;
+  const toksOf = (label) => P.beneficiaryTokens(label || '').slice().sort().join(' ');
+  const sensOf = (tx) => tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
+  const refToks = toksOf(pr.label), sensitive = /^(421|425|467)/.test(String(pr.counterAccount));
+  let n = 0, skipped = 0;
+  (doc.acc.data.transactions || []).forEach((tx, j) => {
+    if (j === idx || tx.account) return;
+    const nat = P.natureOf(tx.label || '', sensOf(tx), tx.nature);
+    const okLine = refToks && toksOf(tx.label) === refToks && sensOf(tx) === pr.sens && nat === pr.nature && !(sensitive && nat === 'inconnue');
+    if (okLine) { tx.account = pr.counterAccount; if (tx.nature == null && nat !== 'inconnue') tx.nature = nat; n++; } else skipped++;
+  });
   doc.acc.edited = true; doc.history = doc.history || [];
-  doc.history.push({ at: Date.now(), action: 'Règle appliquée à ' + n + ' opération(s) similaire(s) de ce relevé (' + pr.counterAccount + ')' });
+  doc.history.push({ at: Date.now(), action: 'Règle appliquée à ' + n + ' opération(s) vérifiée(s) similaire(s) (' + pr.counterAccount + ', nature ' + pr.nature + '), ' + skipped + ' écartée(s)' });
   await Repo.update(doc); App.docs = await Repo.list(); await render();
-  toast('Compte ' + pr.counterAccount + ' appliqué à ' + n + ' opération(s) similaire(s) de ce relevé (aperçu affiché avant application)', 'ok', 5000);
+  toast('Compte ' + pr.counterAccount + ' appliqué à ' + n + ' opération(s) réellement similaire(s) (bénéficiaire + sens + nature ' + pr.nature + ')' + (skipped ? ' — ' + skipped + ' ligne(s) écartée(s) après revérification' : ''), 'ok', 6000);
 }
 async function accSetValidation(docId, status) {
   const doc = await Repo.doc(docId);

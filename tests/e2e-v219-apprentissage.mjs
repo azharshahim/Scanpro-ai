@@ -30,7 +30,7 @@ const r = await p.evaluate((txs) => {
   const out = {};
   out.before = A.bankProposals(data).map(x => ({ counter: x.counterAccount, nature: x.nature }));
   // Correction explicite : le salarié MUKALA reçoit 421000
-  const learnRes = P.learnFromLabel('Vir Inst vers Karim Benali', '421000', { direction: 'sortie' });
+  const learnRes = P.learnFromLabel('Vir Inst vers Karim Benali', '421000', { direction: 'sortie', nature: 'salaire' });
   out.learnRes = learnRes;
   out.after = A.bankProposals(data).map(x => ({ counter: x.counterAccount, learned: x.learned, origin: x.origin, sugg: x.suggestion ? (x.suggestion.account || x.suggestion.accounts) : null, conf: x.confidence, similar: x.similarIndexes }));
   out.rules = P.learnedRules().map(x => ({ key: x.key, account: x.account, tokens: x.tokens, direction: x.direction }));
@@ -38,11 +38,11 @@ const r = await p.evaluate((txs) => {
   out.generic = P.learnFromLabel('Virement', '421000', { direction: 'sortie' });
   out.generic2 = P.learnFromLabel('Vers le compte', '421000', { direction: 'sortie' });
   // Conflit : même bénéficiaire, autre compte, sans forcer
-  out.conflict = P.learnFromLabel('Benali Karim Vir Inst', '641000', { direction: 'sortie' });
+  out.conflict = P.learnFromLabel('Benali Karim Vir Inst', '641000', { direction: 'sortie', nature: 'salaire' });
   out.afterConflict = A.bankProposals(data)[0];
   // Correction forcée de la règle, puis annulation
   out.corrected = P.correctLearned(learnRes.key, '421000');
-  out.afterCorrect = A.bankProposals(data)[0].counterAccount;
+  const ac = A.bankProposals(data)[0]; out.afterCorrect = { counter: ac.counterAccount, sugg: ac.suggestion && ac.suggestion.account };
   // Sens inverse : la règle « sortie » ne s'applique pas à une entrée du même nom
   const inv = A.bankProposals({ transactions: [{ date: '13/10', label: 'Virement Karim Benali', debit: null, credit: 100 }] })[0];
   out.inverseSens = inv.counterAccount;
@@ -54,14 +54,14 @@ const r = await p.evaluate((txs) => {
 check('Avant apprentissage : virements personnes en attente (421000 non généralisé)', r.before[0].counter == null && r.before[3].counter == null && r.before[5].counter === '411000', JSON.stringify(r.before.map(x => x.counter)));
 check('Motif paie explicite en sortie → 421000 proposé (règle du dossier)', r.before[9].counter === '421000' && r.before[9].nature === 'salaire');
 check('Virement interne → 580000, fournisseur → 401000', r.before[7].counter === '580000' && r.before[6].counter === '401000');
-check('Apprentissage : règle créée (bénéficiaire trié, sens sortie)', r.learnRes.ok === true && /sortie\|benali karim/.test(r.learnRes.key), JSON.stringify(r.learnRes));
-check('Réutilisation : variantes du même salarié (ordre des mots différent) → 421000 appris', r.after[0].counter === '421000' && r.after[1].counter === '421000' && r.after[2].counter === '421000' && r.after[1].learned === true, JSON.stringify(r.after.slice(0, 3).map(x => x.counter)));
+check('Apprentissage : règle créée (bénéficiaire trié, sens sortie, nature salaire)', r.learnRes.ok === true && /sortie\|salaire\|benali karim/.test(r.learnRes.key), JSON.stringify(r.learnRes));
+check('Réutilisation V2.18 : variantes SANS nature établie → suggestion 421000 à confirmer (pas d\'automatisme sur le seul nom)', r.after[0].counter == null && r.after[1].counter == null && r.after[2].counter == null && r.after[0].sugg === '421000', JSON.stringify(r.after.slice(0, 3)));
 check('Faux positifs = 0 : autre personne partageant un prénom → suggestion à confirmer, PAS 421000 auto', r.after[5 - 1].counter !== '421000' && r.after[3].counter == null, JSON.stringify(r.after[3]));
 check('Noms proches (Karim Bensaid vs Karim Benali) : pas de regroupement automatique', r.after[3].counter == null && r.after[10].counter == null);
 check('Opération inconnue laissée en attente', r.before[8].counter == null && r.after[8].counter == null);
 check('Libellés trop génériques refusés (« Virement », « Vers le compte »)', r.generic.ok === false && r.generic2.ok === false, JSON.stringify([r.generic.reason, r.generic2.reason]));
 check('Conflit de règles signalé, pas résolu silencieusement', r.conflict.conflict === true && r.afterConflict.counterAccount == null && !!r.afterConflict.suggestion, JSON.stringify(r.conflict.reason));
-check('Correction explicite de la règle en conflit → 421000 rétabli', r.corrected === true && r.afterCorrect === '421000');
+check('Correction explicite de la règle en conflit → 421000 rétabli (proposé à confirmer, nature du libellé non établie)', r.corrected === true && r.afterCorrect.counter == null && r.afterCorrect.sugg === '421000', JSON.stringify(r.afterCorrect));
 check('Règle « sortie » non appliquée à une entrée du même bénéficiaire', r.inverseSens !== '421000', String(r.inverseSens));
 check('Export : uniquement les lignes affectées (2 lignes/op), équilibré', r.exportBalanced && r.exportRows === 2 * r.after.filter(x => x.counter).length, 'lignes=' + r.exportRows);
 const proposed = r.after.filter(x => x.counter).length;
@@ -83,12 +83,13 @@ await p.locator('[data-nav="acc"]').click(); await p.waitForTimeout(700);
 await p.locator('[data-act="acc-select"]').first().click(); await p.waitForTimeout(600);
 let ui = await p.locator('body').innerText();
 check('UI : section Propositions comptables + « Règles apprises » après première correction (absente avant)', ui.includes('Propositions comptables'));
+await p.locator('[data-acc-tx="0:nature"]').selectOption('salaire');
 await p.locator('[data-acc-tx="0:account"]').fill('421000');
 await p.locator('[data-act="acc-save"]').click(); await p.waitForTimeout(900);
 ui = await p.locator('body').innerText();
 const learnedUi = await p.evaluate(() => window.ScanPro.Precompta.learnedRules().map(r => r.account + '|' + r.tokens.join(' ')));
 check('Parcours : correction 421000 enregistrée → 1 règle apprise (bénéficiaire)', learnedUi.length === 1 && learnedUi[0].startsWith('421000|'), JSON.stringify(learnedUi));
-check('Parcours : variantes du même salarié proposées 421000 après enregistrement', ui.includes('421000 — Personnel'));
+check('Parcours : variantes du même salarié → suggestion 421000 à confirmer (nature non établie dans leurs libellés)', ui.includes('421000') && ui.includes('à confirmer'));
 check('Parcours : pas de propagation à toutes les opérations (autres personnes non affectées 421)', (ui.match(/421000 — Personnel/g) || []).length <= 4, 'occurrences=' + (ui.match(/421000 — Personnel/g) || []).length);
 await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(1500);
 await p.locator('.sheet .btn.primary').click().catch(() => {});
