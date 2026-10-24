@@ -238,3 +238,4 @@ L2 30/30, L3 23/23, L4 19/19, L5 18/18, L6 14/14, V2.13 17/17 (attente journal m
 
 ### Limites
 Règles et plan stockés par appareil (localStorage), pas de synchronisation multi-postes ; ventilation du HT par taux non reconnue automatiquement (signalée au comptable) ; écritures toujours **proposées**, aucun import FEC ; aucun test Android physique.
+- Correctif de reprise (24/10/2026) : `tests/validate-exports.py` lit désormais les colonnes du CSV écritures **par nom d'en-tête** (le format V2.15 enrichi — Pièce, Tiers, Document source, Statut validation — décalait les positions historiques). Validateur complet : **TOUT OK**. Vérification indépendante de la reprise : `e2e-v215` **20/20**, non-régressions L2 30/30, L3 23/23, L4 19/19, L5 18/18, L6 14/14, V2.13 17/17, V2.14 15/15, V2.14.1 8/8, fiabilité 13/13.
