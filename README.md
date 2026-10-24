@@ -1,4 +1,4 @@
-# ScanPro AI — V2.6 (mode nuit corrigé et menu Outils)
+# ScanPro AI — V2.7 (import droit corrigé, Scan central, partages)
 
 Scanner de documents pour Android (web app installable) : caméra, **détection automatique des
 contours**, **correction de perspective**, redressement, recadrage, filtres avancés,
@@ -92,3 +92,5 @@ pdf.js (Apache-2.0), JSZip (MIT/GPLv3).
 - V2.5 `tests/e2e-v25.mjs` : **8/8 OK** (en-tête non fixe, mode nuit/jour, OCR espagnol réel)
 
 - V2.6 `tests/e2e-v26.mjs` : **12/12 OK** (menu Outils, génération PDF depuis un outil, mode nuit complet vérifié par couleurs calculées)
+
+- V2.7 `tests/e2e-v27.mjs` : **10/10 OK** (import droit non pivoté/rogné, bouton Scan centré neutre, partages Word/Excel/Texte)

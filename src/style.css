@@ -224,8 +224,8 @@ svg{display:block}
 .nav-item.active .ico{stroke:var(--blue-2)}
 .nav-fab{flex:none;width:64px;display:grid;place-items:center;margin-top:-26px}
 .nav-fab button{width:58px;height:58px;border-radius:20px;display:grid;place-items:center;color:#fff;
-  background:linear-gradient(135deg,#3B82F6,#1D4ED8);
-  box-shadow:0 14px 26px -12px rgba(37,99,235,.95), 0 0 0 6px rgba(243,246,252,.9);
+  background:#0B1B34;
+  box-shadow:0 14px 26px -12px rgba(11,27,52,.75), 0 0 0 6px var(--bg); border:1px solid rgba(255,255,255,.22);
   transition:transform .12s}
 .nav-fab button:active{transform:scale(.93)}
 .nav-fab .ico{width:27px;height:27px;stroke-width:1.9}
