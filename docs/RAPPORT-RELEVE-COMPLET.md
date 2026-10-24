@@ -50,7 +50,7 @@ Exemples (relevé réel + cas synthétiques, tous exécutés) :
 - « PRLV SEPA EDF… » (sortie) → **606100** Fournitures non stockables, confiance 85 — écriture : 606100 débit / 512000 crédit.
 - « PRLV SFR… » → **626000** télécommunications (85). « PRLV URSSAF… » → **645000** charges sociales (80, alternative 431000 signalée comme non présente au plan par défaut si absente).
 - « Cotis… Offre Compte… Pro » → **627000** frais bancaires (75). Assurance → **616000**.
-- Virements à des personnes sans motif reconnu → **en attente** (aucune invention) ; sur le relevé réel, 10/85 opérations obtiennent une contrepartie automatique, les autres restent à affecter — comportement voulu et affiché.
+- Virements à des personnes sans motif reconnu → **en attente** (aucune invention) ; sur le relevé réel, seules ~9/85 opérations obtiennent une contrepartie automatique (organismes et frais identifiables), les autres restent à affecter — comportement voulu et affiché.
 
 ## 3. Export comptable
 
@@ -74,7 +74,7 @@ Exemple d'export (données fictives) :
 
 | Suite | Résultat |
 |---|---|
-| `e2e-v217-releve-reel.mjs` (véritable PDF, 85 ops, totaux imprimés) | **12/12** (ignoré proprement si le PDF est absent) |
+| `e2e-v217-releve-reel.mjs` (véritable PDF, référence calculée dans le test) | **11/11** (ignoré proprement si le PDF est absent) |
 | `e2e-v218-synth.mjs` (PDF natifs/mixtes/scannés OCR réel, propositions, apprentissage, export, cas négatifs) | **16/16** |
 | Non-régressions | L2 30/30 · L3 23/23 · L4 19/19 · L5 18/18 · L6 14/14 · V2.13 17/17 · V2.14 15/15 · V2.14.1 8/8 · V2.15 20/20 · V2.15.1 banque 18/18 · fiabilité 13/13 · exports TOUT OK |
 
