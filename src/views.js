@@ -296,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.13.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.14.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -604,7 +604,7 @@ function viewAcc() {
         <button class="btn soft" data-act="acc-export" data-fmt="json">Export JSON</button>
         ${(d.fields && d.fields.totalHT && d.fields.totalTTC) ? '<button class="btn soft" data-act="acc-export" data-fmt="entries">Écritures (CSV)</button>' : ''}
       </div>
-      <div class="btn-row"><button class="btn ghost" data-act="acc-open-doc">Voir le document (original, OCR, pages)</button>
+      <div class="btn-row"><button class="btn soft" data-act="acc-verify">Écran de vérification (original + données)</button><button class="btn ghost" data-act="acc-open-doc">Voir le document (original, OCR, pages)</button>
       <button class="btn ghost" data-act="acc-analyze">Relancer la reconnaissance</button></div>
     </div>`;
   } else if (sel) {

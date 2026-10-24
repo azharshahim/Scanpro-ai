@@ -1362,7 +1362,7 @@ async function docRunOcr(docId) {
   doc.ocrUncertain = results.flatMap(r => r.uncertain || []);
   await Repo.update(doc);
   for (let i = 0; i < pages.length; i++) {
-    pages[i].text = results[i].text; pages[i].ocrConf = results[i].confidence; pages[i].ocrWords = results[i].wordBoxes || [];
+    pages[i].text = results[i].text; pages[i].ocrConf = results[i].confidence; pages[i].ocrWords = results[i].wordBoxes || []; pages[i].ocrLines = results[i].lineBoxes || [];
     await Store.put('pages', pages[i]);
   }
   App.doc = doc; App.docPages = pages; App.detailTab = 'text';
@@ -1715,6 +1715,8 @@ const Acc = {
         rows.push({ section: isResult ? 'resultat' : section, account: acctM ? acctM[1] : '', label, amountN: amounts.length >= 2 ? amounts[amounts.length - 2] : amounts[0], amountN1: amounts.length >= 2 ? amounts[amounts.length - 1] : null, isTotal: /^total/i.test(label) || isResult, confidence: 65 });
       }
     }
+    const posRows = Acc.financialFromPositions(pagesWords);
+    if (posRows && posRows.length) { rows.length = 0; rows.push(...posRows); }
     const totalOf = (sec) => { const r = [...rows].reverse().find(x => x.section === sec && x.isTotal); return r ? r.amountN : null; };
     const controls = [];
     if (isBilan) {
@@ -1824,6 +1826,97 @@ const Acc = {
     const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     return [headers, ...rows].map(r => r.map(esc).join(';')).join('\n');
   },
+  /* --- Reconstruction par positions OCR (V2.14) : aucune coordonnée fabriquée.
+     Si les positions sont absentes, ces fonctions renvoient null et les extracteurs
+     retombent sur l'analyse des lignes de texte. */
+  groupWordLines(words) {
+    const ws = (words || []).filter(w => w && w.t && w.w > 0).slice().sort((a, b) => (a.y - b.y) || (a.x - b.x));
+    const lines = [];
+    for (const w of ws) {
+      const cy = w.y + (w.h || 0.02) / 2;
+      let line = lines.find(l => Math.abs(l.cy - cy) <= Math.max(0.012, (w.h || 0.02) * 0.8));
+      if (!line) { line = { cy, words: [], y: w.y }; lines.push(line); }
+      line.words.push(w);
+    }
+    for (const l of lines) { l.words.sort((a, b) => a.x - b.x); l.text = l.words.map(w => w.t).join(' '); }
+    return lines.sort((a, b) => a.cy - b.cy);
+  },
+  positionRows(pagesWords) {
+    const out = [];
+    (pagesWords || []).forEach((words, page) => {
+      for (const l of Acc.groupWordLines(words)) out.push({ page, y: l.y, text: l.text, cells: l.words.map(w => ({ t: w.t, x: w.x, w: w.w, c: w.c, xc: w.x + w.w / 2 })) });
+    });
+    return out;
+  },
+  _amountOf(s) { const v = Acc.parseAmount(String(s || '').replace(/[€]/g, '')); return (v != null && /\d/.test(String(s))) ? v : null; },
+  bankFromPositions(pagesWords) {
+    const rows = Acc.positionRows(pagesWords);
+    if (!rows.length) return null;
+    let anchors = null, headerIdx = -1;
+    rows.forEach((r, i) => {
+      const low = r.text.toLowerCase();
+      if (/débit|debit/.test(low) && /crédit|credit/.test(low)) {
+        anchors = {};
+        for (const c of r.cells) { const lt = c.t.toLowerCase(); if (/débit|debit/.test(lt)) anchors.debit = c.xc; if (/crédit|credit/.test(lt)) anchors.credit = c.xc; if (/solde/.test(lt)) anchors.balance = c.xc; }
+        headerIdx = i;
+      }
+    });
+    if (!anchors || anchors.debit == null || anchors.credit == null) return null;
+    const tx = [];
+    rows.forEach((r, i) => {
+      if (i <= headerIdx) return;
+      const first = r.cells[0];
+      if (!first || !/^\d{1,2}[\\/.\\-]\d{1,2}/.test(first.t)) return;
+      let debit = null, credit = null, balance = null; const labelCells = [];
+      for (const c of r.cells.slice(1)) {
+        const amt = Acc._amountOf(c.t);
+        if (amt == null) { labelCells.push(c.t); continue; }
+        const near = Object.entries(anchors).map(([k, x]) => [k, Math.abs(x - c.xc)]).sort((a, b) => a[1] - b[1])[0];
+        if (near && near[1] <= 0.18) { if (near[0] === 'debit') debit = Math.abs(amt); else if (near[0] === 'credit') credit = Math.abs(amt); else balance = amt; }
+        else labelCells.push(c.t);
+      }
+      if (debit == null && credit == null) return;
+      tx.push({ date: first.t, valueDate: null, label: labelCells.join(' ').trim() || Acc.NR, reference: null, debit, credit, balance, page: r.page, confidence: 78, status: 'reconnu', source: 'positions OCR (colonnes ' + (debit != null ? 'débit' : 'crédit') + ')' });
+    });
+    return tx.length ? tx : null;
+  },
+  financialFromPositions(pagesWords) {
+    const rows = Acc.positionRows(pagesWords);
+    if (!rows.length) return null;
+    let anchors = null, headerIdx = -1;
+    rows.forEach((r, i) => {
+      const years = r.cells.filter(c => /^(19|20)\d{2}$/.test(c.t) || /^n(-|−)?1$/i.test(c.t.replace(/\s/g, '')));
+      if (years.length >= 2) {
+        const sorted = years.slice().sort((a, b) => a.xc - b.xc);
+        // L'en-tête décide : la colonne de gauche est celle imprimée en premier (souvent N, parfois N-1)
+        const leftIsN1 = /n(-|−)?1/i.test(sorted[0].t) || (sorted[1] && /^(19|20)\d{2}$/.test(sorted[0].t) && /^(19|20)\d{2}$/.test(sorted[1].t) && Number(sorted[0].t) < Number(sorted[1].t));
+        anchors = leftIsN1 ? { n1: sorted[0].xc, n: sorted[sorted.length - 1].xc } : { n: sorted[0].xc, n1: sorted[sorted.length - 1].xc };
+        headerIdx = i;
+      }
+    });
+    if (!anchors) return null;
+    const out = [];
+    let section = 'actif';
+    rows.forEach((r, i) => {
+      if (i <= headerIdx) return;
+      const low = r.text.toLowerCase();
+      if (/^actif/.test(low)) section = 'actif'; else if (/^passif|capitaux/.test(low)) section = 'passif';
+      else if (/charges/.test(low) && !/sociales/.test(low)) section = 'charges'; else if (/produits/.test(low)) section = 'produits';
+      let amountN = null, amountN1 = null; const labelCells = [];
+      for (const c of r.cells) {
+        const amt = Acc._amountOf(c.t);
+        if (amt == null) { labelCells.push(c.t); continue; }
+        const dN = Math.abs(anchors.n - c.xc), dN1 = Math.abs(anchors.n1 - c.xc);
+        if (Math.min(dN, dN1) <= 0.18) { if (dN <= dN1) amountN = amt; else amountN1 = amt; } else labelCells.push(c.t);
+      }
+      const label = labelCells.join(' ').replace(/\\b\d{3,6}\\b/, '').trim();
+      if ((amountN == null && amountN1 == null) || label.length < 2) return;
+      const acctM = r.text.match(/\\b(\d{3,6})\\b/);
+      const isResult = /^(résultat|resultat)/i.test(label);
+      out.push({ section: isResult ? 'resultat' : section, account: acctM ? acctM[1] : '', label, amountN, amountN1, isTotal: /^total/i.test(label) || isResult, confidence: 72, source: 'positions OCR (colonnes en-tête)' });
+    });
+    return out.length ? out : null;
+  },
   extractExpenses(text, pagesWords) {
     const t = String(text || '');
     const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
@@ -1909,6 +2002,8 @@ const Acc = {
       const normDate = (d) => { const p = d.replace(/[.\-]/g, '/').split('/'); if (p.length === 3 && p[2].length === 2) p[2] = '20' + p[2]; return p.join('/'); };
       transactions.push({ date: normDate(dm[1]), valueDate: dm[2] ? normDate(dm[2]) : null, label: label || Acc.NR, reference: refM ? refM[1] : null, debit, credit, balance, page: 0, confidence: conf, status });
     }
+    const posTx = Acc.bankFromPositions(pagesWords);
+    if (posTx && posTx.length) { transactions.length = 0; transactions.push(...posTx); }
     // doublons potentiels : même date + même libellé + même montant
     const seen = new Map(); const duplicates = [];
     transactions.forEach((tx, i) => {
@@ -2302,6 +2397,7 @@ Object.assign(Actions, {
   'acc-export': (el) => accExport(App.accDocId, el.dataset.fmt),
   'acc-zone': (el) => accShowZone(el),
   'acc-analyze-all': () => accAnalyzeAll(),
+  'acc-verify': () => accVerify(App.accDocId),
   'acc-open-doc': async () => { if (App.accDocId) { App.detailTab = 'preview'; go('detail', App.accDocId); } },
   'doc-rename': () => docRename(App.doc.id),
   'doc-delete': () => docDelete(App.doc.id),
@@ -2629,6 +2725,7 @@ async function accAnalyze(docId, opts = {}) {
     data.docType = forced;
     data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === forced) || [])[1] || forced, confidence: 100, page: 0, zone: null, status: 'corrige' };
   }
+  for (const f of Object.values(data.fields || {})) if (f && !f.source) f.source = 'OCR Tesseract (local)';
   const merged = doc.acc ? accMergeCorrections(doc.acc.data, data) : data;
   doc.acc = { version: 2, firstAt: doc.acc ? (doc.acc.firstAt || doc.acc.at) : Date.now(), at: Date.now(), edited: !!(doc.acc && doc.acc.edited), textSnapshot: accSnapshot(doc), data: merged };
   doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Analyse comptable (' + ((Acc.TYPES.find(x => x[0] === data.docType) || [])[1] || data.docType) + ')' });
@@ -2785,7 +2882,8 @@ async function accAnalyzeAll() {
     else data = Acc.extractInvoice(doc.text, pagesWords);
     if (!data.fields) data.fields = {};
     if (!data.fields.docType) data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === data.docType) || [])[1] || data.docType, confidence: 60, page: 0, zone: null, status: 'reconnu' };
-    const merged = doc.acc ? accMergeCorrections(doc.acc.data, data) : data;
+    for (const f of Object.values(data.fields || {})) if (f && !f.source) f.source = 'OCR Tesseract (local)';
+  const merged = doc.acc ? accMergeCorrections(doc.acc.data, data) : data;
   doc.acc = { version: 2, firstAt: doc.acc ? (doc.acc.firstAt || doc.acc.at) : Date.now(), at: Date.now(), edited: !!(doc.acc && doc.acc.edited), textSnapshot: accSnapshot(doc), data: merged };
     doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Analyse comptable en lot' });
     await Repo.update(doc); done++;
@@ -2793,6 +2891,39 @@ async function accAnalyzeAll() {
   App.docs = await Repo.list();
   await render();
   toast(done + ' document(s) analysé(s)/réanalysé(s) (corrections conservées), ' + skipped + ' ignoré(s) (sans OCR)', 'ok', 5000);
+}
+async function accVerify(docId) {
+  const doc = await Repo.doc(docId);
+  if (!doc || !doc.acc) { toast("Lancez d'abord la reconnaissance", 'err'); return; }
+  const data = doc.acc.data;
+  const pages = await Repo.pages(docId);
+  const fields = Object.entries(data.fields || {});
+  const uncertain = fields.filter(([, f]) => !f || f.value === Acc.NR || (f.confidence || 0) < 80);
+  const corrected = fields.filter(([, f]) => f && f.status === 'corrige');
+  const sh = openSheet({ title: 'Vérification — ' + doc.name, sub: 'Document original et données extraites. Touchez un champ pour retrouver sa zone (quand les coordonnées OCR existent).', full: true,
+    body: `
+    <div class="zone-wrap" id="verifyWrap" style="margin-bottom:10px">${pages.length && pages[0].src ? `<img src="${pages[0].src}" style="width:100%;border-radius:8px"><div class="zone-box" id="verifyBox" style="display:none"></div>` : '<p class="small muted">Page d\'origine non disponible pour ce document.</p>'}</div>
+    <p class="tiny muted" id="verifyPage">${pages.length ? 'Page 1 sur ' + pages.length : ''}</p>
+    <h4>Champs incertains (${uncertain.length})</h4>
+    ${uncertain.length ? uncertain.map(([k, f]) => `<button class="btn xs ${f && f.zone ? 'soft' : 'ghost'}" data-verify-field="${k}" style="margin:2px">${k} : ${escapeHtml(f ? f.value : 'Non reconnu')} (${f ? f.confidence : 0} %)${f && f.zone ? ' · zone p.' + (f.zone.page + 1) : ' · pas de zone'}</button>`).join('') : '<p class="small muted">Aucun champ incertain.</p>'}
+    <h4>Tous les champs</h4>
+    ${fields.map(([k, f]) => `<button class="btn xs ghost" data-verify-field="${k}" style="margin:2px">${k} : ${escapeHtml(f ? f.value : 'Non reconnu')}${f && f.status === 'corrige' ? ' (corrigé)' : ''}</button>`).join('')}
+    <h4>Contrôles arithmétiques</h4>
+    ${(data.controls || []).map(c => `<div class="banner ${c.status === 'conforme' ? 'ok' : c.status === 'ecart' ? 'err' : 'warn'}"><span><b>${escapeHtml(c.label)}</b> — ${escapeHtml(c.detail)}</span></div>`).join('') || '<p class="small muted">Aucun contrôle.</p>'}
+    <h4>Corrections manuelles (${corrected.length})</h4>
+    ${corrected.length ? corrected.map(([k, f]) => `<div class="row"><span class="grow">${k}</span><b>${escapeHtml(f.value)}</b></div>`).join('') : '<p class="small muted">Aucune correction manuelle enregistrée.</p>'}`,
+    actions: [{ label: 'Fermer', cls: 'go' }] });
+  const box = $('#verifyBox', sh), wrap = $('#verifyWrap', sh), pageLbl = $('#verifyPage', sh);
+  $$('[data-verify-field]', sh).forEach(btn => btn.addEventListener('click', async () => {
+    const f = (data.fields || {})[btn.dataset.verifyField];
+    if (!f || !f.zone) { toast('Aucune coordonnée OCR pour ce champ : zone non fabricable', 'err', 3500); return; }
+    const pg = pages[f.zone.page || 0];
+    if (!pg || !pg.src) { toast("Page d'origine introuvable", 'err'); return; }
+    const img = wrap.querySelector('img'); if (img) img.src = pg.src;
+    if (pageLbl) pageLbl.textContent = 'Page ' + ((f.zone.page || 0) + 1) + ' sur ' + pages.length + ' — zone du champ « ' + btn.dataset.verifyField + ' »';
+    if (box) { box.style.display = 'block'; box.style.left = (f.zone.x * 100) + '%'; box.style.top = (f.zone.y * 100) + '%'; box.style.width = (f.zone.w * 100) + '%'; box.style.height = (f.zone.h * 100) + '%'; }
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
 }
 async function accShowZone(el) {
   const doc = await Repo.doc(App.accDocId);
