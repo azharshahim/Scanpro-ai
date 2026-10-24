@@ -181,3 +181,18 @@ Branche `feature/comptabilite-livraison6`, version **2.12.0** (ajout proposé au
 - Les comptes d'écritures sont des propositions usuelles PCG, pas un paramétrage de dossier ; le sens achat/vente reste celui du type validé par l'utilisateur.
 - Catégories de frais heuristiques, toujours modifiables par reclassification manuelle des lignes dans le texte OCR puis ré-analyse.
 - Aucun test sur Android physique.
+
+---
+
+## V2.13 — Fiabilité comptable (24/10/2026, branche `feature/v2.13-fiabilite-comptable`, PR vers `main`)
+
+### Corrections
+- **Contrôles honnêtes** : chaque contrôle porte un statut explicite — « Conforme », « Écart détecté », « Vérification impossible », « À contrôler » — et n'est `OK` que si la comparaison a réellement eu lieu (`Acc.ctl`). Le compte de résultat compare désormais le **résultat recalculé au résultat imprimé reconnu** (avant : toujours « OK ») ; bilan/relevé/facture sans données indispensables = « Vérification impossible ». Aucune TVA n'est inventée : facture HT≠TTC sans TVA reconnue → contrôle impossible et **écritures refusées**.
+- **Réanalyse** : bouton « Réanalyser » avec **confirmation explicite** ; les champs corrigés manuellement (statut « corrigé ») sont **conservés** lors de la réanalyse ; l'analyse en lot réanalyse aussi les documents déjà traités ; dates de première/dernière analyse conservées ; modification du texte OCR après analyse → bandeau « résultats possiblement obsolètes » (empreinte du texte analysé) ; changement de type → invitation à réanalyser pour recalculer les champs du nouveau type.
+- **Montants et écritures** : montants FR testés (`1 234,56`, espaces fines/insécables, `1.234,56`, `1234.56`, négatifs, parenthèses comptables) ; **avoirs identifiés par leur libellé**, écritures inversées même si les montants imprimés sont positifs ; écriture « équilibrée » explicitement distinguée d'une écriture « validée » — l'export d'écritures exige une **validation explicite** dans une feuille de confirmation.
+
+### Tests (`tests/e2e-v213.mjs` : **17/17**, cas négatifs inclus)
+Résultat imprimé ≠ recalculé → écart ; résultat imprimé absent → à contrôler ; bilan incomplet → impossible ; facture sans TVA → pas d'écritures ; avoir positif → écritures inversées ; achat vs vente ; réanalyse avec correction conservée ; changement de type ; obsolescence signalée. Non-régressions : L2 30/30, L3 23/23, L4 19/19, L5 18/18, L6 14/14, fiabilité 13/13. Navigateur émulé uniquement ; aucun Android physique.
+
+### Limites restantes
+Sens achat/vente toujours proposé et modifiable ; tableaux OCR dégradés perfectibles ; pas de FEC ni de rapprochement bancaire ; écritures proposées non validées par un expert-comptable.
