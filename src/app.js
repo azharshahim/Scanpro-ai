@@ -299,7 +299,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Acc() { return Acc; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.8.0'
+  version: '2.9.0'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */
