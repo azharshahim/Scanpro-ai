@@ -1605,20 +1605,78 @@ const Precompta = {
     { pattern: 'allianz|maif|axa|macif|assurance|gan\b|matmut', account: '616000', conf: 80, why: 'Prime d’assurance reconnue' },
     { pattern: 'frais|commission|cotis.*compte|offre compte|tenue de compte|carte.*frais|agios|intérêts débiteurs', account: '627000', conf: 75, why: 'Frais bancaires reconnus' },
     { pattern: 'loyer|bail|location(?!.*véhicule)', account: '613000', conf: 75, why: 'Loyer/location reconnu', alternatives: ['612000'] },
-    { pattern: 'salaire|paie du|paye|bulletin', account: '421000', conf: 70, why: 'Salaire net présumé (à confirmer : 641 brut / 421 net selon écriture de paie)', alternatives: ['641000'] },
+    { pattern: 'salaire|paie du|paye|bulletin', sens: 'sortie', account: '421000', conf: 70, why: 'Salaire net présumé (à confirmer : 641 brut / 421 net selon écriture de paie)', alternatives: ['641000'] },
     { pattern: 'matériel|materiel|équipement|equipement|ordinateur|machine', account: '607000', conf: 45, why: 'Achat de matériel : charge ou immobilisation selon montant/durée — arbitrage requis', alternatives: ['218000'] },
-    { pattern: 'fac\s*n|facture.*fournisseur|prlv.*fournisseur', account: '401000', conf: 55, why: 'Paiement fournisseur présumé' },
-    { pattern: 'r[èe]glement.*facture|facture.*client|encaissement', account: '411000', conf: 55, why: 'Encaissement client présumé', alternatives: ['706000'] },
+    { pattern: 'fac\s*n|facture.*fournisseur|prlv.*fournisseur', sens: 'sortie', account: '401000', conf: 55, why: 'Paiement fournisseur présumé' },
+    { pattern: 'r[èe]glement.*facture|facture.*client|encaissement|vir.*client|client.*facture', sens: 'entree', account: '411000', conf: 55, why: 'Encaissement client présumé', alternatives: ['706000'] },
     { pattern: 'virement interne|vir interne|entre comptes|alimentation compte', account: '580000', conf: 60, why: 'Virement entre comptes présumé — vérifier le compte d’arrivée' },
     { pattern: 'remboursement', account: '401000', conf: 40, why: 'Remboursement : nature exacte à déterminer', alternatives: ['411000', '467000'] }
   ],
   bankRules() { const v = Precompta._load(Precompta.BANK_RULES_KEY, Precompta.DEFAULT_BANK_RULES); return Array.isArray(v) ? v : Precompta.DEFAULT_BANK_RULES.slice(); },
   saveBankRules(r) { Precompta._save(Precompta.BANK_RULES_KEY, r); },
   learned() { const v = Precompta._load(Precompta.LEARNED_KEY, {}); return v && !Array.isArray(v) && typeof v === 'object' ? v : {}; },
-  learnKey(label) { return Precompta.normName(label).split(' ').filter(w => w.length >= 3 && !/^(vir|virement|inst|web|carte|prlv|prelevement|sepa|vers|de|du|la|le)$/.test(w)).slice(0, 3).join(' '); },
-  learnFromLabel(label, account) {
-    const k = Precompta.learnKey(label); if (!k || !account) return;
-    const l = Precompta.learned(); l[k] = account; Precompta._save(Precompta.LEARNED_KEY, l);
+  /* V2.17 — Apprentissage fiabilisé. Une règle apprise est rattachée à un
+     BÉNÉFICIAIRE normalisé (jetons triés : l'ordre prénom/nom est indifférent),
+     au SENS de l'opération et à la nature détectée. Les mots génériques
+     (« virement », « vers », « carte »…) et les mots de nature (« salaire »,
+     « remboursement »…) ne font jamais partie de l'identité du bénéficiaire :
+     impossible d'apprendre une règle « tous les virements ». */
+  LEARN_STOP: new Set('vir virement inst instantane web carte cb prlv prelevement sepa vers de du des la le les pour par ref reference n numero eur chez au aux en'.split(' ')),
+  LEARN_NATURE: new Set('salaire salaires paie paye remuneration appointements remboursement rembourse avance acompte pret facture reglement encaissement fournisseur client interne alimentation compte frais cotisation loyer prime echeance'.split(' ')),
+  beneficiaryTokens(label) {
+    return [...new Set(Precompta.normName(label).split(' ')
+      .filter(w => w.length >= 2 && !/^\d+$/.test(w) && !Precompta.LEARN_STOP.has(w) && !Precompta.LEARN_NATURE.has(w)))].slice(0, 5);
+  },
+  learnKey(label, direction) {
+    const toks = Precompta.beneficiaryTokens(label).slice().sort();
+    if (!toks.length) return '';
+    if (toks.length === 1 && toks[0].length < 3) return ''; // identité trop faible
+    return (direction || 'tout-sens') + '|' + toks.join(' ');
+  },
+  detectNature(label, sens) {
+    const s = ' ' + Precompta.normName(label) + ' ';
+    if (/salaire|paie|paye|remuneration|appointements/.test(s)) return 'salaire';
+    if (/virement interne|vir interne|entre comptes|alimentation/.test(s)) return 'virement interne';
+    if (/remboursement|avance|acompte|note de frais/.test(s)) return 'remboursement/avance';
+    if (sens === 'entree' && /facture|reglement|encaissement|client/.test(s)) return 'encaissement client';
+    if (sens === 'sortie' && /fournisseur|facture/.test(s)) return 'paiement fournisseur';
+    return 'inconnue';
+  },
+  learnedRules() {
+    // Normalise l'ancien format (chaîne) et le format V2.17 (objet).
+    return Object.entries(Precompta.learned()).map(([key, v]) => {
+      if (typeof v === 'string') return { key, account: v, direction: null, tokens: key.split('|').slice(1).join(' ').split(' ').filter(Boolean), nature: null, legacy: true };
+      return { key, account: v.account || null, direction: v.direction || null, tokens: v.tokens || [], nature: v.nature || null, label: v.label || '', conflictAccounts: v.conflictAccounts || null };
+    });
+  },
+  _saveLearned(map) { Precompta._save(Precompta.LEARNED_KEY, map); },
+  learnFromLabel(label, account, opts = {}) {
+    const direction = opts.direction || null;
+    const toks = Precompta.beneficiaryTokens(label);
+    const key = Precompta.learnKey(label, direction);
+    if (!account) return { ok: false, reason: 'compte absent' };
+    if (!key) return { ok: false, reason: 'bénéficiaire non identifiable (libellé trop générique) : règle non apprise' };
+    const map = Precompta.learned();
+    const prev = map[key];
+    const prevAccount = typeof prev === 'string' ? prev : (prev && prev.account);
+    if (prevAccount && prevAccount !== String(account) && !opts.force) {
+      // Conflit signalé, jamais résolu silencieusement : l'ancienne règle est conservée
+      // et le conflit est exposé dans les propositions tant qu'il n'est pas corrigé.
+      const base = typeof prev === 'object' ? prev : { account: prevAccount, tokens: toks, direction };
+      map[key] = Object.assign({}, base, { conflictAccounts: [...new Set([prevAccount, String(account)])] });
+      Precompta._saveLearned(map);
+      return { ok: false, conflict: true, key, reason: 'conflit avec la règle apprise existante (' + prevAccount + ' ≠ ' + account + ') : correction explicite requise' };
+    }
+    map[key] = { account: String(account), direction, tokens: toks.slice().sort(), nature: opts.nature || Precompta.detectNature(label, direction), label: String(label || '').slice(0, 90), updatedAt: Date.now(), dossier: (Precompta.rules().journalBanque || 'BQ') + '/' + Precompta.rules().banque };
+    Precompta._saveLearned(map);
+    return { ok: true, key };
+  },
+  forgetLearned(key) { const map = Precompta.learned(); if (map[key] !== undefined) { delete map[key]; Precompta._saveLearned(map); return true; } return false; },
+  correctLearned(key, account) {
+    const map = Precompta.learned(); const prev = map[key]; if (prev === undefined || !account) return false;
+    const base = typeof prev === 'object' ? prev : { tokens: key.split('|').slice(1).join(' ').split(' ').filter(Boolean), direction: null };
+    map[key] = Object.assign({}, base, { account: String(account), conflictAccounts: null, updatedAt: Date.now() });
+    Precompta._saveLearned(map); return true;
   },
   validateEntries(j, data) {
     const issues = [];
@@ -2328,39 +2386,80 @@ const Acc = {
      règles configurables + apprentissage des corrections validées. Inconnu = en
      attente, jamais d'affectation inventée. */
   bankProposals(data) {
-    const R = Precompta.rules(); const chart = Precompta.chart(); const rules = Precompta.bankRules(); const learned = Precompta.learned();
+    const R = Precompta.rules(); const chart = Precompta.chart(); const rules = Precompta.bankRules(); const learnedRules = Precompta.learnedRules();
     const acctOf = (num) => chart.find(a => a.num === String(num)) || null;
     const fmtA = (num) => { const a = acctOf(num); return a ? num + ' — ' + a.label : num + ' (absent du plan du dossier : à créer ou corriger)'; };
-    return (data.transactions || []).map((tx, i) => {
-      const sens = tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
+    const txs = data.transactions || [];
+    const benef = txs.map(tx => Precompta.beneficiaryTokens(tx.label || ''));
+    const sensOf = (tx) => tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
+    // Appariement bénéficiaire : exact (mêmes jetons, ordre indifférent) = certain ;
+    // recouvrement partiel d'un seul jeton ou recouvrement croisé = INCERTAIN (à confirmer).
+    const matchLearned = (i) => {
+      const toks = benef[i], sens = sensOf(txs[i]); const exact = [], partial = [];
+      for (const r of learnedRules) {
+        if (r.direction && sens && r.direction !== sens) continue;
+        const rt = new Set(r.tokens || []); if (!rt.size || !toks.length) continue;
+        const inter = toks.filter(x => rt.has(x));
+        const isExact = inter.length === rt.size && inter.length === toks.length;
+        const isSubset = inter.length === rt.size || inter.length === toks.length;
+        if (isExact || (isSubset && inter.length >= 2)) exact.push(r);
+        else if (inter.length >= 1) partial.push(r);
+      }
+      return { exact, partial };
+    };
+    return txs.map((tx, i) => {
+      const sens = sensOf(tx);
       const amount = tx.debit ?? tx.credit ?? null;
-      let counter = tx.account || null, conf = counter ? 65 : 0, why = counter ? 'Compte affecté/corrige par l’utilisateur' : null, alternatives = [], learnedHit = false;
-      if (!counter) {
-        const lk = Precompta.learnKey(tx.label || '');
-        if (lk && learned[lk]) { counter = learned[lk]; conf = 88; why = 'Règle apprise de vos corrections validées (« ' + lk + ' »)'; learnedHit = true; }
-        else for (const r of rules) {
-          let re; try { re = new RegExp(r.pattern, 'i'); } catch (e) { continue; }
-          if (re.test(tx.label || '')) { counter = r.account; conf = r.conf || 50; why = r.why || 'Règle configurable du dossier'; alternatives = r.alternatives || []; break; }
+      const nature = Precompta.detectNature(tx.label || '', sens);
+      // Opérations similaires dans CE relevé : même bénéficiaire exact qu'une autre ligne.
+      const similar = txs.map((o, j) => j).filter(j => j !== i && benef[j].length && benef[i].length
+        && benef[j].slice().sort().join(' ') === benef[i].slice().sort().join(' ') && sensOf(txs[j]) === sens);
+      let counter = tx.account || null, conf = counter ? 65 : 0, why = counter ? 'Compte affecté/corrigé explicitement par l\u2019utilisateur' : null,
+        alternatives = [], learnedHit = false, origin = counter ? 'utilisateur' : null, suggestion = null;
+      const { exact, partial } = counter ? { exact: [], partial: [] } : matchLearned(i);
+      if (!counter && exact.length) {
+        const accounts = [...new Set(exact.map(r => r.account))];
+        const conflictRule = exact.find(r => r.conflictAccounts && r.conflictAccounts.length > 1);
+        if (conflictRule || accounts.length > 1) {
+          suggestion = { account: null, accounts: (conflictRule ? conflictRule.conflictAccounts : accounts), confidence: 30, reason: 'Conflit entre règles apprises pour ce bénéficiaire : choisir explicitement le bon compte (aucune résolution automatique).' };
+        } else {
+          counter = exact[0].account; conf = 90; learnedHit = true; origin = 'apprentissage';
+          why = 'Règle apprise de vos corrections validées (bénéficiaire « ' + (exact[0].tokens || []).join(' ') + ' »' + (exact[0].direction ? ', sens ' + exact[0].direction : '') + ')';
         }
+      }
+      if (!counter && !suggestion) for (const r of rules) {
+        if (r.sens && sens && r.sens !== sens) continue;
+        let re; try { re = new RegExp(r.pattern, 'i'); } catch (e) { continue; }
+        if (re.test(tx.label || '')) { counter = r.account; conf = r.conf || 50; why = r.why || 'Règle configurable du dossier'; alternatives = r.alternatives || []; origin = 'règle du dossier'; break; }
+      }
+      if (!counter && !suggestion && partial.length) {
+        const accounts = [...new Set(partial.map(r => r.account))];
+        suggestion = { account: accounts.length === 1 ? accounts[0] : null, accounts, confidence: 40, reason: 'Correspondance incertaine avec une règle apprise (nom partiellement commun : « ' + (partial[0].tokens || []).join(' ') + ' ») : proposition à confirmer explicitement, jamais appliquée automatiquement.' };
       }
       const acct = counter ? acctOf(counter) : null;
       const issues = [];
       if (!sens || amount == null) issues.push('sens ou montant non reconnu');
-      if (!counter) issues.push('aucune contrepartie proposée : à affecter manuellement');
+      if (!counter && !suggestion) issues.push('aucune contrepartie proposée : à affecter manuellement');
+      if (suggestion) issues.push('proposition incertaine à confirmer (non exportée tant qu\u2019elle n\u2019est pas acceptée)');
       if (counter && !acct) issues.push('compte ' + counter + ' absent du plan du dossier');
       if (counter && acct && !acct.active) issues.push('compte ' + counter + ' inactif dans le plan du dossier');
       const bankNum = R.banque, bankAcct = acctOf(bankNum);
       if (!bankAcct) issues.push('compte banque ' + bankNum + ' absent du plan du dossier');
-      // Écriture comptable : relevé « débit » (sortie) = contrepartie débitée, banque créditée ; inverse en entrée.
-      const entries = (counter && sens && amount != null) ? (sens === 'sortie'
+      else if (!bankAcct.active) issues.push('compte banque ' + bankNum + ' inactif dans le plan du dossier');
+      // Écriture : sortie = contrepartie débitée / 512 crédité ; entrée = inverse.
+      // Jamais d'écriture si la contrepartie ou la banque est absente/inactive du plan.
+      const usable = counter && acct && acct.active && bankAcct && bankAcct.active;
+      const entries = (usable && sens && amount != null) ? (sens === 'sortie'
         ? [{ account: counter, debit: amount, credit: 0 }, { account: bankNum, debit: 0, credit: amount }]
         : [{ account: bankNum, debit: amount, credit: 0 }, { account: counter, debit: 0, credit: amount }]) : [];
-      return { index: i, date: tx.date, valueDate: tx.valueDate || null, label: tx.label, reference: tx.reference || null, sens, amount,
+      return { index: i, date: tx.date, valueDate: tx.valueDate || null, label: tx.label, reference: tx.reference || null, sens, amount, nature,
         journal: R.journalBanque || 'BQ', bankAccount: bankNum, bankAccountLabel: fmtA(bankNum),
-        counterAccount: counter, counterLabel: counter ? fmtA(counter) : 'En attente d’affectation',
+        counterAccount: counter, counterLabel: counter ? fmtA(counter) : 'En attente d\u2019affectation',
         counterExists: !!acct, counterActive: acct ? !!acct.active : false,
         confidence: conf, explanation: why || 'Aucune règle reconnue pour ce libellé : compte laissé en attente (jamais inventé).',
-        alternatives: alternatives.map(fmtA), learned: learnedHit, issues, entries,
+        alternatives: alternatives.map(fmtA), learned: learnedHit, origin, suggestion,
+        similarIndexes: similar, similarLabels: similar.map(j => txs[j].label),
+        issues, entries,
         status: 'proposée (non validée)' };
     });
   },
@@ -2379,7 +2478,7 @@ const Acc = {
       if (seen.has(key)) problems.push('Doublon potentiel : ' + pr.date + ' ' + pr.label + ' (' + pr.amount + ')');
       seen.set(key, true);
       if (pr.issues.length) problems.push(pr.date + ' ' + pr.label + ' : ' + pr.issues.join(' · '));
-      if (!pr.entries.length) continue;
+      if (!pr.entries.length) { if (pr.counterAccount && (!pr.counterExists || !pr.counterActive)) problems.push(pr.date + ' ' + pr.label + ' : NON exportée (contrepartie absente ou inactive du plan)'); continue; }
       for (const e of pr.entries) rows.push([pr.date, pr.journal, pr.reference || (docMeta.invoiceNumber || ''), e.account, pr.label, pr.reference || '', e.debit || '', e.credit || '', pr.status]);
     }
     const td = rows.slice(1).reduce((s, r) => s + (parseFloat(String(r[6]).replace(',', '.')) || 0), 0);
@@ -2744,6 +2843,10 @@ Object.assign(Actions, {
   'acc-reanalyze-confirm': () => accAnalyze(App.accDocId, { confirmed: true }),
   'acc-entries-confirm': () => { window.__accEntriesConfirmed = true; accExport(App.accDocId, 'entries'); },
   'acc-bankentries-confirm': () => { window.__accBankConfirmed = true; accExport(App.accDocId, 'bankentries'); },
+  'acc-accept-suggestion': (el) => accAcceptSuggestion(App.accDocId, +el.dataset.idx, el.dataset.account),
+  'acc-apply-similar': (el) => accApplySimilar(App.accDocId, +el.dataset.idx),
+  'acc-rule-forget': (el) => { Precompta.forgetLearned(el.dataset.key); render(); toast('Règle apprise annulée (les autres règles sont conservées)', 'ok'); },
+  'acc-rule-correct': (el) => { const inp = document.getElementById('learnfix-' + el.dataset.key.replace(/[^a-z0-9]+/gi, '_')); if (inp && inp.value.trim()) { Precompta.correctLearned(el.dataset.key, inp.value.trim()); render(); toast('Règle corrigée : ' + el.dataset.key + ' → ' + inp.value.trim(), 'ok'); } },
   'acc-save': () => accSave(App.accDocId),
   'acc-export': (el) => accExport(App.accDocId, el.dataset.fmt),
   'acc-zone': (el) => accShowZone(el),
@@ -3139,6 +3242,8 @@ async function accSave(docId) {
   if (!doc || !doc.acc) return;
   const prevType = doc.acc.data.docType;
   const prevFields = JSON.parse(JSON.stringify((doc.acc.data && doc.acc.data.fields) || {}));
+  const prevDataSnapshot = JSON.parse(JSON.stringify(doc.acc.data || {}));
+  const learnLog = [];
   doc.acc.data = await accReadForm(doc);
   // Historique des corrections (V2.15) : ancienne -> nouvelle valeur, daté, par champ.
   doc.acc.history = doc.acc.history || [];
@@ -3147,18 +3252,56 @@ async function accSave(docId) {
     if (before !== undefined && String(before) !== String(f.value)) doc.acc.history.push({ at: Date.now(), field: k, old: before, new: f.value });
   }
   if (doc.acc.history.length > 200) doc.acc.history = doc.acc.history.slice(-200);
-  // Apprentissage local (relevés) : un compte affecté à la main devient une règle apprise.
-  if (doc.acc.data && doc.acc.data.kind === 'bank') for (const tx of doc.acc.data.transactions || []) if (tx.account) Precompta.learnFromLabel(tx.label, tx.account);
+  // Apprentissage (V2.17) : UNIQUEMENT sur correction explicite de l'utilisateur,
+  // c'est-à-dire un compte différent de la proposition automatique recalculée sans
+  // ses affectations. Une valeur déjà proposée par une règle n'est jamais ré-apprise
+  // aveuglément ; le résultat (appris / refusé / conflit) est historisé.
+  if (doc.acc.data && doc.acc.data.kind === 'bank') {
+    const baseline = Acc.bankProposals(Object.assign({}, prevDataSnapshot, { transactions: (prevDataSnapshot.transactions || []).map(x => Object.assign({}, x, { account: undefined })) }));
+    const results = [];
+    (doc.acc.data.transactions || []).forEach((tx, i) => {
+      if (!tx.account) return;
+      const auto = baseline[i] && baseline[i].counterAccount;
+      if (auto && String(auto) === String(tx.account)) return; // simple confirmation d'une proposition : pas un nouvel apprentissage
+      const direction = tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
+      results.push(Precompta.learnFromLabel(tx.label, tx.account, { direction }));
+    });
+    for (const r of results) if (r && (r.ok || r.conflict)) learnLog.push(r);
+  }
   if (prevType && doc.acc.data.docType !== prevType) toast('Type modifié : pensez à « Réanalyser » pour recalculer les champs compatibles avec le nouveau type.', 'err', 6000);
   doc.acc.edited = true;
   doc.acc.savedAt = Date.now();
+  if (learnLog.length) { doc.acc.history = doc.acc.history || []; for (const r of learnLog) doc.acc.history.push({ at: Date.now(), field: 'apprentissage', old: '', new: (r.conflict ? 'CONFLIT ' : 'règle apprise ') + r.key }); }
   doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Correction comptable enregistrée' });
   await Repo.update(doc);
   App.docs = await Repo.list();
   await render();
-  toast('Corrections comptables enregistrées', 'ok');
+  toast('Corrections comptables enregistrées' + (learnLog.length ? ' — ' + learnLog.filter(r => r.ok).length + ' règle(s) apprise(s)' + (learnLog.some(r => r.conflict) ? ', conflit signalé à corriger' : '') : ''), 'ok', 5000);
 }
 
+
+async function accAcceptSuggestion(docId, idx, account) {
+  const doc = await Repo.doc(docId); if (!doc || !doc.acc || !account) return;
+  const tx = (doc.acc.data.transactions || [])[idx]; if (!tx) return;
+  tx.account = account;
+  const direction = tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
+  const r = Precompta.learnFromLabel(tx.label, account, { direction });
+  doc.acc.edited = true; doc.history = doc.history || [];
+  doc.history.push({ at: Date.now(), action: 'Suggestion comptable acceptée explicitement (' + account + ')' + (r && r.ok ? ' et apprise' : '') });
+  await Repo.update(doc); App.docs = await Repo.list(); await render();
+  toast('Suggestion acceptée : ' + account + ' affecté' + (r && r.ok ? ' et règle apprise pour ce bénéficiaire' : ''), 'ok', 5000);
+}
+async function accApplySimilar(docId, idx) {
+  const doc = await Repo.doc(docId); if (!doc || !doc.acc) return;
+  const props = Acc.bankProposals(doc.acc.data); const pr = props[idx];
+  if (!pr || !pr.counterAccount || !pr.similarIndexes.length) return;
+  let n = 0;
+  for (const j of pr.similarIndexes) { const tx = doc.acc.data.transactions[j]; if (tx && !tx.account) { tx.account = pr.counterAccount; n++; } }
+  doc.acc.edited = true; doc.history = doc.history || [];
+  doc.history.push({ at: Date.now(), action: 'Règle appliquée à ' + n + ' opération(s) similaire(s) de ce relevé (' + pr.counterAccount + ')' });
+  await Repo.update(doc); App.docs = await Repo.list(); await render();
+  toast('Compte ' + pr.counterAccount + ' appliqué à ' + n + ' opération(s) similaire(s) de ce relevé (aperçu affiché avant application)', 'ok', 5000);
+}
 async function accSetValidation(docId, status) {
   const doc = await Repo.doc(docId);
   if (!doc || !doc.acc) return;
