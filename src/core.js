@@ -215,7 +215,35 @@ const ImageOps = {
     if (f === 'shadow') { Vision.shadowRemove(out); this.filter(out, 'doc'); }
     else if (f === 'vivid') { Vision.shadowRemove(out); Vision.vivid(out); this.filter(out, 'color'); }
     else if (f !== 'none' && f !== 'original') this.filter(out, f);
+    // V2.2 : luminosité/contraste persistés
+    const adj = page.adj || { b: 1, c: 1 };
+    if (adj && (Math.abs((adj.b || 1) - 1) > 0.001 || Math.abs((adj.c || 1) - 1) > 0.001)) this.adjust(out, adj);
+    // V2.2 : nettoyage magique réel, aussi utilisé pour l'export PDF
+    if (page.cleanup && page.cleanup.enabled) Vision.magicClean(out, page.cleanup);
+    // V2.2 : gomme tactile non destructive (traits blancs normalisés)
+    if (Array.isArray(page.eraser) && page.eraser.length) this.applyEraser(out, page.eraser);
     return out;
+  },
+  adjust(canvas, adj = {}) {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height), d = img.data;
+    const b = Number(adj.b || 1), c = Number(adj.c || 1);
+    for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) {
+      d[i+k] = clamp(((d[i+k] * b) - 128) * c + 128, 0, 255);
+    }
+    ctx.putImageData(img, 0, 0); return canvas;
+  },
+  applyEraser(canvas, strokes) {
+    const ctx = canvas.getContext('2d');
+    ctx.save(); ctx.strokeStyle = '#fff'; ctx.fillStyle = '#fff'; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const st of strokes || []) {
+      const pts = st.points || []; if (!pts.length) continue;
+      ctx.lineWidth = Math.max(4, (st.radius || 0.025) * Math.min(canvas.width, canvas.height));
+      ctx.beginPath();
+      pts.forEach((pt, i) => { const x = pt.x * canvas.width, y = pt.y * canvas.height; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      if (pts.length === 1) ctx.arc(pts[0].x * canvas.width, pts[0].y * canvas.height, ctx.lineWidth / 2, 0, Math.PI * 2), ctx.fill(); else ctx.stroke();
+    }
+    ctx.restore(); return canvas;
   },
   dataUrl(canvas, quality = 0.9) { return canvas.toDataURL('image/jpeg', quality); },
 
@@ -422,7 +450,8 @@ const OCR = {
     const w = await this.ensure(langs, onProgress);
     const { data } = await w.recognize(dataUrl);
     const text = (data.text || '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-    return { text, confidence: Math.round(data.confidence || 0), words: (data.words || []).length, lines: (data.lines || []).length };
+    const uncertain = (data.words || []).filter(w => (w.confidence || 100) < 60 && (w.text || '').trim()).slice(0, 40).map(w => ({ text: w.text, confidence: Math.round(w.confidence || 0) }));
+    return { text, confidence: Math.round(data.confidence || 0), words: (data.words || []).length, lines: (data.lines || []).length, uncertain };
   },
   async terminate() { if (this.worker) { try { await this.worker.terminate(); } catch (e) {} this.worker = null; this.langs = null; } }
 };
@@ -450,6 +479,19 @@ const PDF = {
       if (h > availH) { h = availH; w = h * ratio; }
       if (i > 0) pdf.addPage('a4', 'portrait');
       pdf.addImage(data, 'JPEG', (PW - w) / 2, (PH - h) / 2, w, h, 'p' + i, 'FAST');
+      if (arguments[1] && arguments[1].watermark) {
+        pdf.saveGraphicsState(); pdf.setGState(new pdf.GState({ opacity: 0.13 }));
+        pdf.setFontSize(34); pdf.setTextColor(30, 64, 175);
+        pdf.text(String(arguments[1].watermark), PW / 2, PH / 2, { align: 'center', angle: -28 });
+        pdf.restoreGraphicsState();
+      }
+      if (arguments[1] && arguments[1].signature && i === pages.length - 1) {
+        try { pdf.addImage(arguments[1].signature, 'PNG', PW - 62, PH - 38, 46, 18, 'sig', 'FAST'); } catch (e) {}
+      }
+      if (arguments[1] && arguments[1].pageNumbers) {
+        pdf.setFontSize(8); pdf.setTextColor(110, 125, 145);
+        pdf.text(`${i + 1} / ${pages.length}`, PW / 2, PH - 4, { align: 'center' });
+      }
     }
     onProgress && onProgress(1, 'Finalisation');
     return { blob: pdf.output('blob'), base64: null };
@@ -475,6 +517,36 @@ const PDF = {
     out.setProducer('ScanPro AI');
     const bytes = await out.save();
     return { blob: new Blob([bytes], { type: 'application/pdf' }), pageCount: added };
+  },
+
+  /** Divise/extrait des pages d'un PDF importé. pages = indices 0-based. */
+  async extractPages(fileBytes, indexes, { name = 'extrait' } = {}) {
+    if (!this.hasPdfLib()) await Assets.ensureLoaded();
+    if (!this.hasPdfLib()) throw new Error('La bibliothèque pdf-lib est indisponible.');
+    const { PDFDocument } = window.PDFLib;
+    const bytes = fileBytes instanceof Uint8Array ? fileBytes : new Uint8Array(await fileBytes.arrayBuffer());
+    let src;
+    try { src = await PDFDocument.load(bytes, { ignoreEncryption: true }); }
+    catch (e) { throw new Error('PDF illisible, chiffré ou protégé : extraction impossible sans produire un fichier incorrect.'); }
+    if (src.isEncrypted) throw new Error('PDF chiffré/protégé : extraction refusée.');
+    const valid = [...new Set(indexes)].filter(i => i >= 0 && i < src.getPageCount());
+    if (!valid.length) throw new Error('Aucune page valide à extraire.');
+    const out = await PDFDocument.create();
+    const copied = await out.copyPages(src, valid);
+    copied.forEach(p => out.addPage(p));
+    out.setTitle(name); out.setProducer('ScanPro AI');
+    const saved = await out.save();
+    return { blob: new Blob([saved], { type: 'application/pdf' }), pageCount: valid.length };
+  },
+  parsePageSelection(input, total) {
+    const out = new Set();
+    for (const part of String(input || '').split(',')) {
+      const t = part.trim(); if (!t) continue;
+      const m = t.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (m) { let a = +m[1], b = +m[2]; if (a > b) [a, b] = [b, a]; for (let i = a; i <= b; i++) if (i >= 1 && i <= total) out.add(i - 1); }
+      else if (/^\d+$/.test(t)) { const i = +t; if (i >= 1 && i <= total) out.add(i - 1); }
+    }
+    return [...out].sort((a, b) => a - b);
   },
 
   /** Rend les pages d'un PDF en canvas (V2 : OCR des PDF importés). */

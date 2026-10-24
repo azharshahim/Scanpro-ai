@@ -28,7 +28,7 @@ function docCard(doc, { compact = false } = {}) {
         <span>${plural(doc.pageCount || 0, 'page', 'pages')}</span>
         ${compact ? '' : `<span>·</span><span>${fmtBytes(doc.bytes)}</span>`}
       </div>
-      <div class="meta-line" style="margin-top:5px">${kindTag}${ocrTag}</div>
+      <div class="meta-line" style="margin-top:5px">${kindTag}${ocrTag}${doc.favorite ? '<span class="tag warn">★ Favori</span>' : ''}${doc.category ? `<span class="tag">${escapeHtml(doc.category)}</span>` : ''}${(doc.tags || []).slice(0,3).map(t => `<span class="tag">#${escapeHtml(t)}</span>`).join('')}</div>
     </div>
     <span class="doc-row-actions" role="button" aria-label="Actions" data-act="doc-menu" data-id="${doc.id}">
       ${ICON('i-more', 'ico')}
@@ -138,11 +138,12 @@ function searchResultsHtml(q) {
 
 /* ============================== DOCUMENTS ================================ */
 function viewDocs() {
-  const filters = [['all', 'Tous'], ['scan', 'Scans'], ['pdf', 'PDF importés'], ['ocr', 'Avec OCR']];
+  const filters = [['all', 'Tous'], ['scan', 'Scans'], ['pdf', 'PDF importés'], ['ocr', 'Avec OCR'], ['fav', 'Favoris']];
   let docs = App.docs.slice();
   if (App.docFilter === 'scan') docs = docs.filter(d => d.kind !== 'pdf');
   if (App.docFilter === 'pdf') docs = docs.filter(d => d.kind === 'pdf');
   if (App.docFilter === 'ocr') docs = docs.filter(d => d.ocr && d.ocr.status === 'done');
+  if (App.docFilter === 'fav') docs = docs.filter(d => d.favorite);
   if (App.search) {
     const n = App.search.toLowerCase();
     docs = docs.filter(d => (d.name || '').toLowerCase().includes(n) || (d.text || '').toLowerCase().includes(n));
@@ -268,7 +269,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.1.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.2.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -359,6 +360,9 @@ function previewTab(doc, pages, p) {
       <button class="btn soft" data-act="doc-edit">${ICON('i-edit', 'ico sm')} Modifier</button>
     </div>
     <button class="btn ghost" data-act="doc-ocr-zone">${ICON('i-zone', 'ico sm')} OCR d'une zone</button>
+    <button class="btn ghost" data-act="doc-pdf-tools">${ICON('i-pdf', 'ico sm')} Outils PDF avancés</button>
+    <div class="btn-row"><button class="btn ghost" data-act="doc-favorite">${doc.favorite ? '★ Retirer des favoris' : '☆ Ajouter aux favoris'}</button>
+    <button class="btn ghost" data-act="doc-meta">${ICON('i-folder', 'ico sm')} Catégorie / étiquettes</button></div>
     <button class="btn ghost" data-act="doc-ocr">${ICON('i-text', 'ico sm')} ${doc.ocr && doc.ocr.status === 'done' ? 'Relancer l\'OCR' : 'Extraire le texte (OCR)'}</button>
     <button class="btn ghost" data-act="doc-rename">${ICON('i-edit', 'ico sm')} Renommer</button>
     <button class="btn danger" data-act="doc-delete">${ICON('i-trash', 'ico sm')} Supprimer le document</button>
@@ -387,6 +391,11 @@ function textTab(doc, text) {
     <button class="btn soft" data-act="text-save">${ICON('i-check', 'ico sm')} Enregistrer</button>
     <button class="btn soft" data-act="text-find">${ICON('i-search', 'ico sm')} Rechercher</button>
   </div>
+  <div class="btn-row mt10">
+    <button class="btn ghost" data-act="text-export-txt">${ICON('i-download', 'ico sm')} Export TXT</button>
+    <button class="btn ghost" data-act="text-export-docx">${ICON('i-file', 'ico sm')} Export DOCX</button>
+  </div>
+  ${(doc.ocrUncertain && doc.ocrUncertain.length) ? `<div class="banner warn mt10">${ICON('i-alert','ico sm')}<span><b>Zones incertaines :</b> ${doc.ocrUncertain.slice(0,12).map(w => escapeHtml(w.text + ' (' + w.confidence + ' %)')).join(', ')}. Vérifiez ces mots dans l’image.</span></div>` : ''}
   ${ok ? `<div class="row mt14 small muted" style="gap:6px">${ICON('i-info', 'ico sm')}
     <span>Texte extrait le ${fmtDate(doc.ocr.at || doc.createdAt)} · ${doc.ocr.confidence || 0} % de confiance.</span></div>` : ''}`;
 }
@@ -437,11 +446,9 @@ function aiTab(doc) {
 
   <div class="ai-card">
     <h4>${ICON('i-sparkles', 'ico sm')} Facture → données structurées
-      <span class="soon" style="margin-left:auto">Serveur / API requis</span></h4>
-    <p class="small muted" style="margin:0">Extraction fiable du fournisseur, des lignes d'articles, de la TVA
-      et du total avec un modèle de vision. Nécessite un backend ou une clé API côté serveur —
-      <b>non implémenté en V1</b>.</p>
-    <button class="btn xs ghost mt10" data-act="ai-invoice-demo">Voir l'extraction locale approximative</button>
+      <span class="tag ok" style="margin-left:auto">Local</span></h4>
+    <p class="small muted" style="margin:0">Extraction locale par règles, champs modifiables avant export CSV/JSON. Les valeurs absentes restent « Non détecté » ; ce n’est pas une validation comptable.</p>
+    <button class="btn xs soft mt10" data-act="ai-invoice-demo">Extraire les champs facture</button>
     <div id="aiInvoiceOut" class="mt10"></div>
   </div>
 

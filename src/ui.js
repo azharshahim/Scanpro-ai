@@ -336,6 +336,7 @@ function renderEditor() {
         <button class="tool" data-act="editor-deskew">${ICON('i-straighten')}Redresser</button>
         <button class="tool" data-act="editor-adjust">${ICON('i-sun')}Luminosité</button>
         <button class="tool" data-act="editor-ocr-zone">${ICON('i-zone')}Zone OCR</button>
+        <button class="tool" data-act="editor-clean">${ICON('i-sparkles')}Nettoyage</button>
         <button class="tool" data-act="editor-duplicate">${ICON('i-copy')}Dupliquer</button>
         <button class="tool" data-act="editor-delete-page">${ICON('i-trash')}Supprimer</button>
       </div>
@@ -823,6 +824,102 @@ async function editorDeskew() {
   } catch (e) { busyBar(false); toast('Redressement impossible', 'err'); }
 }
 
+/* ------------------------------------------------- Studio Nettoyage V2.2 -- */
+function cleanSettingsOf(p) {
+  return JSON.parse(JSON.stringify({
+    filter: p.filter || 'none', adj: p.adj || { b: 1, c: 1 }, cleanup: p.cleanup || null,
+    eraser: p.eraser || [], rotate: p.rotate || 0, deskew: p.deskew || 0,
+    crop: p.crop || { x: 0, y: 0, w: 1, h: 1 }, quad: p.quad || null
+  }));
+}
+function applyCleanSettings(p, st) { Object.assign(p, JSON.parse(JSON.stringify(st))); }
+
+async function openCleanStudio() {
+  const d = App.draft; if (!d) return;
+  const page = d.pages[d.active]; if (!page) return;
+  let candidate = Object.assign({}, page, cleanSettingsOf(page));
+  const undoStack = [], redoStack = [];
+  const snap = () => JSON.stringify(cleanSettingsOf(candidate));
+  const pushHistory = () => { undoStack.push(snap()); if (undoStack.length > 30) undoStack.shift(); redoStack.length = 0; };
+  let eraserOn = false, drawing = null;
+
+  const sheet = openSheet({
+    title: 'Nettoyage magique',
+    sub: 'Traitement local réel : il sera appliqué à l’image exportée en PDF. L’original reste conservé.',
+    body: `
+      <div class="clean-compare" id="cleanCompare">
+        <canvas id="cleanAfter"></canvas><canvas id="cleanBefore"></canvas>
+        <canvas id="cleanErase"></canvas>
+        <span class="clean-label before">Avant</span><span class="clean-label after">Après</span>
+      </div>
+      <label class="tiny muted" style="display:block;margin-top:8px">Comparer avant / après
+        <input id="cleanSlider" type="range" min="0" max="100" value="55" style="width:100%;min-height:34px"></label>
+      <div class="row wrap" style="gap:7px;margin:8px 0">
+        <button class="btn xs soft" id="cleanAuto">Amélioration automatique</button>
+        <button class="btn xs primary" id="cleanMagic">Nettoyage magique</button>
+        <button class="btn xs soft" id="cleanBW">Noir et blanc</button>
+        <button class="btn xs ghost" id="cleanRestore">Restaurer l'original</button>
+      </div>
+      <div class="row wrap" style="gap:7px;margin:8px 0">
+        <button class="btn xs ghost" id="cleanUndo">↩ Annuler</button>
+        <button class="btn xs ghost" id="cleanRedo">↪ Rétablir</button>
+        <button class="btn xs ghost" id="cleanEraseBtn">Gomme tactile</button>
+        <button class="btn xs ghost" id="cleanZoom">Zoom 150 %</button>
+      </div>
+      <label class="tiny muted" style="display:block">Intensité du nettoyage <b id="cleanStrengthVal">${Math.round(((candidate.cleanup && candidate.cleanup.strength) || 0.7) * 100)} %</b>
+        <input id="cleanStrength" type="range" min="10" max="100" value="${Math.round(((candidate.cleanup && candidate.cleanup.strength) || 0.7) * 100)}" style="width:100%;min-height:34px"></label>
+      <div class="banner info" style="margin-top:8px">${ICON('i-info','ico sm')}<span>La gomme masque en blanc de petits éléments parasites. Elle ne reconstruit pas un texte masqué ou illisible.</span></div>`,
+    actions: [{ label: 'Fermer', cls: 'ghost' }, { label: 'Appliquer à toutes les pages', cls: 'soft', act: 'clean-all', close: false },
+              { label: 'Enregistrer une copie', cls: 'soft', act: 'clean-copy', close: true }, { label: 'Appliquer', cls: 'primary', act: 'clean-apply', close: true }],
+    onMount: (sh) => { setTimeout(() => refresh(), 30); }
+  });
+
+  const before = $('#cleanBefore', sheet), after = $('#cleanAfter', sheet), erase = $('#cleanErase', sheet);
+  const compare = $('#cleanCompare', sheet), slider = $('#cleanSlider', sheet);
+  async function refresh() {
+    if (!before || !document.body.contains(before)) return;
+    const original = Object.assign({}, candidate, { filter: 'none', adj: { b: 1, c: 1 }, cleanup: null, eraser: [] });
+    const [cb, ca] = await Promise.all([ImageOps.render(original, { maxPx: 1100 }), ImageOps.render(candidate, { maxPx: 1100 })]);
+    for (const [el, src] of [[before, cb], [after, ca]]) { el.width = src.width; el.height = src.height; el.getContext('2d').drawImage(src, 0, 0); }
+    erase.width = after.width; erase.height = after.height;
+    updateClip();
+  }
+  function updateClip() { before.style.clipPath = `inset(0 ${100 - (+slider.value)}% 0 0)`; }
+  slider.addEventListener('input', updateClip);
+  const mutate = (fn) => { pushHistory(); fn(); refresh(); };
+  $('#cleanAuto', sheet).addEventListener('click', () => mutate(() => { candidate.filter = 'doc'; candidate.cleanup = { enabled: true, strength: 0.45, denoise: true, sharpen: true, illumination: true }; }));
+  $('#cleanMagic', sheet).addEventListener('click', () => mutate(() => { candidate.filter = 'doc'; candidate.cleanup = { enabled: true, strength: +($('#cleanStrength', sheet).value) / 100, denoise: true, sharpen: true, illumination: true }; }));
+  $('#cleanBW', sheet).addEventListener('click', () => mutate(() => { candidate.filter = 'bw'; candidate.cleanup = { enabled: true, strength: 0.35, denoise: true, sharpen: true, illumination: true }; }));
+  $('#cleanRestore', sheet).addEventListener('click', () => mutate(() => { candidate.filter = 'none'; candidate.adj = { b: 1, c: 1 }; candidate.cleanup = null; candidate.eraser = []; }));
+  $('#cleanStrength', sheet).addEventListener('input', (e) => { $('#cleanStrengthVal', sheet).textContent = e.target.value + ' %'; if (candidate.cleanup) { candidate.cleanup.strength = e.target.value / 100; refresh(); } });
+  $('#cleanUndo', sheet).addEventListener('click', () => { if (!undoStack.length) return toast('Rien à annuler'); redoStack.push(snap()); applyCleanSettings(candidate, JSON.parse(undoStack.pop())); refresh(); });
+  $('#cleanRedo', sheet).addEventListener('click', () => { if (!redoStack.length) return toast('Rien à rétablir'); undoStack.push(snap()); applyCleanSettings(candidate, JSON.parse(redoStack.pop())); refresh(); });
+  let zoomed = false;
+  $('#cleanZoom', sheet).addEventListener('click', (e) => { zoomed = !zoomed; compare.style.width = zoomed ? '160%' : '100%'; e.target.textContent = zoomed ? 'Zoom 100 %' : 'Zoom 150 %'; });
+  const eraseBtn = $('#cleanEraseBtn', sheet);
+  eraseBtn.addEventListener('click', () => { eraserOn = !eraserOn; erase.style.pointerEvents = eraserOn ? 'auto' : 'none'; eraseBtn.classList.toggle('primary', eraserOn); toast(eraserOn ? 'Gomme active : touchez les éléments à masquer' : 'Gomme désactivée'); });
+  const pos = (e) => { const r = erase.getBoundingClientRect(); return { x: clamp((e.clientX - r.left) / r.width, 0, 1), y: clamp((e.clientY - r.top) / r.height, 0, 1) }; };
+  erase.addEventListener('pointerdown', (e) => { if (!eraserOn) return; pushHistory(); drawing = { radius: 0.028, points: [pos(e)] }; erase.setPointerCapture(e.pointerId); });
+  erase.addEventListener('pointermove', (e) => { if (!drawing) return; drawing.points.push(pos(e)); const preview = Object.assign({}, candidate, { eraser: [...(candidate.eraser || []), drawing] }); ImageOps.render(preview, { maxPx: 1100 }).then(c => { after.getContext('2d').drawImage(c, 0, 0); }); });
+  erase.addEventListener('pointerup', () => { if (!drawing) return; candidate.eraser = [...(candidate.eraser || []), drawing]; drawing = null; refresh(); });
+
+  $('[data-act="clean-apply"]', sheet).addEventListener('click', async () => {
+    applyCleanSettings(page, cleanSettingsOf(candidate));
+    page.thumb = await ImageOps.thumb(await ImageOps.render(page, { maxPx: 400 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+    closeSheet(); renderEditor(); toast('Nettoyage appliqué à la page (original conservé)', 'ok');
+  });
+  $('[data-act="clean-copy"]', sheet).addEventListener('click', async () => {
+    const copy = Object.assign({}, page, cleanSettingsOf(candidate), { id: uid('pg') });
+    copy.thumb = await ImageOps.thumb(await ImageOps.render(copy, { maxPx: 400 }).then(c => c.toDataURL('image/jpeg', 0.7)));
+    d.pages.splice(d.active + 1, 0, copy); d.active++;
+    closeSheet(); renderEditor(); toast('Copie nettoyée ajoutée après la page', 'ok');
+  });
+  $('[data-act="clean-all"]', sheet).addEventListener('click', () => {
+    const st = cleanSettingsOf(candidate); d.pages.forEach(p => applyCleanSettings(p, st));
+    toast('Traitement appliqué à ' + plural(d.pages.length, 'page', 'pages'), 'ok'); closeSheet(); renderEditor();
+  });
+}
+
 /* -------------------------------------------------------------- éditeur -- */
 async function editorSetFilter(f) {
   const d = App.draft, p = d.pages[d.active];
@@ -1174,6 +1271,7 @@ async function docRunOcr(docId) {
     const avg = Math.round(results.reduce((s, r) => s + r.confidence, 0) / Math.max(1, results.length));
     doc.text = text;
     doc.ocr = { status: text ? 'done' : 'empty', at: Date.now(), confidence: avg };
+    doc.ocrUncertain = results.flatMap(r => r.uncertain || []);
     await Repo.update(doc);
     App.doc = doc; App.detailTab = 'text';
     await render();
@@ -1193,6 +1291,7 @@ async function docRunOcr(docId) {
   const avg = Math.round(results.reduce((s, r) => s + r.confidence, 0) / Math.max(1, results.length));
   doc.text = text;
   doc.ocr = { status: text ? 'done' : 'empty', at: Date.now(), confidence: avg };
+  doc.ocrUncertain = results.flatMap(r => r.uncertain || []);
   await Repo.update(doc);
   for (let i = 0; i < pages.length; i++) {
     pages[i].text = results[i].text; pages[i].ocrConf = results[i].confidence;
@@ -1329,6 +1428,31 @@ async function mergePdfs() {
 
 /* --------------------------------------------------------- assistant local -- */
 const AI = {
+  extractInvoice(text) {
+    const t = String(text || '');
+    const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
+    const cleanNum = (v) => { const m = String(v || '').replace(/\s/g, '').match(/-?\d+(?:[.,]\d{1,2})?/); return m ? m[0].replace(',', '.') : ''; };
+    const findMoney = (patterns) => { for (const re of patterns) { const m = t.match(re); if (m) return cleanNum(m[1] || m[0]); } return ''; };
+    const labeled = (labels) => { for (const line of lines) { const m = line.match(new RegExp('(?:' + labels + ')\\s*[:#-]\\s*(.+)$', 'i')); if (m && m[1].trim()) return m[1].trim().slice(0, 90); } return ''; };
+    const totalTTC = findMoney([/total\s*(?:ttc|à payer|a payer)[^\d-]*(-?[\d .]+(?:[,.]\d{2})?)/i, /net\s*à payer[^\d-]*(-?[\d .]+(?:[,.]\d{2})?)/i]);
+    const totalHT = findMoney([/total\s*(?:ht|hors taxe)[^\d-]*(-?[\d .]+(?:[,.]\d{2})?)/i, /montant\s*ht[^\d-]*(-?[\d .]+(?:[,.]\d{2})?)/i]);
+    const tvaAmt = findMoney([/(?:montant\s*)?tva\s*(?:\d+[,.]?\d*\s*%)?[^\d-]*(-?[\d .]+(?:[,.]\d{2})?)\s*(?:€|EUR)?/i]);
+    const tvaRateM = t.match(/tva\s*(?:à|a)?\s*(\d{1,2}(?:[,.]\d{1,2})?)\s*%/i);
+    const dates = [...t.matchAll(/\b(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\b/g)].map(m => m[1]);
+    const due = labeled('date d.?échéance|échéance|à régler avant|payable avant');
+    const invoiceNo = (t.match(/\bFAC-\d{4}-\d+\b/i) || [''])[0] || labeled('facture\s*(?:n[°o]?|numéro)|n[°o]\s*de facture|numéro de facture|invoice\s*(?:no|number)') || (t.match(/\b(?:FAC|FACT)[- ]\d[A-Z0-9-]{2,20}\b/i) || [''])[0];
+    const siretM = t.match(/\b(?:siret|siren)\s*:?\s*(\d[\d ]{8,20})/i);
+    const supplier = labeled('fournisseur|émetteur|emetteur|société|entreprise') || (lines.find(l => l.length > 2 && !/facture|devis|date|total|tva/i.test(l)) || '');
+    const currency = /€|EUR/.test(t) ? 'EUR' : (/\$|USD/.test(t) ? 'USD' : '');
+    const orderRef = labeled('référence\s*(?:de\s*)?commande|bon de commande|commande\s*n[°o]?|référence client');
+    const nd = 'Non détecté'; const val = (v) => v && String(v).trim() ? String(v).trim() : nd;
+    return { supplier: val(supplier), company: val(supplier), invoiceNumber: val(invoiceNo), issueDate: val(labeled('date') || dates[0]), dueDate: val(due || (dates.length > 1 ? dates[1] : '')), totalHT: val(totalHT), vatRate: val(tvaRateM ? tvaRateM[1].replace(',', '.') + ' %' : ''), vatAmount: val(tvaAmt), totalTTC: val(totalTTC), currency: val(currency), siret: val(siretM ? siretM[1].replace(/\s+/g, ' ') : ''), orderRef: val(orderRef), disclaimer: 'Extraction locale à vérifier. Ce n’est pas une validation comptable officielle.' };
+  },
+  invoiceCsv(inv) {
+    const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const labels = { supplier: 'Fournisseur', company: 'Entreprise', invoiceNumber: 'Numéro de facture', issueDate: "Date d'émission", dueDate: "Date d'échéance", totalHT: 'Montant HT', vatRate: 'Taux TVA', vatAmount: 'Montant TVA', totalTTC: 'Montant TTC', currency: 'Devise', siret: 'SIREN/SIRET', orderRef: 'Référence commande' };
+    return 'Champ;Valeur\n' + Object.keys(labels).map(k => esc(labels[k]) + ';' + esc(inv[k])).join('\n');
+  },
   classify(text) {
     const t = (text || '').toLowerCase();
     const rules = [
@@ -1603,6 +1727,7 @@ Object.assign(Actions, {
     drawEditorCanvas();
   },
   'editor-adjust': () => editorAdjust(),
+  'editor-clean': () => openCleanStudio(),
   'editor-filter': (el) => editorSetFilter(el.dataset.f),
   'editor-duplicate': async () => {
     const d = App.draft, p = d.pages[d.active];
@@ -1695,21 +1820,12 @@ Object.assign(Actions, {
       hits.slice(0, 8).map(h => `<div class="ai-out" style="margin-bottom:6px;font-size:12.5px">…${escapeHtml(h.before)}
         <b style="background:#FEF3C7">${escapeHtml(h.match)}</b>${escapeHtml(h.after)}…</div>`).join('');
   },
-  'ai-invoice-demo': () => {
-    const e = AI.entities(App.doc.text || '');
-    const out = $('#aiInvoiceOut');
-    if (!out) return;
-    out.innerHTML = `<div class="banner warn" style="margin-bottom:8px">${ICON('i-alert', 'ico sm')}
-      <span>Aperçu <b>heuristique</b> : utile comme point de départ, pas comme extraction comptable fiable.</span></div>
-      <dl class="kv">
-        <dt>Dates</dt><dd>${escapeHtml(e.dates.join(', ') || '—')}</dd>
-        <dt>Montants</dt><dd>${escapeHtml(e.amounts.join(', ') || '—')}</dd>
-        <dt>Références</dt><dd>${escapeHtml(e.refs.join(', ') || '—')}</dd>
-        <dt>SIRET</dt><dd>${escapeHtml(e.siret.join(', ') || '—')}</dd>
-        <dt>IBAN</dt><dd>${escapeHtml(e.iban.join(', ') || '—')}</dd>
-        <dt>E-mails</dt><dd>${escapeHtml(e.mails.join(', ') || '—')}</dd>
-      </dl>`;
-  },
+  'text-export-txt': () => exportDocText('txt'),
+  'text-export-docx': () => exportDocText('docx'),
+  'doc-pdf-tools': () => openPdfTools(),
+  'doc-favorite': async () => { App.doc.favorite = !App.doc.favorite; App.doc.history = [...(App.doc.history||[]), { at: Date.now(), action: App.doc.favorite ? 'Ajouté aux favoris' : 'Retiré des favoris' }]; await Repo.update(App.doc); await render(); },
+  'doc-meta': () => { const d = App.doc; promptSheet({ title: 'Catégorie et étiquettes', label: 'Catégorie', value: d.category || '', sub: 'Après validation, modifiez les étiquettes via le champ suivant.', onOk: async (v) => { d.category = v; d.history=[...(d.history||[]),{at:Date.now(),action:'Catégorie modifiée'}]; await Repo.update(d); await render(); setTimeout(() => promptSheet({ title:'Étiquettes', label:'Étiquettes séparées par des virgules', value:(d.tags||[]).join(', '), onOk: async (tv) => { d.tags = tv.split(',').map(x=>x.trim()).filter(Boolean); await Repo.update(d); await render(); } }), 80); } }); },
+  'ai-invoice-demo': () => renderInvoicePanel(),
   'show-ia-requirements': () => showInfoSheet('ia'),
 
   /* paramètres */
@@ -1736,6 +1852,77 @@ Object.assign(Actions, {
   'show-roadmap': () => showInfoSheet('roadmap'),
   'show-help': () => showInfoSheet('help')
 });
+
+/* ---------------------------------------------- exports texte / facture -- */
+async function makeDocxBlob(text, title = 'Document ScanPro AI') {
+  if (typeof JSZip === 'undefined') throw new Error('JSZip indisponible pour le DOCX');
+  const esc = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const paras = String(text || '').split(/\n/).map(line => `<w:p><w:r><w:t xml:space="preserve">${esc(line)}</w:t></w:r></w:p>`).join('');
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+  zip.folder('_rels').file('.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+  zip.folder('word').file('document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:b/><w:t>${esc(title)}</w:t></w:r></w:p>${paras}</w:body></w:document>`);
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+}
+async function exportDocText(format) {
+  const text = ($('#ocrEditor') || {}).value || (App.doc && App.doc.text) || '';
+  if (!text.trim()) { toast('Aucun texte à exporter', 'err'); return; }
+  const base = slugify((App.doc && App.doc.name) || 'document');
+  try {
+    if (format === 'docx') downloadBlob(await makeDocxBlob(text, App.doc ? App.doc.name : 'Document'), base + '.docx');
+    else downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), base + '.txt');
+    toast('Export ' + format.toUpperCase() + ' téléchargé', 'ok');
+  } catch (e) { toast('Export impossible : ' + e.message, 'err'); }
+}
+function renderInvoicePanel() {
+  const out = $('#aiInvoiceOut'); if (!out || !App.doc) return;
+  const inv = AI.extractInvoice(App.doc.text || '');
+  const labels = { supplier: 'Fournisseur', company: 'Entreprise', invoiceNumber: 'Numéro de facture', issueDate: "Date d'émission", dueDate: "Date d'échéance", totalHT: 'Montant HT', vatRate: 'Taux TVA', vatAmount: 'Montant TVA', totalTTC: 'Montant TTC', currency: 'Devise', siret: 'SIREN / SIRET', orderRef: 'Référence commande' };
+  out.innerHTML = `<div class="invoice-grid">${Object.keys(labels).map(k => `<label>${labels[k]}<input data-inv="${k}" value="${escapeHtml(inv[k])}"></label>`).join('')}</div>
+    <p class="tiny muted">${escapeHtml(inv.disclaimer)} Les champs absents affichent « Non détecté » et ne sont jamais inventés.</p>
+    <div class="btn-row"><button class="btn xs soft" id="invCsv">Exporter CSV</button><button class="btn xs soft" id="invJson">Exporter JSON</button></div>`;
+  const read = () => Object.fromEntries($$('[data-inv]', out).map(i => [i.dataset.inv, i.value]));
+  $('#invCsv', out).addEventListener('click', () => downloadBlob(new Blob([AI.invoiceCsv(read())], { type: 'text/csv;charset=utf-8' }), slugify(App.doc.name) + '-facture.csv'));
+  $('#invJson', out).addEventListener('click', () => downloadBlob(new Blob([JSON.stringify(read(), null, 2)], { type: 'application/json' }), slugify(App.doc.name) + '-facture.json'));
+}
+
+/* ---------------------------------------------------- outils PDF avancés -- */
+function openPdfTools() {
+  const doc = App.doc; if (!doc) return;
+  let signature = '';
+  const s = openSheet({
+    title: 'Outils PDF avancés', sub: 'Les originaux sont conservés. Les options ci-dessous créent un nouveau PDF.',
+    body: `<label class="row" style="gap:8px"><input type="checkbox" id="pdfNums"> Ajouter les numéros de page</label>
+      <div class="field"><label>Filigrane (optionnel)</label><input id="pdfWatermark" placeholder="Ex. CONFIDENTIEL"></div>
+      <div class="field"><label>Signature manuscrite</label><canvas id="sigCanvas" width="520" height="160" style="width:100%;background:#fff;border:1px solid var(--line);border-radius:10px;touch-action:none"></canvas></div>
+      <div class="btn-row"><button class="btn xs ghost" id="sigClear">Effacer la signature</button><button class="btn xs primary" id="pdfToolsGo">Créer le PDF enrichi</button></div>
+      ${doc.kind === 'pdf' && doc.fileId ? `<hr><div class="field"><label>Extraire des pages du PDF importé</label><input id="pdfExtractSel" placeholder="Ex. 1-2, 4"><span class="tiny muted">Crée un nouveau document, sans modifier l'original.</span></div><button class="btn xs soft" id="pdfExtractGo">Extraire ces pages</button>` : '<p class="tiny muted">Pour extraire des pages d’un PDF importé, ouvrez un document de type PDF importé.</p>'}`,
+    actions: [{ label: 'Fermer', cls: 'ghost' }]
+  });
+  const cv = $('#sigCanvas', s); let drawing = false;
+  if (cv) { const ctx = cv.getContext('2d'); ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.strokeStyle = '#123';
+    const pt = (e) => { const r = cv.getBoundingClientRect(); return { x: (e.clientX-r.left)*cv.width/r.width, y: (e.clientY-r.top)*cv.height/r.height }; };
+    cv.addEventListener('pointerdown', e => { drawing = true; const p = pt(e); ctx.beginPath(); ctx.moveTo(p.x,p.y); cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener('pointermove', e => { if (!drawing) return; const p = pt(e); ctx.lineTo(p.x,p.y); ctx.stroke(); });
+    cv.addEventListener('pointerup', () => { drawing = false; signature = cv.toDataURL('image/png'); });
+    $('#sigClear', s).addEventListener('click', () => { ctx.clearRect(0,0,cv.width,cv.height); signature=''; });
+  }
+  $('#pdfToolsGo', s).addEventListener('click', async () => {
+    try { const pages = await Repo.pages(doc.id); if (!pages.length) throw new Error('Convertissez d’abord ce PDF en pages modifiables pour appliquer ces options.');
+      busyBar(true); const { blob } = await PDF.build(pages, { name: doc.name, quality: .9, maxPx: 2000, pageNumbers: $('#pdfNums', s).checked, watermark: $('#pdfWatermark', s).value.trim(), signature }); busyBar(false); downloadBlob(blob, slugify(doc.name) + '-enrichi.pdf'); toast('PDF enrichi téléchargé', 'ok');
+    } catch (e) { busyBar(false); toast(e.message, 'err', 5000); }
+  });
+  const ex = $('#pdfExtractGo', s);
+  if (ex) ex.addEventListener('click', async () => {
+    try { const blob0 = await Repo.file(doc.id); if (!blob0) throw new Error('PDF original introuvable');
+      const info = await PDF.inspect(new File([blob0], doc.name + '.pdf', { type: 'application/pdf' }));
+      const idx = PDF.parsePageSelection($('#pdfExtractSel', s).value, info.pageCount || doc.pageCount);
+      busyBar(true); const { blob, pageCount } = await PDF.extractPages(blob0, idx, { name: doc.name + ' extrait' }); busyBar(false);
+      const file = new File([blob], slugify(doc.name) + '-extrait.pdf', { type: 'application/pdf' });
+      const inf2 = await PDF.inspect(file); const nd = await Repo.create({ name: doc.name + ' — extrait', pages: [], file, thumb: inf2.thumb, source: 'extract' }); nd.kind='pdf'; nd.pageCount=pageCount; await Repo.update(nd); toast('Extraction créée : ' + pageCount + ' page(s)', 'ok'); closeSheet(); go('detail', nd.id);
+    } catch (e) { busyBar(false); toast('Extraction impossible : ' + e.message, 'err', 6000); }
+  });
+}
 
 /* aperçu : rendu HD (recadrage + filtre appliqués) */
 async function showFullPreview() {
