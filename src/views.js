@@ -230,6 +230,11 @@ async function viewSettings() {
     </div>
 
     <div class="set-group">
+      <h3>Apparence</h3>
+      <div class="set-row"><span class="s-ico">${ICON('i-sun', 'ico sm')}</span><span class="s-body"><b>Mode sombre</b><span>Interface adaptée aux environnements peu éclairés</span></span><button class="switch ${Settings.get('theme')==='dark'?'on':''}" data-act="toggle-theme" role="switch" aria-checked="${Settings.get('theme')==='dark'}"><i></i></button></div>
+    </div>
+
+    <div class="set-group">
       <h3>Stockage local</h3>
       <div class="set-row" style="align-items:flex-start;flex-direction:column;gap:4px">
         <div class="row" style="width:100%">
@@ -269,7 +274,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.2.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.3.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -361,6 +366,7 @@ function previewTab(doc, pages, p) {
     </div>
     <button class="btn ghost" data-act="doc-ocr-zone">${ICON('i-zone', 'ico sm')} OCR d'une zone</button>
     <button class="btn ghost" data-act="doc-pdf-tools">${ICON('i-pdf', 'ico sm')} Outils PDF avancés</button>
+    <button class="btn ghost" data-act="doc-history">${ICON('i-info', 'ico sm')} Historique des modifications</button>
     <div class="btn-row"><button class="btn ghost" data-act="doc-favorite">${doc.favorite ? '★ Retirer des favoris' : '☆ Ajouter aux favoris'}</button>
     <button class="btn ghost" data-act="doc-meta">${ICON('i-folder', 'ico sm')} Catégorie / étiquettes</button></div>
     <button class="btn ghost" data-act="doc-ocr">${ICON('i-text', 'ico sm')} ${doc.ocr && doc.ocr.status === 'done' ? 'Relancer l\'OCR' : 'Extraire le texte (OCR)'}</button>
@@ -433,6 +439,20 @@ function aiTab(doc) {
       <span class="tag ok" style="margin-left:auto">Hors-ligne</span></h4>
     <div id="aiSummary">${hasText ? '' : '<p class="small muted mb0">Disponible après l\'OCR.</p>'}</div>
     ${hasText ? `<button class="btn xs soft mt10" data-act="ai-summary">Générer un résumé</button>` : ''}
+  </div>
+
+  <div class="ai-card">
+    <h4>${ICON('i-sparkles', 'ico sm')} Assistant documentaire local</h4>
+    <div class="field" style="margin:2px 0 0"><input id="aiAsk" placeholder="Posez une question sur le texte reconnu…"></div>
+    <div class="row wrap mt10" style="gap:6px">
+      <button class="btn xs soft" data-act="ai-chip" data-q="Résume ce document">Résume ce document</button>
+      <button class="btn xs soft" data-act="ai-chip" data-q="Extrais les dates et montants">Dates et montants</button>
+      <button class="btn xs soft" data-act="ai-chip" data-q="Trouve le numéro de facture">Numéro de facture</button>
+      <button class="btn xs soft" data-act="ai-chip" data-q="Classe ce document">Classe ce document</button>
+      <button class="btn xs soft" data-act="ai-chip" data-q="Traduis le texte reconnu">Traduire</button>
+    </div>
+    <button class="btn xs primary mt10" data-act="ai-ask">Demander</button>
+    <div id="aiAnswer" class="ai-out mt10"></div>
   </div>
 
   <div class="ai-card">

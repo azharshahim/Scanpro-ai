@@ -1,0 +1,37 @@
+import { chromium, devices } from 'playwright';
+const APP=process.env.APP_URL||'http://localhost:8080/index.html'; const OUT='/home/user/scanpro/tests/out';
+const ok=[],ko=[]; const check=(l,c,e='')=>{(c?ok:ko).push(l);console.log((c?'✅':'❌')+' '+l+(e?' — '+e:''));};
+const b=await chromium.launch({args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']});
+const ctx=await b.newContext({...devices['Pixel 7'],locale:'fr-FR',permissions:['camera']}); const p=await ctx.newPage(); const errs=[];
+p.on('pageerror',e=>errs.push(e.message.slice(0,160))); p.on('console',m=>{if(m.type()==='error')errs.push(m.text().slice(0,160))});
+await p.goto(APP,{waitUntil:'load',timeout:60000}); await p.waitForTimeout(1300); await p.locator('.sheet .btn.primary').click().catch(()=>{});
+await p.evaluate(async()=>{
+ const mk=(txt,color)=>{const c=document.createElement('canvas');c.width=800;c.height=1100;const x=c.getContext('2d');x.fillStyle='#eee';x.fillRect(0,0,800,1100);x.fillStyle=color;x.font='bold 70px Arial';x.fillText(txt,80,200);x.fillStyle='#111';x.font='30px Arial';x.fillText('FACTURE FAC-2026-042',80,330);x.fillText('Total TTC : 120,00 €',80,420);return c.toDataURL('image/jpeg',.92)};
+ const App=window.ScanPro.App; const pages=[];
+ for(const [t,c] of [['DOUBLON','#c00'],['DOUBLON','#c00'],['AUTRE','#06c']]){const src=mk(t,c);const pg={id:'v23'+Math.random(),src,crop:{x:0,y:0,w:1,h:1},rotate:0,quad:null,deskew:0,filter:'none',adj:{b:1,c:1},cleanup:null,eraser:[]};pg.thumb=await window.ScanPro.ImageOps.thumb(src);pages.push(pg);}
+ App.draft={name:'Test V2.3',pages,active:0}; window.ScanPro.Actions['editor-select-page']({dataset:{i:'0'}});
+});
+await p.waitForSelector('#editorCanvas'); await p.waitForTimeout(900);
+await p.locator('[data-act="editor-modes"]').click(); await p.waitForTimeout(400);
+check('Modes de numérisation affichés', await p.locator('[data-mode="facture"]').count()===1);
+await p.locator('[data-mode="facture"]').click(); await p.waitForTimeout(1000);
+check('Mode facture applique nettoyage', await p.evaluate(()=>window.ScanPro.App.draft.pages[0].cleanup?.enabled===true));
+await p.locator('[data-act="editor-find-dup"]').click(); await p.waitForTimeout(1500);
+check('Doublon de page détecté', await p.locator('[data-del-dup]').count()>=1);
+await p.screenshot({path:OUT+'/98-v23-doublons.png'});
+await p.locator('[data-del-dup]').first().click(); await p.waitForTimeout(800);
+check('Page en double supprimée', await p.evaluate(()=>window.ScanPro.App.draft.pages.length===2));
+await p.locator('[data-act="editor-save"]').click(); await p.waitForTimeout(2200);
+await p.evaluate(async()=>{const App=window.ScanPro.App;App.doc.text='FACTURE FAC-2026-042\nFournisseur : Exemple SAS\nDate : 12/03/2026\nTotal TTC : 120,00 €';App.doc.history=[...(App.doc.history||[]),{at:Date.now(),action:'Test V2.3'}];await window.ScanPro.Repo.update(App.doc);});
+await p.locator('[data-act="detail-tab"][data-tab="ai"]').click(); await p.waitForTimeout(700);
+await p.locator('[data-act="ai-chip"][data-q="Trouve le numéro de facture"]').click(); await p.waitForTimeout(400);
+check('Assistant local répond facture', await p.evaluate(()=>document.querySelector('#aiAnswer').innerText.includes('FAC-2026-042')));
+await p.locator('[data-act="ai-chip"][data-q="Traduis le texte reconnu"]').click(); await p.waitForTimeout(300);
+check('Traduction honnêtement non locale', await p.evaluate(()=>document.querySelector('#aiAnswer').innerText.includes('non disponible localement')));
+await p.screenshot({path:OUT+'/99-v23-assistant.png'});
+await p.locator('[data-act="go-back"]').click(); await p.waitForTimeout(500); await p.locator('[data-nav="settings"]').click(); await p.waitForTimeout(700);
+await p.locator('[data-act="toggle-theme"]').click(); await p.waitForTimeout(300);
+check('Mode sombre activé', await p.evaluate(()=>document.documentElement.dataset.theme==='dark'&&localStorage.getItem('scanpro.settings.v1').includes('dark')));
+await p.screenshot({path:OUT+'/100-v23-sombre.png'});
+check('Aucune erreur console',errs.length===0,errs.slice(0,2).join('|'));
+console.log(`\n===== V2.3 : ${ok.length} OK / ${ko.length} échec(s) =====`); await b.close(); process.exit(ko.length?1:0);
