@@ -1735,6 +1735,83 @@ const Acc = {
     for (const r of data.statementRows || []) rows.push([r.section, r.account, r.label, r.amountN ?? '', r.amountN1 ?? '', r.isTotal ? 'oui' : '']);
     return rows.map(r => r.map(esc).join(';')).join('\n');
   },
+  extractLoan(text, pagesWords) {
+    const t = String(text || '');
+    const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
+    const F = (value, confidence) => ({ value: value == null || value === '' ? Acc.NR : value, confidence: value == null || value === '' ? 0 : confidence, page: 0, zone: value ? Acc.findZone(pagesWords, value) : null, status: value ? 'reconnu' : 'non-reconnu' });
+    const labeledMoney = (re) => { const m = t.match(re); return m ? Acc.parseAmount(m[1]) : null; };
+    const loanAmount = labeledMoney(/(?:montant\s*(?:du\s*)?(?:prêt|pret|emprunt|capital\s*emprunté)|capital\s*initial)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    const rateM = t.match(/(?:taux\s*(?:nominal|fixe|d['’]intérêt)?)[^%\d\n]*(\d{1,2}(?:[.,]\d{1,3})?)\s*%/i);
+    const fields = {
+      lender: F((t.match(/(?:prêteur|preteur|banque|établissement)\s*[:\-]\s*(.+)/i) || [])[1] || '', 70),
+      borrower: F((t.match(/(?:emprunteur|client)\s*[:\-]\s*(.+)/i) || [])[1] || '', 70),
+      loanAmount: F(loanAmount != null ? String(loanAmount) : '', 85),
+      rate: F(rateM ? rateM[1].replace(',', '.') + ' %' : '', 80),
+      duration: F((t.match(/(\d{1,3})\s*(?:mois|mensualités|echeances|échéances)/i) || [])[1] || '', 60)
+    };
+    const amountRe = /-?\(?[\d]{1,3}(?:[ ][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    const rows = [];
+    for (const l of lines) {
+      const dm = l.match(/^(\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?)\s+(.+)$/);
+      if (!dm) continue;
+      const amounts = [...dm[2].matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null);
+      if (amounts.length < 3) continue;
+      // Colonnes usuelles : échéance totale, capital, intérêts, [assurance], capital restant dû
+      const [total, capital, interest] = amounts;
+      const insurance = amounts.length >= 5 ? amounts[3] : 0;
+      const remaining = amounts[amounts.length - 1];
+      rows.push({ date: dm[1], total, capital, interest, insurance, remaining, confidence: 65 });
+    }
+    // Capital restant recalculé, conservé À PART : il ne remplace jamais la valeur reconnue.
+    let run = loanAmount;
+    for (const r of rows) { if (run != null) { run = Math.round((run - r.capital) * 100) / 100; r.computedRemaining = run; } }
+    const controls = [];
+    rows.forEach((r, i) => {
+      const sum = Math.round((r.capital + r.interest + (r.insurance || 0)) * 100) / 100;
+      if (Math.abs(sum - r.total) > 0.05) controls.push({ label: 'Échéance ligne ' + (i + 1) + ' incohérente', ok: false, detail: `Capital ${r.capital} + intérêts ${r.interest} + assurance ${r.insurance || 0} = ${sum} ≠ échéance reconnue ${r.total}`, recalculated: sum });
+      if (r.computedRemaining != null && Math.abs(r.computedRemaining - r.remaining) > 0.05) controls.push({ label: 'Capital restant ligne ' + (i + 1) + ' différent du recalculé', ok: false, detail: `Reconnu : ${r.remaining} · Recalculé (montant du prêt − capitaux remboursés) : ${r.computedRemaining} — la valeur reconnue est conservée.`, recalculated: r.computedRemaining });
+    });
+    if (loanAmount != null && rows.length) {
+      const sumCap = Math.round(rows.reduce((s, r) => s + r.capital, 0) * 100) / 100;
+      controls.push({ label: 'Somme des capitaux remboursés vs montant du prêt', ok: Math.abs(sumCap - loanAmount) <= Math.max(0.05, loanAmount * 0.01), detail: `Capitaux reconnus : ${sumCap} · Montant du prêt reconnu : ${loanAmount} (écart normal si l'échéancier reconnu est partiel)`, recalculated: sumCap });
+    }
+    const dec = rows.every((r, i) => i === 0 || r.remaining <= rows[i - 1].remaining);
+    if (rows.length > 1) controls.push({ label: 'Capital restant décroissant', ok: dec, detail: dec ? 'Le capital restant dû diminue à chaque échéance reconnue.' : 'Une échéance fait augmenter le capital restant : à vérifier.', recalculated: null });
+    return { docType: 'pret_echeancier', kind: 'loan', fields, scheduleRows: rows, controls,
+      disclaimer: "Échéancier reconnu dans le document. La colonne « recalculé » est une vérification de l'application : elle ne remplace jamais le capital restant imprimé." };
+  },
+  extractAssets(text, pagesWords) {
+    const t = String(text || '');
+    const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
+    const amountRe = /-?\(?[\d]{1,3}(?:[ ][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    const rows = [];
+    for (const l of lines) {
+      if (/total|libellé|designation|valeur d['’]origine/i.test(l) && !/\d{3,}/.test(l)) continue;
+      const amounts = [...l.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null);
+      if (amounts.length < 3) continue;
+      const dateM = l.match(/(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/);
+      const durM = l.match(/(\d{1,2})\s*(?:ans|années|annees)/i);
+      const rateM = l.match(/(\d{1,2}(?:[.,]\d{1,2})?)\s*%/);
+      let label = l.replace(amountRe, ' ').replace(/(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/, ' ').replace(/(\d{1,2})\s*(?:ans|années|annees)/i, ' ').replace(/(\d{1,2}(?:[.,]\d{1,2})?)\s*%/, ' ').replace(/\s{2,}/g, ' ').trim();
+      if (!label || label.length < 2 || /^total/i.test(label)) continue;
+      // Colonnes usuelles : valeur d'origine, dotation annuelle, cumul, VNC (les 4 derniers montants)
+      const a = amounts.slice(-4);
+      rows.push({ label, originalValue: a.length >= 4 ? a[0] : null, serviceDate: dateM ? dateM[1] : '', durationYears: durM ? Number(durM[1]) : null, rate: rateM ? Acc.parseAmount(rateM[1]) : null, annualDepreciation: a.length >= 4 ? a[1] : amounts[amounts.length - 3], accumulated: a.length >= 2 ? a[a.length - 2] : null, netBookValue: a[a.length - 1], confidence: 60 });
+    }
+    const controls = [];
+    rows.forEach((r, i) => {
+      if (r.originalValue != null && r.accumulated != null && r.netBookValue != null) {
+        const sum = Math.round((r.accumulated + r.netBookValue) * 100) / 100;
+        controls.push({ label: 'Immobilisation ligne ' + (i + 1) + ' : cumul + VNC = valeur d\'origine', ok: Math.abs(sum - r.originalValue) <= Math.max(0.05, r.originalValue * 0.01), detail: `Reconnu : cumul ${r.accumulated} + VNC ${r.netBookValue} = ${sum} · Valeur d'origine reconnue : ${r.originalValue}`, recalculated: sum });
+      }
+    });
+    return { docType: 'amort_immobilisation', kind: 'assets', fields: {}, assetRows: rows, controls,
+      disclaimer: "Tableau d'amortissement des immobilisations reconnu par OCR. Dotations et VNC reconnues conservées telles quelles ; tout recalcul est signalé dans les contrôles, jamais substitué." };
+  },
+  toTableCsv(headers, rows) {
+    const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    return [headers, ...rows].map(r => r.map(esc).join(';')).join('\n');
+  },
   extractBank(text, pagesWords) {
     const t = String(text || '');
     const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
@@ -2460,6 +2537,8 @@ async function accAnalyze(docId) {
   if (effType === 'releve_bancaire') data = Acc.extractBank(doc.text, pagesWords);
   else if (effType === 'bulletin_salaire') data = Acc.extractPayroll(doc.text, pagesWords);
   else if (effType === 'bilan' || effType === 'compte_resultat') data = Acc.extractFinancial(doc.text, effType, pagesWords);
+  else if (effType === 'pret_echeancier' || effType === 'amort_emprunt') data = Acc.extractLoan(doc.text, pagesWords);
+  else if (effType === 'amort_immobilisation') data = Acc.extractAssets(doc.text, pagesWords);
   else data = Acc.extractInvoice(doc.text, pagesWords);
   data.requestedType = effType;
   if (!data.fields) data.fields = {};
@@ -2469,6 +2548,7 @@ async function accAnalyze(docId) {
     data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === forced) || [])[1] || forced, confidence: 100, page: 0, zone: null, status: 'corrige' };
   }
   doc.acc = { version: 2, at: Date.now(), edited: false, data };
+  doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Analyse comptable (' + ((Acc.TYPES.find(x => x[0] === data.docType) || [])[1] || data.docType) + ')' });
   await Repo.update(doc);
   App.docs = await Repo.list();
   App.accDocId = docId;
@@ -2485,6 +2565,16 @@ async function accReadForm(doc) {
     if (k !== 'docType' && prev.zone) data.fields[k].zone = prev.zone;
   });
   const sel = $('#accTypeSel'); if (sel) { data.docType = sel.value; data.fields.docType.value = (Acc.TYPES.find(x => x[0] === sel.value) || [])[1] || sel.value; }
+  $$('[data-acc-loan]').forEach(i => {
+    const [idx, field] = i.dataset.accLoan.split(':');
+    const r = (data.scheduleRows || [])[+idx]; if (!r) return;
+    r[field] = field === 'date' ? i.value : Acc.parseAmount(i.value); r.status = 'corrige';
+  });
+  $$('[data-acc-asset]').forEach(i => {
+    const [idx, field] = i.dataset.accAsset.split(':');
+    const r = (data.assetRows || [])[+idx]; if (!r) return;
+    r[field] = (field === 'label' || field === 'serviceDate') ? i.value : Acc.parseAmount(i.value); r.status = 'corrige';
+  });
   $$('[data-acc-fin]').forEach(i => {
     const [idx, field] = i.dataset.accFin.split(':');
     const r = (data.statementRows || [])[+idx]; if (!r) return;
@@ -2511,6 +2601,7 @@ async function accSave(docId) {
   doc.acc.data = await accReadForm(doc);
   doc.acc.edited = true;
   doc.acc.savedAt = Date.now();
+  doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Correction comptable enregistrée' });
   await Repo.update(doc);
   App.docs = await Repo.list();
   await render();
@@ -2522,7 +2613,7 @@ async function accExport(docId, fmt) {
   const data = await accReadForm(doc);
   const base = slugify(doc.name) + '-comptabilite';
   try {
-    if (fmt === 'csv') downloadBlob(new Blob(['\ufeff' + ((data.transactions && data.transactions.length) ? Acc.toBankCsv(data) : (data.statementRows && data.statementRows.length) ? Acc.toFinancialCsv(data) : Acc.toCsv(data))], { type: 'text/csv;charset=utf-8' }), base + '.csv');
+    if (fmt === 'csv') downloadBlob(new Blob(['\ufeff' + ((data.transactions && data.transactions.length) ? Acc.toBankCsv(data) : (data.statementRows && data.statementRows.length) ? Acc.toFinancialCsv(data) : (data.scheduleRows && data.scheduleRows.length) ? Acc.toTableCsv(['Date','Échéance totale','Capital remboursé','Intérêts','Assurance','Capital restant dû (reconnu)','Capital restant (recalculé)','Confiance %'], data.scheduleRows.map(r => [r.date, r.total, r.capital, r.interest, r.insurance, r.remaining, r.computedRemaining ?? '', r.confidence])) : (data.assetRows && data.assetRows.length) ? Acc.toTableCsv(['Immobilisation','Valeur d\'origine','Date de mise en service','Durée (ans)','Taux %','Dotation annuelle','Amortissements cumulés','Valeur nette comptable'], data.assetRows.map(r => [r.label, r.originalValue, r.serviceDate, r.durationYears, r.rate, r.annualDepreciation, r.accumulated, r.netBookValue])) : Acc.toCsv(data))], { type: 'text/csv;charset=utf-8' }), base + '.csv');
     else if (fmt === 'json') downloadBlob(new Blob([JSON.stringify({ document: doc.name, exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: 'application/json' }), base + '.json');
     else if (fmt === 'xlsx') downloadBlob(await accXlsxBlob(doc, data), base + '.xlsx');
     toast('Export ' + fmt.toUpperCase() + ' téléchargé', 'ok');
@@ -2549,6 +2640,16 @@ async function accXlsxBlob(doc, data) {
     const ref = String.fromCharCode(65 + c) + r;
     return (typeof v === 'number' && Number.isFinite(v)) ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
   };
+  if (data.scheduleRows && data.scheduleRows.length) {
+    const rowsL = [['Document', doc.name], ['Type', 'Échéancier de prêt'], [], ['Date', 'Échéance totale', 'Capital remboursé', 'Intérêts', 'Assurance', 'Capital restant dû (reconnu)', 'Capital restant (recalculé)']];
+    for (const r of data.scheduleRows) rowsL.push([r.date, r.total, r.capital, r.interest, r.insurance, r.remaining, r.computedRemaining]);
+    return accBuildXlsx(rowsL, esc);
+  }
+  if (data.assetRows && data.assetRows.length) {
+    const rowsA = [['Document', doc.name], ['Type', 'Amortissement des immobilisations'], [], ['Immobilisation', "Valeur d'origine", 'Mise en service', 'Durée (ans)', 'Taux %', 'Dotation annuelle', 'Cumulés', 'VNC']];
+    for (const r of data.assetRows) rowsA.push([r.label, r.originalValue, r.serviceDate, r.durationYears, r.rate, r.annualDepreciation, r.accumulated, r.netBookValue]);
+    return accBuildXlsx(rowsA, esc);
+  }
   if (data.statementRows && data.statementRows.length) {
     const rowsF = [['Document', doc.name], ['Type', data.docType], [], ['Section', 'Compte', 'Libellé', 'Exercice N', 'Exercice N-1']];
     for (const r of data.statementRows) rowsF.push([r.section, r.account, r.label, r.amountN, r.amountN1]);

@@ -146,3 +146,20 @@ Branche `feature/comptabilite-livraison4`, version **2.10.0**.
 - Les contrôles d'états ne valent que si toutes les lignes ont été reconnues ; l'écart est signalé, jamais corrigé automatiquement.
 - Données de paie : aucun journal technique n'en contient ; suppression du document = suppression de ses données (IndexedDB).
 - Aucun test sur Android physique.
+
+---
+
+## Livraison 5 — Prêts, amortissements et traçabilité (24/10/2026)
+
+Branche `feature/comptabilite-livraison5`, version **2.11.0**. Clôt le périmètre des Livraisons 1→5.
+
+### Réalisé et testé (`tests/e2e-compta-l5.mjs` : **18/18**, navigateur émulé)
+- **Échéanciers de prêt `Acc.extractLoan`** (types « Plan de remboursement » et « Tableau d'amortissement d'emprunt ») : prêteur, emprunteur, montant, taux, durée ; par échéance la date, l'échéance totale, le capital remboursé, les intérêts, l'assurance et le capital restant dû. Contrôles : capital + intérêts + assurance = échéance ; somme des capitaux vs montant du prêt ; capital restant décroissant. **Le capital restant recalculé est stocké et affiché à part (`computedRemaining`, colonne « recalc. »)** : en cas d'écart avec le montant imprimé, l'écart est signalé et **la valeur reconnue est toujours conservée** (vérifié par test avec échéancier volontairement faux).
+- **Immobilisations `Acc.extractAssets`** : libellé, valeur d'origine, date de mise en service, durée, taux, dotation annuelle, amortissements cumulés, valeur nette comptable. Contrôle par ligne : cumul + VNC = valeur d'origine (3/3 sur le jeu fictif).
+- **Tableaux éditables** dans Comptabilité pour les deux types, corrections persistées, exports CSV/XLSX/JSON (CSV : colonnes « reconnu » et « recalculé » distinctes).
+- **Traçabilité renforcée (ajout)** : section « Traçabilité » dans l'analyse (document, dates d'analyse et de correction, confiance OCR, pages, lien original/OCR/structuré) et écriture dans l'**historique du document** (« Analyse comptable (…) », « Correction comptable enregistrée »), vérifiée par test.
+- Non-régressions : L4 19/19, L3 23/23, L2 30/30, V2.7 10/10, audit complémentaire 8/8.
+
+### Bilan du périmètre Livraisons 1→5
+Couverts et testés champ par champ : factures (achat/vente/avoirs), relevés bancaires, bulletins de salaire, bilans, comptes de résultat, prêts, amortissements d'immobilisations, devis/bons de commande/notes de frais (classification + extraction facture générique). Traçabilité OCR (positions de mots, « Voir p.N »), confiance par champ, corrections persistées, exports CSV/XLSX/JSON partout où ils ont du sens, traitement 100 % local.
+Reste hors périmètre assumé : rapprochement bancaire complet, validation comptable officielle, tableaux OCR à colonnes très dégradées, assistant IA distant (aucune clé utilisateur). Aucun test sur Android physique à ce jour.
