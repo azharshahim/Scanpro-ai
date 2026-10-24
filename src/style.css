@@ -481,3 +481,14 @@ svg{display:block}
 .text-center{text-align:center}
 .mt0{margin-top:0}.mt6{margin-top:6px}.mt10{margin-top:10px}.mt14{margin-top:14px}.mt20{margin-top:20px}
 .mb0{margin-bottom:0}.mb6{margin-bottom:6px}.mb10{margin-bottom:10px}.mb14{margin-bottom:14px}
+
+/* V2.2 Nettoyage magique */
+.clean-compare{position:relative;overflow:auto;background:#0B1B34;border-radius:14px;max-height:52vh}
+.clean-compare canvas{display:block;width:100%;height:auto}
+.clean-compare #cleanAfter{position:relative}
+.clean-compare #cleanBefore{position:absolute;inset:0}
+.clean-compare #cleanErase{position:absolute;inset:0;pointer-events:none;touch-action:none}
+.clean-label{position:absolute;top:8px;z-index:3;background:rgba(11,27,52,.75);color:#fff;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:700}
+.clean-label.before{left:8px}.clean-label.after{right:8px}
+.invoice-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.invoice-grid label{font-size:11px;color:var(--muted);font-weight:650}.invoice-grid input{width:100%;margin-top:4px;min-height:38px}
+@media(max-width:520px){.invoice-grid{grid-template-columns:1fr}}

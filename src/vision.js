@@ -487,6 +487,61 @@ const Vision = {
   },
 
   /** Saturation + auto-niveaux doux (mode « Vif »). */
+  /**
+   * Nettoyage magique V2.2 : correction d'éclairage, nettoyage du fond,
+   * débruitage léger, normalisation du contraste et netteté.
+   * Opère sur le canvas fourni (le pipeline conserve toujours page.src original).
+   */
+  magicClean(canvas, opts = {}) {
+    const strength = clamp(Number(opts.strength ?? 0.7), 0, 1);
+    const denoise = opts.denoise !== false;
+    const sharpen = opts.sharpen !== false;
+    if (opts.illumination !== false) this.shadowRemove(canvas);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const W = canvas.width, H = canvas.height;
+    if (!W || !H) return canvas;
+    const img = ctx.getImageData(0, 0, W, H);
+    const d = img.data, n = W * H;
+    const gray = new Float32Array(n);
+    const hist = new Uint32Array(256);
+    for (let j = 0, i = 0; j < n; j++, i += 4) {
+      gray[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      hist[Math.max(0, Math.min(255, gray[j] | 0))]++;
+    }
+    // percentiles robustes : le fond devient blanc, l'encre reste lisible
+    const pick = (q) => { let acc = 0; const lim = n * q; for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc >= lim) return v; } return 255; };
+    const lo = pick(0.015), hi = pick(0.985);
+    const span = Math.max(18, hi - lo);
+    const gamma = 1 + strength * 0.22;
+    for (let j = 0, i = 0; j < n; j++, i += 4) {
+      let v = clamp(((gray[j] - lo) * 255) / span, 0, 255);
+      v = 255 * Math.pow(v / 255, gamma);
+      if (v > 248 && strength > 0.35) v = 255; // fond jauni/gris -> blanc, sans inventer de texte
+      gray[j] = v;
+    }
+    if (denoise) {
+      // médiane 3x3 uniquement sur pixels quasi isolés : supprime poussières/taches
+      const src = new Float32Array(gray);
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const j = y * W + x, vals = [];
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) vals.push(src[j + dy * W + dx]);
+        vals.sort((a, b) => a - b);
+        const med = vals[4];
+        if (Math.abs(src[j] - med) > 52) gray[j] = med;
+      }
+    }
+    if (sharpen) {
+      const src = new Float32Array(gray), amt = 0.28 + strength * 0.35;
+      for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const j = y * W + x;
+        gray[j] = clamp(src[j] * (1 + 4 * amt) - (src[j-1]+src[j+1]+src[j-W]+src[j+W]) * amt, 0, 255);
+      }
+    }
+    for (let j = 0, i = 0; j < n; j++, i += 4) d[i] = d[i+1] = d[i+2] = gray[j];
+    ctx.putImageData(img, 0, 0);
+    return canvas;
+  },
+
   vivid(canvas) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const id = ctx.getImageData(0, 0, canvas.width, canvas.height);

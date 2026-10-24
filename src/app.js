@@ -122,7 +122,7 @@ const Repo = {
       id: uid('doc'), name, createdAt: now, updatedAt: now,
       pageCount: pages.length, thumb: thumb || (pages[0] ? pages[0].thumb : null),
       text: '', ocr: { status: pages.length ? 'none' : 'none', at: null, confidence: 0 },
-      bytes: 0, source, modified: false, kind: file ? 'pdf' : 'scan'
+      bytes: 0, source, modified: false, kind: file ? 'pdf' : 'scan', favorite: false, category: '', tags: [], history: [{ at: now, action: 'Création' }]
     };
     let bytes = 0;
     for (let i = 0; i < pages.length; i++) {
@@ -131,7 +131,7 @@ const Repo = {
         id: p.id || uid('pg'), docId: doc.id, index: i, src: p.src,
         crop: p.crop || { x: 0, y: 0, w: 1, h: 1 }, rotate: p.rotate || 0,
         quad: p.quad || null, deskew: p.deskew || 0,
-        filter: p.filter || 'none', thumb: p.thumb || null, text: p.text || '', ocrConf: p.ocrConf || 0
+        filter: p.filter || 'none', adj: p.adj || { b: 1, c: 1 }, cleanup: p.cleanup || null, eraser: p.eraser || [], thumb: p.thumb || null, text: p.text || '', ocrConf: p.ocrConf || 0
       };
       bytes += (rec.src ? rec.src.length * 0.75 : 0) + (rec.thumb ? rec.thumb.length * 0.75 : 0);
       await Store.put('pages', rec);
@@ -169,7 +169,7 @@ const Repo = {
       const rec = {
         id: p.id || uid('pg'), docId, index: i, src: p.src, crop: p.crop || { x: 0, y: 0, w: 1, h: 1 },
         rotate: p.rotate || 0, quad: p.quad || null, deskew: p.deskew || 0,
-        filter: p.filter || 'none', thumb: p.thumb || null,
+        filter: p.filter || 'none', adj: p.adj || { b: 1, c: 1 }, cleanup: p.cleanup || null, eraser: p.eraser || [], thumb: p.thumb || null,
         text: p.text || '', ocrConf: p.ocrConf || 0
       };
       bytes += (rec.src || '').length * 0.75 + (rec.thumb || '').length * 0.75;
@@ -299,7 +299,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '1.0.0'
+  version: '2.2.0'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */

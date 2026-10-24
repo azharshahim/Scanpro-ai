@@ -1,11 +1,11 @@
-# ScanPro AI — V2.1 (capture avancée + finitions mobiles)
+# ScanPro AI — V2.2 (branche feature/v2.2 : Nettoyage magique)
 
 Scanner de documents pour Android (web app installable) : caméra, **détection automatique des
 contours**, **correction de perspective**, redressement, recadrage, filtres avancés,
 **OCR réel français/anglais**, texte éditable, **export PDF**, fusion de PDF, OCR des PDF importés,
 assistant local — **100 % sur l'appareil, sans compte ni serveur**.
 
-**Versions** — V2 : `docs/V2-NOUVEATURES.md` · V2.1 : `docs/V2.1-NOUVEATURES.md`.
+**Versions** — V2 : `docs/V2-NOUVEATURES.md` · V2.1 : `docs/V2.1-NOUVEATURES.md` · V2.2 : `docs/V2.2-NOUVEATURES.md`.
 
 👉 **Tester maintenant :** ouvrez la prévisualisation live du workspace (dossier `scanpro`),
 ou `docs/GUIDE-TEST.md` pour la procédure pas à pas sur téléphone.
@@ -26,6 +26,7 @@ Tests exécutés sur cette URL :
 - V2 `tests/e2e-v2.mjs` : **16/16 OK** (contours, perspective, 4 coins, redressement, filtres,
   OCR de PDF importé, conversion PDF → pages)
 - V2.1 `tests/e2e-v21.mjs` : **13/13 OK** (rafale, réorganisation des pages, OCR de zone, balayage)
+- V2.2 `tests/e2e-v22.mjs` : **18/18 OK en local** (nettoyage magique, avant/après, OCR après nettoyage, facture, DOCX, PDF enrichi)
 (caméra HTTPS 2048×1536, multi-pages, recadrage, rotation, filtre N&B, PDF, OCR, assistant,
 persistance, recherche, paramètres, zéro erreur console/réseau).
 
@@ -67,8 +68,12 @@ persistance IndexedDB · quota · assistant heuristique hors-ligne.
 ✅ V2.1 : **rafale** (20 pages max) · **réorganisation des pages par glisser** · **OCR de zone** ·
 **balayage entre les pages**.
 
-❌ / ⚠️ Résumé IA génératif et extraction fiable de factures (marqués « serveur / API requis »),
-APK natif, OCR multi-zones, lasso incliné.
+✅ V2.2 (branche `feature/v2.2`) : **Nettoyage magique réel appliqué à l’export**, studio avant/après,
+gomme tactile, annuler/rétablir, traitement par lots, OCR avec mots incertains, exports TXT/DOCX,
+extraction de pages PDF, filigrane/signature/numéros de page, extraction facture locale modifiable (CSV/JSON).
+
+❌ / ⚠️ Résumé IA génératif distant (non configuré, aucune clé navigateur), reconstruction générative,
+APK natif, OCR multi-zones, lasso incliné, mode livre/courbure.
 Détail complet : `docs/FONCTIONNALITES-ET-LIMITES.md`.
 
 ## Régénérer l'application
