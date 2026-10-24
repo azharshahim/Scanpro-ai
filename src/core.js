@@ -42,6 +42,27 @@ const Store = {
   _db: null,
   _mem: { docs: new Map(), pages: new Map(), kv: new Map(), files: new Map() },
   _fallback: false,
+  _writeError: null,
+  _notifyStorage() {
+    try {
+      if (typeof document === 'undefined' || !document.body) return;
+      let el = document.getElementById('storageWarning');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'storageWarning';
+        el.setAttribute('role', 'alert');
+        el.style.cssText = 'position:sticky;top:0;z-index:999;background:#FEF3C7;color:#92400E;border-bottom:2px solid #F59E0B;padding:10px 14px;font-size:13px;line-height:1.45;display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+        const app = document.getElementById('app');
+        if (app) app.prepend(el); else document.body.prepend(el);
+      }
+      const msg = this._fallback
+        ? "<b>Stockage durable indisponible.</b> Les documents sont conservés <b>en mémoire seulement</b> et seront <b>perdus à la fermeture</b>. La sauvegarde persistante, le hors-ligne complet et la réouverture après fermeture sont indisponibles."
+        : "<b>Échec d'enregistrement.</b> " + String(this._writeError || 'Quota dépassé ou écriture refusée') + " — le dernier document peut ne pas être sauvegardé durablement.";
+      el.innerHTML = '<span style="flex:1;min-width:220px">' + msg + '</span><button id="storageExportBtn" style="background:#92400E;color:#fff;border:0;border-radius:10px;padding:9px 12px;font-weight:700">Exporter une sauvegarde de secours</button>';
+      const btn = el.querySelector('#storageExportBtn');
+      if (btn) btn.addEventListener('click', () => { if (typeof window.__scanproBackupExport === 'function') window.__scanproBackupExport(); });
+    } catch (e) {}
+  },
 
   async open() {
     if (this._db) return this._db;
@@ -66,6 +87,7 @@ const Store = {
     } catch (e) {
       console.warn('[Store] IndexedDB indisponible, mode mémoire :', e);
       this._fallback = true;
+      if (typeof document !== 'undefined') { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => this._notifyStorage(), { once: true }); else setTimeout(() => this._notifyStorage(), 0); }
       return null;
     }
   },
@@ -75,12 +97,21 @@ const Store = {
     return db.transaction(storeName, mode).objectStore(storeName);
   },
   async put(storeName, value) {
-    const os = await this.tx(storeName, 'readwrite');
-    if (!os) { this._mem[storeName].set(value[storeName === 'kv' ? 'k' : 'id'], value); return; }
-    await new Promise((res, rej) => {
-      const r = os.put(value);
-      r.onsuccess = () => res(); r.onerror = () => rej(r.error);
-    });
+    let os = null;
+    try { os = await this.tx(storeName, 'readwrite'); } catch (e) { this._writeError = (e && e.message) || 'Transaction impossible'; this._notifyStorage(); return false; }
+    if (!os) { this._mem[storeName].set(value[storeName === 'kv' ? 'k' : 'id'], value); return !this._fallback ? true : false; }
+    try {
+      await new Promise((res, rej) => {
+        const r = os.put(value);
+        r.onsuccess = () => res(); r.onerror = () => rej(r.error || new Error('Écriture IndexedDB refusée'));
+      });
+      return true;
+    } catch (e) {
+      this._writeError = (e && (e.name === 'QuotaExceededError' ? 'Quota de stockage dépassé' : e.message)) || 'Écriture impossible';
+      console.warn('[Store] échec d\'écriture :', e);
+      this._notifyStorage();
+      return false;
+    }
   },
   async get(storeName, key) {
     const os = await this.tx(storeName);

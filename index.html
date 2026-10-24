@@ -698,6 +698,27 @@ const Store = {
   _db: null,
   _mem: { docs: new Map(), pages: new Map(), kv: new Map(), files: new Map() },
   _fallback: false,
+  _writeError: null,
+  _notifyStorage() {
+    try {
+      if (typeof document === 'undefined' || !document.body) return;
+      let el = document.getElementById('storageWarning');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'storageWarning';
+        el.setAttribute('role', 'alert');
+        el.style.cssText = 'position:sticky;top:0;z-index:999;background:#FEF3C7;color:#92400E;border-bottom:2px solid #F59E0B;padding:10px 14px;font-size:13px;line-height:1.45;display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+        const app = document.getElementById('app');
+        if (app) app.prepend(el); else document.body.prepend(el);
+      }
+      const msg = this._fallback
+        ? "<b>Stockage durable indisponible.</b> Les documents sont conservés <b>en mémoire seulement</b> et seront <b>perdus à la fermeture</b>. La sauvegarde persistante, le hors-ligne complet et la réouverture après fermeture sont indisponibles."
+        : "<b>Échec d'enregistrement.</b> " + String(this._writeError || 'Quota dépassé ou écriture refusée') + " — le dernier document peut ne pas être sauvegardé durablement.";
+      el.innerHTML = '<span style="flex:1;min-width:220px">' + msg + '</span><button id="storageExportBtn" style="background:#92400E;color:#fff;border:0;border-radius:10px;padding:9px 12px;font-weight:700">Exporter une sauvegarde de secours</button>';
+      const btn = el.querySelector('#storageExportBtn');
+      if (btn) btn.addEventListener('click', () => { if (typeof window.__scanproBackupExport === 'function') window.__scanproBackupExport(); });
+    } catch (e) {}
+  },
 
   async open() {
     if (this._db) return this._db;
@@ -722,6 +743,7 @@ const Store = {
     } catch (e) {
       console.warn('[Store] IndexedDB indisponible, mode mémoire :', e);
       this._fallback = true;
+      if (typeof document !== 'undefined') { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => this._notifyStorage(), { once: true }); else setTimeout(() => this._notifyStorage(), 0); }
       return null;
     }
   },
@@ -731,12 +753,21 @@ const Store = {
     return db.transaction(storeName, mode).objectStore(storeName);
   },
   async put(storeName, value) {
-    const os = await this.tx(storeName, 'readwrite');
-    if (!os) { this._mem[storeName].set(value[storeName === 'kv' ? 'k' : 'id'], value); return; }
-    await new Promise((res, rej) => {
-      const r = os.put(value);
-      r.onsuccess = () => res(); r.onerror = () => rej(r.error);
-    });
+    let os = null;
+    try { os = await this.tx(storeName, 'readwrite'); } catch (e) { this._writeError = (e && e.message) || 'Transaction impossible'; this._notifyStorage(); return false; }
+    if (!os) { this._mem[storeName].set(value[storeName === 'kv' ? 'k' : 'id'], value); return !this._fallback ? true : false; }
+    try {
+      await new Promise((res, rej) => {
+        const r = os.put(value);
+        r.onsuccess = () => res(); r.onerror = () => rej(r.error || new Error('Écriture IndexedDB refusée'));
+      });
+      return true;
+    } catch (e) {
+      this._writeError = (e && (e.name === 'QuotaExceededError' ? 'Quota de stockage dépassé' : e.message)) || 'Écriture impossible';
+      console.warn('[Store] échec d\'écriture :', e);
+      this._notifyStorage();
+      return false;
+    }
   },
   async get(storeName, key) {
     const os = await this.tx(storeName);
@@ -2224,7 +2255,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Acc() { return Acc; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.12.0'
+  version: '2.12.1'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */
@@ -2523,8 +2554,8 @@ async function viewSettings() {
   </header>
   <div class="content">
     <div class="banner ok">${ICON('i-shield', 'ico sm')}
-      <span><b>Aucun envoi vers un serveur.</b> Les images, le texte et les PDF restent dans le stockage
-      du navigateur sur cet appareil. Aucun compte n'est requis.</span></div>
+      <span><b>Aucun document n'est envoyé à un serveur.</b> Images, textes OCR et PDF restent sur cet appareil, sans compte.
+      Seules les bibliothèques et modèles OCR publics peuvent être téléchargés depuis le CDN jsDelivr si les fichiers locaux sont bloqués par l'hébergeur — aucun document n'est transmis dans ce cas.</span></div>
 
     <div class="set-group">
       <h3>Reconnaissance de texte</h3>
@@ -2603,9 +2634,9 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.12.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.12.1 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
-      100 % hors-ligne après le premier chargement<br>
+      Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
     </div>
   </div>`;
@@ -5877,10 +5908,37 @@ document.addEventListener('click', (e) => {
 
 /* =================================================================== INIT == */
 async function init() {
+  window.__scanproBackupExport = () => exportLibraryBackup();
   Settings.load();
   document.documentElement.dataset.theme = Settings.get('theme') || 'light';
   await Store.open();
+  if (Store.isFallback || Store._writeError) Store._notifyStorage();
   App.docs = await Repo.list();
+  // Service worker : vérifier activement les mises à jour et signaler l'état hors-ligne
+  if ('serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        reg.update().catch(() => {});
+        reg.addEventListener('updatefound', () => {
+          const w = reg.installing;
+          if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) toast('Nouvelle version de ScanPro AI disponible : rechargez la page pour l\'appliquer.', 'ok', 7000); });
+        });
+      }
+      // Complétude du cache hors-ligne : informer clairement si incomplet
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        const ours = keys.filter(k => k.startsWith('scanpro-ai-'));
+        if (ours.length) {
+          const cache = await caches.open(ours[ours.length - 1]);
+          const needed = ['./', './vendor/tesseract.min.js', './vendor/jspdf.umd.min.js', './vendor/lang/fra.traineddata.gz'];
+          const missing = [];
+          for (const n of needed) { const hit = await cache.match(n, { ignoreSearch: true }); if (!hit) missing.push(n); }
+          if (missing.length) toast('Mode hors-ligne incomplet (' + missing.length + ' ressource(s) manquante(s)) : restez en ligne puis rechargez la page pour compléter le cache.', 'err', 8000);
+        }
+      }
+    } catch (e) {}
+  }
   if (!location.hash) { try { history.replaceState({ route: 'home' }, '', '#home'); } catch (e) {} }
   await go('home', null, { push: false });
   App.ready = true;
