@@ -296,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.15.1 (Web)<br>
+      <b>ScanPro AI</b> — version 2.16.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -577,6 +577,11 @@ function viewAcc() {
       </div>
       ${(d.transactions && d.transactions.length) ? `<h4>Opérations (${d.transactions.length}) — ordre du relevé préservé</h4>
       <div class="acc-lines">${d.transactions.map((x, i) => `<div class="row acc-line"><input data-acc-tx="${i}:date" value="${escapeHtml(x.date)}" size="9"><input data-acc-tx="${i}:label" value="${escapeHtml(x.label)}"><input data-acc-tx="${i}:debit" value="${x.debit ?? ''}" placeholder="Débit" size="7"><input data-acc-tx="${i}:credit" value="${x.credit ?? ''}" placeholder="Crédit" size="7"><input data-acc-tx="${i}:balance" value="${x.balance ?? ''}" placeholder="Solde" size="7">${x.duplicate ? '<span class="chip warn">doublon ?</span>' : ''}${x.status === 'a-verifier' ? '<span class="chip err">à vérifier</span>' : ''}</div>`).join('')}</div>
+      ${(() => { const props = Acc.bankProposals(d); const withAcct = props.filter(x => x.counterAccount).length;
+        return `<h4>Propositions comptables (journal ${escapeHtml(Precompta.rules().journalBanque || 'BQ')} · banque ${escapeHtml(Precompta.rules().banque)})</h4>
+        <p class="tiny muted">Comptes proposés selon les règles du dossier et vos corrections apprises : ${withAcct}/${props.length} opération(s) avec contrepartie. Inconnu = en attente, jamais inventé. Affectez ou corrigez un compte dans la colonne « Contrepartie » puis « Enregistrer les corrections » : la règle sera apprise.</p>
+        <div class="acc-lines">${props.map(pr => `<div class="row acc-line"><span class="tiny muted">${escapeHtml(pr.date)}</span><span class="grow">${escapeHtml(pr.label)}<br><span class="tiny muted">${pr.sens === 'sortie' ? 'Sortie' : pr.sens === 'entree' ? 'Entrée' : 'Sens inconnu'} ${pr.amount ?? ''} · <b>${escapeHtml(pr.counterLabel)}</b> · confiance ${pr.confidence} % — ${escapeHtml(pr.explanation)}${pr.alternatives.length ? ' · Alternatives : ' + escapeHtml(pr.alternatives.join(' ; ')) : ''}${pr.issues.length ? ' · <b>' + escapeHtml(pr.issues.join(' · ')) + '</b>' : ''}</span></span><input data-acc-tx="${pr.index}:account" value="${escapeHtml(pr.counterAccount || '')}" placeholder="Compte" size="8"></div>`).join('')}</div>
+        <div class="btn-row"><button class="btn soft" data-act="acc-export" data-fmt="bankentries">Écritures bancaires (CSV)</button></div>`; })()}
       <p class="small muted">Totaux reconnus — débits : ${d.totals ? d.totals.debit : 'Non reconnu'} · crédits : ${d.totals ? d.totals.credit : 'Non reconnu'} (les opérations « à vérifier » ne sont pas totalisées).</p>` : ''}
       ${d.sensitive ? '<div class="banner warn"><span>🔒 Document sensible (paie) : traitement 100 % local, aucune télémétrie, aucun envoi externe. Vérifiez que brut, net imposable, net social et net à payer ne sont pas confondus.</span></div>' : ''}
       ${(d.statementRows && d.statementRows.length) ? `<h4>État financier reconnu (${d.statementRows.length} lignes)</h4>
