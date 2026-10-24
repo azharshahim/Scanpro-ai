@@ -1532,6 +1532,10 @@ const Precompta = {
     ['606300', 'Fournitures et petit équipement', 'Charge'], ['607000', 'Achats de marchandises', 'Charge'],
     ['613000', 'Locations', 'Charge'], ['622600', 'Honoraires', 'Charge'], ['625100', 'Voyages et déplacements', 'Charge'],
     ['626000', 'Frais postaux et télécommunications', 'Charge'],
+    ['606100', 'Fournitures non stockables (électricité, eau, gaz)', 'Charge'], ['616000', 'Primes d’assurance', 'Charge'],
+    ['627000', 'Services bancaires et assimilés (frais)', 'Charge'], ['641000', 'Rémunérations du personnel', 'Charge'],
+    ['645000', 'Charges de sécurité sociale et de prévoyance', 'Charge'], ['421000', 'Personnel — rémunérations dues', 'Tiers'],
+    ['580000', 'Virements internes', 'Trésorerie'], ['218000', 'Matériel (immobilisation)', 'Immobilisation'],
     ['701000', 'Ventes de produits finis', 'Produit'], ['706000', 'Prestations de services', 'Produit'],
     ['707000', 'Ventes de marchandises', 'Produit']
   ].map(([num, label, cat]) => ({ num, label, cat, active: true })),
@@ -1540,8 +1544,8 @@ const Precompta = {
     { code: 'BQ', label: 'Banque', active: true }, { code: 'CA', label: 'Caisse', active: true },
     { code: 'OD', label: 'Opérations diverses', active: true }
   ],
-  DEFAULT_RULES: { achatCharge: '607000', achatTva: '445660', fournisseur: '401000', venteProduit: '706000', venteTva: '445710', client: '411000', banque: '512000', caisse: '531000', journalAchat: 'HA', journalVente: 'VT' },
-  RULE_LABELS: { achatCharge: 'Compte de charge (achats)', achatTva: 'TVA déductible (achats)', fournisseur: 'Compte fournisseur', venteProduit: 'Compte de produit (ventes)', venteTva: 'TVA collectée (ventes)', client: 'Compte client', banque: 'Compte banque', caisse: 'Compte caisse', journalAchat: "Journal d'achat", journalVente: 'Journal de vente' },
+  DEFAULT_RULES: { achatCharge: '607000', achatTva: '445660', fournisseur: '401000', venteProduit: '706000', venteTva: '445710', client: '411000', banque: '512000', caisse: '531000', journalAchat: 'HA', journalVente: 'VT', journalBanque: 'BQ' },
+  RULE_LABELS: { achatCharge: 'Compte de charge (achats)', achatTva: 'TVA déductible (achats)', fournisseur: 'Compte fournisseur', venteProduit: 'Compte de produit (ventes)', venteTva: 'TVA collectée (ventes)', client: 'Compte client', banque: 'Compte banque', caisse: 'Compte caisse', journalAchat: "Journal d'achat", journalVente: 'Journal de vente', journalBanque: 'Journal de banque' },
   DEFAULT_VAT_RATES: [20, 10, 5.5, 2.1, 0],
   _load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v == null ? JSON.parse(JSON.stringify(fallback)) : v; } catch (e) { return JSON.parse(JSON.stringify(fallback)); } },
   _save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} },
@@ -1591,6 +1595,30 @@ const Precompta = {
       }
     }
     return { tiers, duplicates: dups };
+  },
+  BANK_RULES_KEY: '[REDACTED:CREDENTIAL]',
+  LEARNED_KEY: 'scanproAi.' + 'apprentissagesBanque.v1',
+  DEFAULT_BANK_RULES: [
+    { pattern: 'edf|engie|électricité|electricite|énergie|energie|veolia|suez', account: '606100', conf: 85, why: 'Libellé énergie/électricité reconnu' },
+    { pattern: 'sfr|free|orange|bouygues|télécom|telecom|mobile', account: '626000', conf: 85, why: 'Libellé télécommunications reconnu' },
+    { pattern: 'urssaf|ag2r|retraite|cotisation|mutuelle santé|secu|securite sociale', account: '645000', conf: 80, why: 'Cotisation sociale reconnue (compte de charges sociales du plan)', alternatives: ['431000'] },
+    { pattern: 'allianz|maif|axa|macif|assurance|gan\b|matmut', account: '616000', conf: 80, why: 'Prime d’assurance reconnue' },
+    { pattern: 'frais|commission|cotis.*compte|offre compte|tenue de compte|carte.*frais|agios|intérêts débiteurs', account: '627000', conf: 75, why: 'Frais bancaires reconnus' },
+    { pattern: 'loyer|bail|location(?!.*véhicule)', account: '613000', conf: 75, why: 'Loyer/location reconnu', alternatives: ['612000'] },
+    { pattern: 'salaire|paie du|paye|bulletin', account: '421000', conf: 70, why: 'Salaire net présumé (à confirmer : 641 brut / 421 net selon écriture de paie)', alternatives: ['641000'] },
+    { pattern: 'matériel|materiel|équipement|equipement|ordinateur|machine', account: '607000', conf: 45, why: 'Achat de matériel : charge ou immobilisation selon montant/durée — arbitrage requis', alternatives: ['218000'] },
+    { pattern: 'fac\s*n|facture.*fournisseur|prlv.*fournisseur', account: '401000', conf: 55, why: 'Paiement fournisseur présumé' },
+    { pattern: 'r[èe]glement.*facture|facture.*client|encaissement', account: '411000', conf: 55, why: 'Encaissement client présumé', alternatives: ['706000'] },
+    { pattern: 'virement interne|vir interne|entre comptes|alimentation compte', account: '580000', conf: 60, why: 'Virement entre comptes présumé — vérifier le compte d’arrivée' },
+    { pattern: 'remboursement', account: '401000', conf: 40, why: 'Remboursement : nature exacte à déterminer', alternatives: ['411000', '467000'] }
+  ],
+  bankRules() { const v = Precompta._load(Precompta.BANK_RULES_KEY, Precompta.DEFAULT_BANK_RULES); return Array.isArray(v) ? v : Precompta.DEFAULT_BANK_RULES.slice(); },
+  saveBankRules(r) { Precompta._save(Precompta.BANK_RULES_KEY, r); },
+  learned() { const v = Precompta._load(Precompta.LEARNED_KEY, {}); return v && !Array.isArray(v) && typeof v === 'object' ? v : {}; },
+  learnKey(label) { return Precompta.normName(label).split(' ').filter(w => w.length >= 3 && !/^(vir|virement|inst|web|carte|prlv|prelevement|sepa|vers|de|du|la|le)$/.test(w)).slice(0, 3).join(' '); },
+  learnFromLabel(label, account) {
+    const k = Precompta.learnKey(label); if (!k || !account) return;
+    const l = Precompta.learned(); l[k] = account; Precompta._save(Precompta.LEARNED_KEY, l);
   },
   validateEntries(j, data) {
     const issues = [];
@@ -1969,7 +1997,19 @@ const Acc = {
   positionRows(pagesWords) {
     const out = [];
     (pagesWords || []).forEach((words, page) => {
-      for (const l of Acc.groupWordLines(words)) out.push({ page, y: l.y, text: l.text, cells: l.words.map(w => ({ t: w.t, x: w.x, w: w.w, c: w.c, xc: w.x + w.w / 2 })) });
+      for (const l of Acc.groupWordLines(words)) {
+        const cells = l.words.map(w => ({ t: w.t, x: w.x, w: w.w, c: w.c, xc: w.x + w.w / 2 }));
+        // Milliers séparés par une espace dans le PDF (« 1 » + « 477,95 », fréquent
+        // dans les relevés bancaires) : refusionner en une seule cellule montant.
+        const merged = [];
+        for (let i = 0; i < cells.length; i++) {
+          const c = cells[i], n = cells[i + 1];
+          if (n && /^\d{1,3}$/.test(c.t) && /^\d{3}[.,]\d{2}$/.test(n.t) && (n.x - (c.x + c.w)) < 0.03) {
+            merged.push({ t: c.t + ' ' + n.t, x: c.x, w: (n.x + n.w) - c.x, c: c.c, xc: c.x + ((n.x + n.w) - c.x) / 2 }); i++;
+          } else merged.push(c);
+        }
+        out.push({ page, y: l.y, text: l.text, cells: merged });
+      }
     });
     return out;
   },
@@ -2023,12 +2063,13 @@ const Acc = {
       if (!anchors) continue;
       const dateIdx = r.cells.findIndex((c, idx) => idx < 3 && dateRe.test(c.t));
       if (dateIdx < 0) {
+        if (/total\s+des\s+opérations|nouveau\s+solde|ancien\s+solde/i.test(r.text)) { cur = null; continue; }
         // Ligne de continuation : elle appartient à l'opération précédente (libellé multi-ligne).
         if (cur) {
           const labelCells = [];
           for (const c of r.cells) {
             const amt = /[.,]\d{2}/.test(c.t) ? Acc._amountOf(c.t) : null;
-            if (amt == null) labelCells.push(c.t);
+            if (amt == null) { if (/[0-9A-Za-zÀ-ÿ]/.test(c.t)) labelCells.push(c.t); }
             else if (cur.debit == null && cur.credit == null) assign(cur, c, amt, labelCells);
             else if (cur.balance == null) cur.balance = amt;
             else labelCells.push(c.t);
@@ -2044,7 +2085,7 @@ const Acc = {
       for (const c of r.cells.slice(dateIdx + 1)) {
         if (!skippedValueDate && cur.valueDate == null && dateRe.test(c.t)) { cur.valueDate = c.t; skippedValueDate = true; continue; }
         const amt = Acc._amountOf(c.t);
-        if (amt == null) { labelCells.push(c.t); continue; }
+        if (amt == null) { if (/[0-9A-Za-zÀ-ÿ]/.test(c.t)) labelCells.push(c.t); continue; }
         assign(cur, c, amt, labelCells);
       }
       cur.label = labelCells.join(' ').trim() || Acc.NR;
@@ -2164,12 +2205,16 @@ const Acc = {
     const moneyAfter = (re) => { const m = t.match(re); return m ? Acc.parseAmount(m[1]) : null; };
     const ibanM = t.match(/\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?\d{1,3})?\b/);
     const iban = ibanM ? ibanM[0].replace(/\s/g, '') : '';
-    const opening = moneyAfter(/solde\s*(?:initial|précédent|precedent|d['’]ouverture|de départ)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
-    const closing = moneyAfter(/(?:nouveau\s*solde|solde\s*final|solde\s*(?:au|de clôture|de cloture))[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    const opening0 = moneyAfter(/solde\s*(?:initial|précédent|precedent|d['’]ouverture|de départ)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    const closing0 = moneyAfter(/(?:nouveau\s*solde|solde\s*final|solde\s*(?:au|de clôture|de cloture))[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
     const currency = /€|EUR/.test(t) ? 'EUR' : (/\$|USD/.test(t) ? 'USD' : '');
     const creditWords = /vir\s*reçu|vir\s*recu|crédit|credit|remise|salaire|remboursement|versement reçu|encaissement|d[ée]p[ôo]t|esp[èe]ces/i;
-    const debitWords = /\bcb\b|carte|prlv|prélèvement|prelevement|vir\s*émis|vir\s*emis|paiement|retrait|chèque|cheque|frais|facture\s*n/i;
+    const debitWords = /\bcb\b|carte|prlv|prélèvement|prelevement|vir\s*émis|vir\s*emis|paiement|retrait|chèque|cheque|frais|facture\s*n|loyer/i;
     const amountRe = /-?\(?[\d]{1,3}(?:[ \u00a0\u202f][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    const lastAmountOfLine = (re) => { for (let li = 0; li < lines.length; li++) { if (!re.test(lines[li])) continue; for (const cand of [lines[li], lines[li + 1] || '']) { const clean = cand.replace(/\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}/g, ' '); const ms = [...clean.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null); if (ms.length) return ms[ms.length - 1]; } } return null; };
+    const opening = lastAmountOfLine(/ancien\s+solde|solde\s*(?:initial|précédent|precedent|d['’]ouverture|de départ)/i) ?? opening0;
+    const closing = lastAmountOfLine(/nouveau\s+solde|solde\s*(?:final|de clôture|de cloture)/i) ?? closing0;
+    const printedTotals = (() => { for (const l of lines) { if (/total\s+des\s+opérations/i.test(l)) { const ms = [...l.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null); if (ms.length >= 2) return { debit: ms[ms.length - 2], credit: ms[ms.length - 1] }; } } return null; })();
     const transactions = [];
     // Regroupement préalable : une opération peut s'étaler sur plusieurs lignes
     // (libellé multi-ligne). Les lignes sans date qui suivent une opération lui
@@ -2201,15 +2246,16 @@ const Acc = {
       const amount = amountM.v, balance = balanceM ? balanceM.v : null;
       let label = rest;
       for (const m of [balanceM, amountM]) if (m) label = label.slice(0, m.start) + ' ' + label.slice(m.end);
-      label = label.replace(/\s{2,}/g, ' ').replace(/[-–—|:]+$/, '').trim();
+      label = label.replace(/[¨þ]/g, ' ').replace(/\s{2,}/g, ' ').replace(/[-–—|:]+$/, '').trim();
       const refM = rest.match(/(?:réf\.?|ref\.?|référence)\s*[:#]?\s*([A-Z0-9\-\/]{3,30})/i);
+      const refEmb = !refM ? rest.match(/\b(FR\d{2}ZZZ\d{6,}|[A-Z]{1,4}\d{2,}-[A-Z0-9-]{4,}|\d{7,})\b/) : null;
       let debit = null, credit = null, conf = 70, status = 'reconnu';
       const signed = /-\s?[\d]/.test(rest) || /\([\d ]+[.,]\d{2}\)/.test(rest);
       if (signed || debitWords.test(label)) debit = Math.abs(amount);
       else if (creditWords.test(label) || /\+\s?[\d]/.test(rest)) credit = Math.abs(amount);
       else { status = 'a-verifier'; conf = 40; }
       const normDate = (d) => { const pr = d.replace(/[.\-]/g, '/').split('/'); if (pr.length === 3 && pr[2].length === 2) pr[2] = '20' + pr[2]; return pr.join('/'); };
-      const txo = { date: normDate(op.date), valueDate: op.valueDate ? normDate(op.valueDate) : null, label: label || Acc.NR, reference: refM ? refM[1] : null, debit, credit, balance, page: 0, confidence: conf, status };
+      const txo = { date: normDate(op.date), valueDate: op.valueDate ? normDate(op.valueDate) : null, label: label || Acc.NR, reference: refM ? refM[1] : (refEmb ? refEmb[1] : null), debit, credit, balance, page: 0, confidence: conf, status };
       if (pagesWords && pagesWords.length) { const z = Acc.findZone(pagesWords, txo.label); if (z) txo.page = z.page; }
       transactions.push(txo);
     }
@@ -2257,18 +2303,88 @@ const Acc = {
       }
       if (steps) controls.push(Acc.ctl('Cohérence des soldes ligne à ligne', breaks ? 'ecart' : 'conforme', breaks ? breaks + ' rupture(s) de solde sur ' + steps + ' enchaînement(s) vérifié(s) : un montant, un sens ou un solde est probablement mal lu.' : steps + ' enchaînement(s) de solde vérifié(s) sans rupture (solde précédent + crédit − débit = solde de la ligne).'));
     }
+    if (printedTotals) controls.push(Acc.ctl('Totaux imprimés du relevé vs opérations extraites', (Math.abs(sumD - printedTotals.debit) <= 0.05 && Math.abs(sumC - printedTotals.credit) <= 0.05) ? 'conforme' : 'ecart', 'Imprimé : débits ' + printedTotals.debit + ' · crédits ' + printedTotals.credit + ' — Extrait : débits ' + Math.round(sumD * 100) / 100 + ' · crédits ' + Math.round(sumC * 100) / 100 + (Math.abs(sumD - printedTotals.debit) > 0.05 || Math.abs(sumC - printedTotals.credit) > 0.05 ? ' : des opérations manquent ou des montants/sens sont erronés.' : '')));
     if (duplicates.length) controls.push({ label: 'Doublons potentiels', ok: false, detail: duplicates.length + ' opération(s) avec même date, libellé et montant : signalées, jamais supprimées automatiquement.', recalculated: null });
     if (unknown) controls.push({ label: 'Opérations à vérifier', ok: false, detail: unknown + ' opération(s) sans sens (débit/crédit) déterminé : à classer manuellement.', recalculated: null });
+    const acctNum = (t.match(/compte\s*(?:courant\s*)?n°\s*(\d[\d ]{5,}\d)/i) || [])[1] || '';
+    const holderLine = lines.find(l => /compte\s+courant/i.test(l) && / - /.test(l));
+    const knownBank = (t.match(/(Crédit Agricole|Credit Agricole|BNP Paribas|Société Générale|Societe Generale|Banque Populaire|Caisse d['’]Epargne|Crédit Mutuel|Credit Mutuel|La Banque Postale|LCL|Qonto|Boursorama)/i) || [])[1] || '';
     const fields = {
-      bank: F(labeled(/(?:banque|établissement|etablissement)\s*[:\-]\s*(.+)$/i), 70),
+      bank: F(knownBank || labeled(/(?:banque|établissement|etablissement)\s*[:\-]\s*(.+)$/i), 75),
       holder: F(labeled(/(?:titulaire|nom du compte|compte de)\s*[:\-]\s*(.+)$/i), 75),
       iban: F(iban, 90), bic: F(labeled(/\b(?:bic|swift)\s*[:\-]?\s*([A-Z]{6}[A-Z0-9]{2,5})/i), 85),
       openingBalance: F(opening != null ? String(opening) : '', 85), closingBalance: F(closing != null ? String(closing) : '', 85),
-      currency: F(currency, 80)
+      currency: F(currency, 80),
+      accountNumber: F(acctNum.replace(/\s/g, ''), 85),
+      holder2: F(holderLine ? holderLine.split(/\s+-\s+\s*Compte/i)[0].trim() : '', 70),
+      period: { value: transactions.length ? transactions[0].date + ' → ' + transactions[transactions.length - 1].date : Acc.NR, confidence: transactions.length ? 60 : 0, page: 0, zone: null, status: transactions.length ? 'calcule' : 'non-reconnu' }
     };
     return { docType: 'releve_bancaire', kind: 'bank', fields, transactions, duplicates, controls,
       totals: { credit: Math.round(sumC * 100) / 100, debit: Math.round(sumD * 100) / 100, count: transactions.length },
       disclaimer: "Relevé reconnu localement. Contrôles de cohérence uniquement : ceci n'est pas un rapprochement bancaire complet (aucune comparaison avec des écritures comptables)." };
+  },
+  /* Propositions de comptes pour un relevé bancaire (V2.16) : journal BQ du dossier,
+     compte banque 512 configurable (JAMAIS confondu avec l'IBAN), contrepartie par
+     règles configurables + apprentissage des corrections validées. Inconnu = en
+     attente, jamais d'affectation inventée. */
+  bankProposals(data) {
+    const R = Precompta.rules(); const chart = Precompta.chart(); const rules = Precompta.bankRules(); const learned = Precompta.learned();
+    const acctOf = (num) => chart.find(a => a.num === String(num)) || null;
+    const fmtA = (num) => { const a = acctOf(num); return a ? num + ' — ' + a.label : num + ' (absent du plan du dossier : à créer ou corriger)'; };
+    return (data.transactions || []).map((tx, i) => {
+      const sens = tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
+      const amount = tx.debit ?? tx.credit ?? null;
+      let counter = tx.account || null, conf = counter ? 65 : 0, why = counter ? 'Compte affecté/corrige par l’utilisateur' : null, alternatives = [], learnedHit = false;
+      if (!counter) {
+        const lk = Precompta.learnKey(tx.label || '');
+        if (lk && learned[lk]) { counter = learned[lk]; conf = 88; why = 'Règle apprise de vos corrections validées (« ' + lk + ' »)'; learnedHit = true; }
+        else for (const r of rules) {
+          let re; try { re = new RegExp(r.pattern, 'i'); } catch (e) { continue; }
+          if (re.test(tx.label || '')) { counter = r.account; conf = r.conf || 50; why = r.why || 'Règle configurable du dossier'; alternatives = r.alternatives || []; break; }
+        }
+      }
+      const acct = counter ? acctOf(counter) : null;
+      const issues = [];
+      if (!sens || amount == null) issues.push('sens ou montant non reconnu');
+      if (!counter) issues.push('aucune contrepartie proposée : à affecter manuellement');
+      if (counter && !acct) issues.push('compte ' + counter + ' absent du plan du dossier');
+      if (counter && acct && !acct.active) issues.push('compte ' + counter + ' inactif dans le plan du dossier');
+      const bankNum = R.banque, bankAcct = acctOf(bankNum);
+      if (!bankAcct) issues.push('compte banque ' + bankNum + ' absent du plan du dossier');
+      // Écriture comptable : relevé « débit » (sortie) = contrepartie débitée, banque créditée ; inverse en entrée.
+      const entries = (counter && sens && amount != null) ? (sens === 'sortie'
+        ? [{ account: counter, debit: amount, credit: 0 }, { account: bankNum, debit: 0, credit: amount }]
+        : [{ account: bankNum, debit: amount, credit: 0 }, { account: counter, debit: 0, credit: amount }]) : [];
+      return { index: i, date: tx.date, valueDate: tx.valueDate || null, label: tx.label, reference: tx.reference || null, sens, amount,
+        journal: R.journalBanque || 'BQ', bankAccount: bankNum, bankAccountLabel: fmtA(bankNum),
+        counterAccount: counter, counterLabel: counter ? fmtA(counter) : 'En attente d’affectation',
+        counterExists: !!acct, counterActive: acct ? !!acct.active : false,
+        confidence: conf, explanation: why || 'Aucune règle reconnue pour ce libellé : compte laissé en attente (jamais inventé).',
+        alternatives: alternatives.map(fmtA), learned: learnedHit, issues, entries,
+        status: 'proposée (non validée)' };
+    });
+  },
+  bankEntriesCsv(data, docMeta = {}) {
+    // Export d'écritures PROPOSÉES au format CSV générique documenté (une ligne par
+    // mouvement comptable) : Date;Journal;Pièce;Compte;Libellé;Référence;Débit;Crédit;Statut.
+    // Aucune compatibilité universelle n'est prétendue : voir le format documenté
+    // dans docs/RAPPORT-RELEVE-COMPLET.md (logiciel cible et mapping de colonnes).
+    const props = Acc.bankProposals(data);
+    const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const rows = [['Date', 'Journal', 'Pièce', 'Compte', 'Libellé', 'Référence', 'Débit', 'Crédit', 'Statut validation']];
+    const problems = [];
+    const seen = new Map();
+    for (const pr of props) {
+      const key = [pr.date, Acc._norm(pr.label), pr.amount].join('|');
+      if (seen.has(key)) problems.push('Doublon potentiel : ' + pr.date + ' ' + pr.label + ' (' + pr.amount + ')');
+      seen.set(key, true);
+      if (pr.issues.length) problems.push(pr.date + ' ' + pr.label + ' : ' + pr.issues.join(' · '));
+      if (!pr.entries.length) continue;
+      for (const e of pr.entries) rows.push([pr.date, pr.journal, pr.reference || (docMeta.invoiceNumber || ''), e.account, pr.label, pr.reference || '', e.debit || '', e.credit || '', pr.status]);
+    }
+    const td = rows.slice(1).reduce((s, r) => s + (parseFloat(String(r[6]).replace(',', '.')) || 0), 0);
+    const tc = rows.slice(1).reduce((s, r) => s + (parseFloat(String(r[7]).replace(',', '.')) || 0), 0);
+    return { csv: rows.map(r => r.map(esc).join(';')).join('\n'), problems, balanced: Math.abs(td - tc) <= 0.01, totalDebit: Math.round(td * 100) / 100, totalCredit: Math.round(tc * 100) / 100, proposals: props };
   },
   toBankCsv(data) {
     const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
@@ -2627,6 +2743,7 @@ Object.assign(Actions, {
   'acc-analyze': () => accAnalyze(App.accDocId),
   'acc-reanalyze-confirm': () => accAnalyze(App.accDocId, { confirmed: true }),
   'acc-entries-confirm': () => { window.__accEntriesConfirmed = true; accExport(App.accDocId, 'entries'); },
+  'acc-bankentries-confirm': () => { window.__accBankConfirmed = true; accExport(App.accDocId, 'bankentries'); },
   'acc-save': () => accSave(App.accDocId),
   'acc-export': (el) => accExport(App.accDocId, el.dataset.fmt),
   'acc-zone': (el) => accShowZone(el),
@@ -3006,7 +3123,7 @@ async function accReadForm(doc) {
   $$('[data-acc-tx]').forEach(i => {
     const [idx, field] = i.dataset.accTx.split(':');
     const x = (data.transactions || [])[+idx]; if (!x) return;
-    x[field] = (field === 'label' || field === 'date' || field === 'valueDate') ? i.value : Acc.parseAmount(i.value);
+    x[field] = (field === 'label' || field === 'date' || field === 'valueDate' || field === 'account') ? i.value : Acc.parseAmount(i.value);
     x.status = 'corrige';
   });
   $$('[data-acc-line]').forEach(i => {
@@ -3030,6 +3147,8 @@ async function accSave(docId) {
     if (before !== undefined && String(before) !== String(f.value)) doc.acc.history.push({ at: Date.now(), field: k, old: before, new: f.value });
   }
   if (doc.acc.history.length > 200) doc.acc.history = doc.acc.history.slice(-200);
+  // Apprentissage local (relevés) : un compte affecté à la main devient une règle apprise.
+  if (doc.acc.data && doc.acc.data.kind === 'bank') for (const tx of doc.acc.data.transactions || []) if (tx.account) Precompta.learnFromLabel(tx.label, tx.account);
   if (prevType && doc.acc.data.docType !== prevType) toast('Type modifié : pensez à « Réanalyser » pour recalculer les champs compatibles avec le nouveau type.', 'err', 6000);
   doc.acc.edited = true;
   doc.acc.savedAt = Date.now();
@@ -3088,6 +3207,16 @@ async function accExport(docId, fmt) {
   const data = await accReadForm(doc);
   const base = slugify(doc.name) + '-comptabilite';
   try {
+    if (fmt === 'bankentries') {
+      const ex = Acc.bankEntriesCsv(data, doc);
+      if (!window.__accBankConfirmed) {
+        openSheet({ title: 'Exporter les écritures bancaires proposées ?', sub: 'Journal BQ du dossier · compte banque ' + Precompta.rules().banque + ' · format CSV générique documenté (voir rapport)', body: '<p class="small">Écritures <b>proposées, non validées</b> : équilibre débit/crédit ' + (ex.balanced ? 'OK (' + ex.totalDebit + ')' : 'NON ATTEINT') + '.<br>' + (ex.problems.length ? '<b>' + ex.problems.length + ' point(s) à traiter avant import :</b><br>' + ex.problems.slice(0, 8).map(escapeHtml).join('<br>') : 'Aucun problème détecté (doublons, comptes, complétude).') + '</p><p class="tiny muted">Export CSV générique (Date;Journal;Pièce;Compte;Libellé;Référence;Débit;Crédit;Statut) : mappez ces colonnes dans l’import de votre logiciel — aucune compatibilité universelle n’est prétendue.</p>', actions: [{ label: 'Annuler', cls: 'ghost' }, { label: 'Exporter ces propositions', cls: 'go', act: 'acc-bankentries-confirm', close: true }] });
+        return;
+      }
+      window.__accBankConfirmed = false;
+      downloadBlob(new Blob(['\ufeff' + ex.csv], { type: 'text/csv;charset=utf-8' }), base + '-ecritures-banque.csv');
+      toast('Écritures bancaires proposées exportées — ' + ex.proposals.filter(x => x.entries.length).length + ' opération(s), équilibré : ' + (ex.balanced ? 'oui' : 'NON'), ex.balanced ? 'ok' : 'err', 5000); return;
+    }
     if (fmt === 'entries') {
       const j = Acc.journalEntries(data, doc);
       if (!j) { toast("Écritures impossibles : TVA non reconnue ou totaux HT/TTC insuffisants (aucune TVA n'est inventée)", 'err', 6000); return; }
