@@ -26,10 +26,13 @@ with zipfile.ZipFile(OUT + '/bank-export.xlsx') as z:
     check('XLSX relevé : classeur valide', 'xl/worksheets/sheet1.xml' in z.namelist())
     ET.fromstring(z.read('xl/worksheets/sheet1.xml'))
 
-# CSV écritures : accents, équilibre débit/crédit
+# CSV écritures : accents, équilibre débit/crédit (colonnes lues par NOM — format V2.15 enrichi)
 rows = list(csv.reader(io.open(OUT + '/ecritures.csv', encoding='utf-8-sig'), delimiter=';'))
-check('CSV écritures : en-tête + 3 lignes', len(rows) >= 4 and rows[0][2] == 'Compte', rows[0])
-tot_d = sum(float(r[4].replace(',', '.')) for r in rows[1:] if r[4]); tot_c = sum(float(r[5].replace(',', '.')) for r in rows[1:] if r[5])
+hdr = rows[0]
+ci = {name: hdr.index(name) for name in ('Compte', 'Débit', 'Crédit', 'Pièce', 'Tiers', 'Document source', 'Statut validation')}
+check('CSV écritures : en-tête + 3 lignes', len(rows) >= 4 and 'Compte' in hdr, rows[0])
+check('CSV écritures : colonnes V2.15 (pièce, tiers, source, statut) présentes', all(k in hdr for k in ('Pièce', 'Tiers', 'Document source', 'Statut validation')), hdr)
+tot_d = sum(float(r[ci['Débit']].replace(',', '.')) for r in rows[1:] if r[ci['Débit']]); tot_c = sum(float(r[ci['Crédit']].replace(',', '.')) for r in rows[1:] if r[ci['Crédit']])
 check('CSV écritures : débits = crédits', abs(tot_d - tot_c) < 0.01, f'{tot_d} vs {tot_c}')
 
 # CSV relevé : IBAN non requis ici, mais montants signés/décimaux et lignes

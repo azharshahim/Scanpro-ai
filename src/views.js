@@ -296,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.14.1 (Web)<br>
+      <b>ScanPro AI</b> — version 2.15.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -597,6 +597,12 @@ function viewAcc() {
       <h4>Contrôles de cohérence</h4>
       ${(d.controls || []).length ? d.controls.map(c => { const st = c.status || (c.ok ? 'conforme' : 'ecart'); const lbl = { conforme: '✓ Conforme', ecart: '✗ Écart détecté', impossible: '— Vérification impossible', 'a-controler': '⚠ À contrôler' }[st] || '⚠ À contrôler'; return `<div class="banner ${st === 'conforme' ? 'ok' : st === 'ecart' ? 'err' : 'warn'}"><span><b>${lbl} · ${escapeHtml(c.label)}</b> — ${escapeHtml(c.detail)}</span></div>`; }).join('') : '<p class="small muted">Aucun contrôle possible : données indispensables non reconnues.</p>'}
       <p class="tiny muted">${escapeHtml(d.disclaimer || '')} Traitement 100 % local : aucun document comptable n'est envoyé à un service externe.</p>
+      <h4>Validation comptable</h4>
+      ${(() => { const j = Acc.journalEntries(d, sel); const issues = j ? Precompta.validateEntries(j, d) : ['Écritures impossibles : totaux insuffisants ou TVA non reconnue (jamais inventée)']; const v = acc.validation;
+        return `<div class="banner ${v && v.status === 'validée' ? 'ok' : v && v.status === 'rejetée' ? 'err' : 'warn'}"><span>Statut : <b>${v ? escapeHtml(v.status) + ' le ' + new Date(v.at).toLocaleString('fr-FR') : 'proposée (non validée)'}</b> — aucune écriture n'est comptabilisée sans votre validation explicite ; un équilibre débit/crédit ne suffit pas.<br>${issues.length ? 'Points ouverts : ' + escapeHtml(issues.join(' · ')) : 'Contrôles d\'écriture : dates, journaux, comptes du plan, équilibre — aucun point ouvert.'}</span></div>
+        <div class="btn-row"><button class="btn go" data-act="acc-validate">Valider cette proposition</button><button class="btn ghost" data-act="acc-reject">Rejeter</button></div>`; })()}
+      <h4>Historique des corrections</h4>
+      ${(acc.history && acc.history.length) ? acc.history.slice(-10).reverse().map(h => `<div class="row acc-line"><span class="tiny muted">${new Date(h.at).toLocaleString('fr-FR')}</span><span class="grow">${escapeHtml(h.field)} : « ${escapeHtml(String(h.old))} » → « ${escapeHtml(String(h.new))} »</span></div>`).join('') : '<p class="small muted">Aucune correction enregistrée pour ce document.</p>'}
       <div class="btn-row">
         <button class="btn go" data-act="acc-save">Enregistrer les corrections</button>
         <button class="btn soft" data-act="acc-export" data-fmt="csv">Export CSV</button>
@@ -622,6 +628,17 @@ function viewAcc() {
       for (const d of analyzed) { const data = d.acc.data || {}; const lowF = Object.entries(data.fields || {}).filter(([, f]) => f && f.value !== 'Non reconnu' && (f.confidence || 0) < 50).length; const nr = Object.values(data.fields || {}).filter(f => f && f.value === 'Non reconnu').length; const koCtl = (data.controls || []).filter(c => !c.ok).length; if (lowF + nr + koCtl) issues.push({ name: d.name, id: d.id, count: lowF + nr + koCtl }); }
       return `<div class="card"><div class="row"><b class="grow">${analyzed.length} document(s) analysé(s) sur ${docs.length}</b><button class="btn xs soft" data-act="acc-analyze-all">Analyser tous ceux avec OCR</button></div>
       ${issues.length ? `<p class="small muted">À vérifier en priorité :</p>` + issues.map(i => `<div class="row"><span class="grow">${escapeHtml(i.name)} — ${i.count} point(s) à vérifier</span><button class="btn xs soft" data-act="acc-select" data-id="${i.id}">Ouvrir</button></div>`).join('') : '<p class="small muted">Aucun point faible détecté sur les documents analysés (confiance, champs manquants, contrôles).</p>'}</div>`; })()}
+    <h3 class="sect">Espace pré-comptabilité (dossier local)</h3>
+    ${(() => { const chart = Precompta.chart(); const journals = Precompta.journals(); const R = Precompta.rules(); const tb = Precompta.buildTiers(docs);
+      return `<details class="card"><summary><b>Plan comptable du dossier</b> <span class="tiny muted">(${chart.filter(a => a.active).length}/${chart.length} comptes actifs · base PCG, adaptable par dossier)</span></summary>
+      <p class="tiny muted">Propositions actuelles : achats ${escapeHtml(R.achatCharge)}/${escapeHtml(R.achatTva)}/${escapeHtml(R.fournisseur)} · ventes ${escapeHtml(R.client)}/${escapeHtml(R.venteProduit)}/${escapeHtml(R.venteTva)} · journaux ${escapeHtml(R.journalAchat)}/${escapeHtml(R.journalVente)} · TVA admise : ${Precompta.vatRates().join(', ')} %. Rien n'est figé : modifiez les règles ou les comptes.</p>
+      <div class="btn-row"><button class="btn xs soft" data-act="pc-rules">Modifier les règles de proposition</button><button class="btn xs soft" data-act="pc-add">Ajouter un compte</button><button class="btn xs ghost" data-act="pc-reset">Réinitialiser (défauts PCG)</button></div>
+      <div class="acc-lines">${chart.map(a => `<div class="row acc-line"><b>${escapeHtml(a.num)}</b><span class="grow">${escapeHtml(a.label)} <span class="tiny muted">· ${escapeHtml(a.cat)}</span></span><button class="btn xs ${a.active ? 'soft' : 'ghost'}" data-act="pc-toggle" data-num="${escapeHtml(a.num)}">${a.active ? 'Actif' : 'Inactif'}</button></div>`).join('')}</div>
+      <p class="tiny muted">Journaux : ${journals.map(j => escapeHtml(j.code) + ' ' + escapeHtml(j.label) + (j.active ? '' : ' (inactif)')).join(' · ')}</p></details>
+      <details class="card"><summary><b>Tiers (fournisseurs / clients)</b> <span class="tiny muted">(${tb.tiers.length} · construit depuis vos documents, 100 % local)</span></summary>
+      ${tb.tiers.length ? tb.tiers.map(x => `<div class="row acc-line"><span class="chip ${x.kind === 'client' ? 'ok' : 'warn'}">${x.kind}</span><span class="grow"><b>${escapeHtml(x.name)}</b><br><span class="tiny muted">Compte associé : ${escapeHtml(x.account)} · SIRET : ${x.siret ? escapeHtml(x.siret) : 'Non reconnu'} · ${x.docs.length} document(s) : ${escapeHtml(x.docs.join(', ') || 'ajout manuel')}</span></span></div>`).join('') : '<p class="small muted">Aucun tiers : analysez des factures pour alimenter la base. Aucun identifiant n\'est jamais inventé.</p>'}
+      ${tb.duplicates.length ? '<div class="banner warn"><span><b>Doublons potentiels à arbitrer :</b> ' + tb.duplicates.map(d => escapeHtml(d[0]) + ' ↔ ' + escapeHtml(d[1]) + ' (' + escapeHtml(d[2]) + ')').join(' · ') + '</span></div>' : ''}
+      </details>`; })()}
     <h3 class="sect">Documents</h3>
     ${docs.length ? docs.map(d => `<div class="card row"><div class="grow"><b>${escapeHtml(d.name)}</b><br><span class="tiny muted">${d.acc ? 'Type : ' + escapeHtml((Acc.TYPES.find(x => x[0] === d.acc.data.docType) || [])[1] || d.acc.data.docType) + (d.acc.edited ? ' · corrigé' : '') : (d.text ? 'OCR présent, non analysé' : 'Sans OCR')}</span></div>
       <button class="btn xs ${sel && sel.id === d.id ? 'go' : 'soft'}" data-act="acc-select" data-id="${d.id}">${sel && sel.id === d.id ? 'Sélectionné' : 'Choisir'}</button></div>`).join('') : '<p class="muted">Aucun document. Scannez ou importez d\'abord un document comptable.</p>'}
