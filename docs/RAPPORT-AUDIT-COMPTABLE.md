@@ -163,3 +163,21 @@ Branche `feature/comptabilite-livraison5`, version **2.11.0**. Clôt le périmè
 ### Bilan du périmètre Livraisons 1→5
 Couverts et testés champ par champ : factures (achat/vente/avoirs), relevés bancaires, bulletins de salaire, bilans, comptes de résultat, prêts, amortissements d'immobilisations, devis/bons de commande/notes de frais (classification + extraction facture générique). Traçabilité OCR (positions de mots, « Voir p.N »), confiance par champ, corrections persistées, exports CSV/XLSX/JSON partout où ils ont du sens, traitement 100 % local.
 Reste hors périmètre assumé : rapprochement bancaire complet, validation comptable officielle, tableaux OCR à colonnes très dégradées, assistant IA distant (aucune clé utilisateur). Aucun test sur Android physique à ce jour.
+
+---
+
+## Livraison 6 — Centre de contrôle, notes de frais, écritures proposées (24/10/2026)
+
+Branche `feature/comptabilite-livraison6`, version **2.12.0** (ajout proposé au-delà du périmètre initial).
+
+### Réalisé et testé (`tests/e2e-compta-l6.mjs` : **13/13**, navigateur émulé)
+- **Centre de contrôle Comptabilité** : compteur de documents analysés, file « À vérifier en priorité » (champs à faible confiance, « Non reconnu », contrôles en échec — comptés par document, accès direct), et **analyse en lot** de tous les documents déjà OCRisés non analysés (2/2 sur le test).
+- **Notes de frais `Acc.extractExpenses`** : justificatifs ligne par ligne (date, libellé, montant), **catégories proposées** par mots-clés (Transport, Hébergement, Repas, Carburant, Fournitures, Divers) toujours à vérifier, contrôle somme des justificatifs vs total.
+- **Devis / bons de commande** : extraction facture enrichie d'une **date de validité** ; numéros `DEV-…` reconnus.
+- **Écritures comptables proposées `Acc.journalEntries`** : pour factures d'achat (607/44566 débit, 401 crédit) et de vente (411 débit, 706/44571 crédit), CSV Date/Journal/Compte/Libellé/Débit/Crédit **équilibré** (débits = crédits, vérifié en test), avoirs gérés par le signe. Avertissement systématique : comptes **proposés, à adapter au plan du dossier — non validés par un expert-comptable**. Refus explicite si HT/TTC insuffisants.
+- Non-régressions : L5 18/18, L3 23/23, L2 30/30, V2.7 10/10.
+
+### Limites
+- Les comptes d'écritures sont des propositions usuelles PCG, pas un paramétrage de dossier ; le sens achat/vente reste celui du type validé par l'utilisateur.
+- Catégories de frais heuristiques, toujours modifiables par reclassification manuelle des lignes dans le texte OCR puis ré-analyse.
+- Aucun test sur Android physique.

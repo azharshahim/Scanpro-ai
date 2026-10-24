@@ -296,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.11.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.12.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -561,7 +561,7 @@ function viewAcc() {
   let detail = '';
   if (sel && acc) {
     const d = acc.data;
-    const labels = { docType: 'Type de document', lender: 'Prêteur', borrower: 'Emprunteur', loanAmount: 'Montant du prêt', rate: "Taux d'intérêt", duration: 'Durée (mois)', employee: 'Salarié', employer: 'Employeur', period: 'Période de paie', baseSalary: 'Salaire de base', hours: 'Heures', bonuses: 'Primes', absences: 'Absences (h/j)', gross: 'Salaire brut', employeeContributions: 'Cotisations salariales', employerContributions: 'Cotisations patronales', netTaxable: 'Net imposable', netSocial: 'Net social', netPayable: 'Net à payer', amountPaid: 'Montant versé', bank: 'Banque', holder: 'Titulaire du compte', iban: 'IBAN', bic: 'BIC', openingBalance: "Solde d'ouverture", closingBalance: 'Solde de clôture', supplier: 'Fournisseur / Client', address: 'Adresse', siren: 'SIREN', siret: 'SIRET', invoiceNumber: 'Numéro', issueDate: "Date d'émission", dueDate: "Date d'échéance", orderRef: 'Référence commande', paymentTerms: 'Conditions de règlement', deposit: 'Acompte', totalHT: 'Total HT', vatAmount: 'Montant TVA', totalTTC: 'Total TTC', currency: 'Devise' };
+    const labels = { docType: 'Type de document', lender: 'Prêteur', borrower: 'Emprunteur', loanAmount: 'Montant du prêt', rate: "Taux d'intérêt", duration: 'Durée (mois)', employee: 'Salarié', employer: 'Employeur', period: 'Période de paie', baseSalary: 'Salaire de base', hours: 'Heures', bonuses: 'Primes', absences: 'Absences (h/j)', gross: 'Salaire brut', employeeContributions: 'Cotisations salariales', employerContributions: 'Cotisations patronales', netTaxable: 'Net imposable', netSocial: 'Net social', netPayable: 'Net à payer', amountPaid: 'Montant versé', bank: 'Banque', holder: 'Titulaire du compte', iban: 'IBAN', bic: 'BIC', openingBalance: "Solde d'ouverture", closingBalance: 'Solde de clôture', supplier: 'Fournisseur / Client', address: 'Adresse', siren: 'SIREN', siret: 'SIRET', invoiceNumber: 'Numéro', issueDate: "Date d'émission", dueDate: "Date d'échéance", validityDate: 'Validité (devis)', expenseTotal: 'Total note de frais', expenseCount: 'Nombre de justificatifs', orderRef: 'Référence commande', paymentTerms: 'Conditions de règlement', deposit: 'Acompte', totalHT: 'Total HT', vatAmount: 'Montant TVA', totalTTC: 'Total TTC', currency: 'Devise' };
     detail = `
     <div class="card">
       <div class="row"><b class="grow">${escapeHtml(sel.name)}</b><span class="chip ${acc.edited ? 'warn' : 'ok'}">${acc.edited ? 'Corrigé manuellement' : 'Extraction automatique'}</span></div>
@@ -585,6 +585,8 @@ function viewAcc() {
       <div class="acc-lines">${d.assetRows.map((r, i) => `<div class="row acc-line"><input data-acc-asset="${i}:label" value="${escapeHtml(r.label)}"><input data-acc-asset="${i}:originalValue" value="${r.originalValue ?? ''}" placeholder="Valeur origine" size="8"><input data-acc-asset="${i}:annualDepreciation" value="${r.annualDepreciation ?? ''}" placeholder="Dotation" size="7"><input data-acc-asset="${i}:accumulated" value="${r.accumulated ?? ''}" placeholder="Cumulés" size="7"><input data-acc-asset="${i}:netBookValue" value="${r.netBookValue ?? ''}" placeholder="VNC" size="7"></div>`).join('')}</div>` : ''}
       <h4>Traçabilité</h4>
       <p class="small muted">Document : ${escapeHtml(sel.name)} · Analysé le ${acc.at ? new Date(acc.at).toLocaleString('fr-FR') : 'Non reconnu'}${acc.savedAt ? ' · Corrections enregistrées le ' + new Date(acc.savedAt).toLocaleString('fr-FR') : ''} · Confiance OCR du document : ${sel.ocr && sel.ocr.confidence ? sel.ocr.confidence + ' %' : 'Non reconnu'} · ${plural(sel.pageCount || 0, 'page', 'pages')} — original, texte OCR et données structurées restent liés à ce document.</p>
+      ${(d.expenseRows && d.expenseRows.length) ? `<h4>Justificatifs reconnus (${d.expenseRows.length})</h4>
+      <div class="acc-lines">${d.expenseRows.map(r => `<div class="row acc-line"><span class="tiny muted">${escapeHtml(r.date || '')}</span><span class="grow">${escapeHtml(r.label)}</span><span class="chip sm">${escapeHtml(r.category)}</span><b>${r.amount}</b></div>`).join('')}</div>` : ''}
       <h4>Lignes d'articles</h4>
       ${(d.lines || []).length ? `<div class="acc-lines">${d.lines.map((l, i) => `<div class="row acc-line"><input data-acc-line="${i}:description" value="${escapeHtml(l.description)}"><input data-acc-line="${i}:qty" value="${l.qty}" size="4"><input data-acc-line="${i}:unitPrice" value="${l.unitPrice}" size="7"><input data-acc-line="${i}:amount" value="${l.amount}" size="8"></div>`).join('')}</div>` : '<p class="small muted">Aucune ligne reconnue — à compléter manuellement si le document en comporte.</p>'}
       <h4>TVA par taux</h4>
@@ -597,6 +599,7 @@ function viewAcc() {
         <button class="btn soft" data-act="acc-export" data-fmt="csv">Export CSV</button>
         <button class="btn soft" data-act="acc-export" data-fmt="xlsx">Export XLSX</button>
         <button class="btn soft" data-act="acc-export" data-fmt="json">Export JSON</button>
+        ${(d.fields && d.fields.totalHT && d.fields.totalTTC) ? '<button class="btn soft" data-act="acc-export" data-fmt="entries">Écritures (CSV)</button>' : ''}
       </div>
       <div class="btn-row"><button class="btn ghost" data-act="acc-open-doc">Voir le document (original, OCR, pages)</button>
       <button class="btn ghost" data-act="acc-analyze">Relancer la reconnaissance</button></div>
@@ -611,6 +614,11 @@ function viewAcc() {
   return `<div class="screen">
     <header class="appbar"><div><h1>Comptabilité</h1><p class="sub">Reconnaissance structurée, contrôle et export — 100 % local</p></div></header>
     <div class="banner info"><span>Choisissez un document, vérifiez chaque champ (confiance affichée), corrigez si besoin puis exportez. « Non reconnu » signifie que l'information n'a pas été trouvée : elle n'est jamais inventée.</span></div>
+    <h3 class="sect">Centre de contrôle</h3>
+    ${(() => { const analyzed = docs.filter(d => d.acc); const issues = [];
+      for (const d of analyzed) { const data = d.acc.data || {}; const lowF = Object.entries(data.fields || {}).filter(([, f]) => f && f.value !== 'Non reconnu' && (f.confidence || 0) < 50).length; const nr = Object.values(data.fields || {}).filter(f => f && f.value === 'Non reconnu').length; const koCtl = (data.controls || []).filter(c => !c.ok).length; if (lowF + nr + koCtl) issues.push({ name: d.name, id: d.id, count: lowF + nr + koCtl }); }
+      return `<div class="card"><div class="row"><b class="grow">${analyzed.length} document(s) analysé(s) sur ${docs.length}</b><button class="btn xs soft" data-act="acc-analyze-all">Analyser tous ceux avec OCR</button></div>
+      ${issues.length ? `<p class="small muted">À vérifier en priorité :</p>` + issues.map(i => `<div class="row"><span class="grow">${escapeHtml(i.name)} — ${i.count} point(s) à vérifier</span><button class="btn xs soft" data-act="acc-select" data-id="${i.id}">Ouvrir</button></div>`).join('') : '<p class="small muted">Aucun point faible détecté sur les documents analysés (confiance, champs manquants, contrôles).</p>'}</div>`; })()}
     <h3 class="sect">Documents</h3>
     ${docs.length ? docs.map(d => `<div class="card row"><div class="grow"><b>${escapeHtml(d.name)}</b><br><span class="tiny muted">${d.acc ? 'Type : ' + escapeHtml((Acc.TYPES.find(x => x[0] === d.acc.data.docType) || [])[1] || d.acc.data.docType) + (d.acc.edited ? ' · corrigé' : '') : (d.text ? 'OCR présent, non analysé' : 'Sans OCR')}</span></div>
       <button class="btn xs ${sel && sel.id === d.id ? 'go' : 'soft'}" data-act="acc-select" data-id="${d.id}">${sel && sel.id === d.id ? 'Sélectionné' : 'Choisir'}</button></div>`).join('') : '<p class="muted">Aucun document. Scannez ou importez d\'abord un document comptable.</p>'}
