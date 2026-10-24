@@ -106,3 +106,26 @@ traitée par le chemin texte (`-12,40` → débit, `+2 100,00` → crédit). À 
 Chaque correction sera accompagnée de tests convertissant ces reproductions en contrôles de non-régression
 (les R1–R14 deviendront des attentes de comportement corrigé), en plus des 23 tests L3 existants.
 Aucune autre fonction (scanner, autres extracteurs, exports) ne doit être modifiée au passage.
+
+---
+
+## Addendum — corrections appliquées (24/10/2026, branche `audit/releves-bancaires`)
+
+Plan P1→P3 implémenté ; les 14 reproductions sont converties en non-régressions dans
+`tests/e2e-v216-banque.mjs` (**18/18**, exécuté). La suite d'audit d'origine, réexécutée après
+correction, ne reproduit plus que **2 constats résiduels documentés** :
+- R9 : un montant physiquement entre deux colonnes reste rangé du côté le plus proche mais
+  **n'est plus affirmé** : statut « à vérifier », confiance 45, source « colonne ambiguë ».
+  Aucune affectation certaine n'est possible sans information supplémentaire — c'est le
+  comportement honnête attendu.
+- R11 : sans aucune position de mot (texte seul), la page d'origine reste 0 ; dès que les
+  positions existent, la page est retrouvée via `findZone` (testé).
+
+Non-régressions après correction : L3 relevés 23/23, L2 30/30, L4 19/19, L5 18/18, L6 14/14,
+V2.13 17/17, V2.14 15/15, V2.14.1 8/8, V2.15 20/20, fiabilité 13/13, validateur d'exports TOUT OK.
+Corrections livrées : opérations multi-lignes (texte et positions), en-têtes par page, date
+dans les premières cellules, colonnes par intervalles sans écrasement, espaces U+00A0/U+202F,
+montant de libellé distingué du montant d'opération, filtre « solde » restreint, fusion
+texte+positions sans perte, contrôle de cohérence des soldes ligne à ligne, doublons signalés
+dans le CSV, et lecture de la couche texte native des PDF numériques (OCR uniquement pour
+les pages image). Limite inchangée : aucun test sur appareil Android physique.

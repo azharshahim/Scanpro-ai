@@ -622,6 +622,43 @@ const PDF = {
     return out;
   },
 
+  /** Couche texte NATIVE d'un PDF numérique (pdf.js getTextContent) : texte exact et
+     positions normalisées 0-1, sans OCR. Les pages sans texte exploitable renvoient
+     une page vide : l'appelant retombe alors sur le rendu + OCR pour ces pages. */
+  async extractText(file) {
+    if (typeof pdfjsLib === 'undefined') await Assets.ensureLoaded();
+    if (typeof pdfjsLib === 'undefined') return null;
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      (Assets._base || new URL('vendor/', location.href).href) + 'pdf.worker.min.js';
+    const buf = file instanceof ArrayBuffer ? file : await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+    const pages = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const vp = page.getViewport({ scale: 1 });
+      const tc = await page.getTextContent();
+      const words = []; const linesMap = new Map();
+      for (const item of tc.items) {
+        const str = (item.str || '').trim(); if (!str) continue;
+        const m = item.transform; const x = m[4] / vp.width; const wItem = (item.width || 0) / vp.width;
+        const h = (item.height || Math.abs(m[3]) || 10) / vp.height; const y = (vp.height - m[5]) / vp.height - h;
+        const parts = str.split(/\s+/).filter(Boolean);
+        const totalChars = parts.join(' ').length || 1; let cursor = x;
+        for (const part of parts) {
+          const w = wItem * (part.length / totalChars);
+          words.push({ t: part, c: 100, x: +cursor.toFixed(4), y: +y.toFixed(4), w: +w.toFixed(4), h: +h.toFixed(4) });
+          cursor += w + wItem * (1 / totalChars);
+        }
+        const key = Math.round(y * 200);
+        if (!linesMap.has(key)) linesMap.set(key, []);
+        linesMap.get(key).push({ str, x });
+      }
+      const text = [...linesMap.entries()].sort((a, b) => a[0] - b[0]).map(([, segs]) => segs.sort((a, b) => a.x - b.x).map(s => s.str).join(' ')).join('\n');
+      pages.push({ text, words });
+    }
+    return pages;
+  },
+
   /** Lit un PDF (nb de pages) et rend la 1re page en vignette. */
   async inspect(file) {
     if (typeof pdfjsLib === 'undefined') await Assets.ensureLoaded();

@@ -1278,6 +1278,43 @@ const PDF = {
     return out;
   },
 
+  /** Couche texte NATIVE d'un PDF numérique (pdf.js getTextContent) : texte exact et
+     positions normalisées 0-1, sans OCR. Les pages sans texte exploitable renvoient
+     une page vide : l'appelant retombe alors sur le rendu + OCR pour ces pages. */
+  async extractText(file) {
+    if (typeof pdfjsLib === 'undefined') await Assets.ensureLoaded();
+    if (typeof pdfjsLib === 'undefined') return null;
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      (Assets._base || new URL('vendor/', location.href).href) + 'pdf.worker.min.js';
+    const buf = file instanceof ArrayBuffer ? file : await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+    const pages = [];
+    for (let i = 1; i <= doc.numPages; i++) {
+      const page = await doc.getPage(i);
+      const vp = page.getViewport({ scale: 1 });
+      const tc = await page.getTextContent();
+      const words = []; const linesMap = new Map();
+      for (const item of tc.items) {
+        const str = (item.str || '').trim(); if (!str) continue;
+        const m = item.transform; const x = m[4] / vp.width; const wItem = (item.width || 0) / vp.width;
+        const h = (item.height || Math.abs(m[3]) || 10) / vp.height; const y = (vp.height - m[5]) / vp.height - h;
+        const parts = str.split(/\s+/).filter(Boolean);
+        const totalChars = parts.join(' ').length || 1; let cursor = x;
+        for (const part of parts) {
+          const w = wItem * (part.length / totalChars);
+          words.push({ t: part, c: 100, x: +cursor.toFixed(4), y: +y.toFixed(4), w: +w.toFixed(4), h: +h.toFixed(4) });
+          cursor += w + wItem * (1 / totalChars);
+        }
+        const key = Math.round(y * 200);
+        if (!linesMap.has(key)) linesMap.set(key, []);
+        linesMap.get(key).push({ str, x });
+      }
+      const text = [...linesMap.entries()].sort((a, b) => a[0] - b[0]).map(([, segs]) => segs.sort((a, b) => a.x - b.x).map(s => s.str).join(' ')).join('\n');
+      pages.push({ text, words });
+    }
+    return pages;
+  },
+
   /** Lit un PDF (nb de pages) et rend la 1re page en vignette. */
   async inspect(file) {
     if (typeof pdfjsLib === 'undefined') await Assets.ensureLoaded();
@@ -2260,7 +2297,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Acc() { return Acc; }, get Precompta() { return Precompta; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.15.0'
+  version: '2.15.1'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */
@@ -2639,7 +2676,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.15.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.15.1 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -4402,10 +4439,30 @@ async function docRunOcr(docId) {
       toast('Lecture du PDF impossible : ' + e.message, 'err', 5000);
       return;
     }
+    // P3 (audit relevés) : couche texte NATIVE du PDF d'abord — texte exact et
+    // positions réelles, sans OCR. L'OCR ne sert que pour les pages sans texte
+    // exploitable (PDF scannés en image). Traitement toujours 100 % local.
+    let native = null;
+    try { native = await PDF.extractText(file); } catch (e) { native = null; }
+    const nativePages = native ? native.map(pg => ((pg.text || '').replace(/\s/g, '').length >= 40 ? pg : null)) : [];
     let results;
-    try { results = await runOcr(rendered.map(r => ({ src: r.canvas.toDataURL('image/jpeg', 0.95) }))); }
-    catch (e) { return; }
-    if (!results) return;
+    if (nativePages.some(Boolean)) {
+      results = [];
+      for (let i = 0; i < rendered.length; i++) {
+        const np = nativePages[i];
+        if (np) results.push({ text: np.text, confidence: 100, words: np.words.length, lines: 0, uncertain: [], wordBoxes: np.words, lineBoxes: [], source: 'texte natif PDF' });
+        else {
+          const one = await runOcr([{ src: rendered[i].canvas.toDataURL('image/jpeg', 0.95) }]).catch(() => null);
+          results.push(one && one[0] ? one[0] : { text: '', confidence: 0, words: 0, lines: 0, uncertain: [], wordBoxes: [], lineBoxes: [] });
+        }
+      }
+      doc.ocrSource = 'Texte natif du PDF (pages numériques) + OCR local (pages image)';
+      toast('Texte natif du PDF utilisé — aucun OCR nécessaire pour les pages numériques', 'ok', 4500);
+    } else {
+      try { results = await runOcr(rendered.map(r => ({ src: r.canvas.toDataURL('image/jpeg', 0.95) }))); }
+      catch (e) { return; }
+      if (!results) return;
+    }
     const text = results.map((r, i) => `— Page ${i + 1} —\n${r.text}`).join('\n\n').trim();
     const avg = Math.round(results.reduce((s, r) => s + r.confidence, 0) / Math.max(1, results.length));
     doc.text = text;
@@ -4415,7 +4472,7 @@ async function docRunOcr(docId) {
     await Repo.update(doc);
     App.doc = doc; App.detailTab = 'text';
     await render();
-    toast(text ? 'OCR terminé · confiance ' + avg + ' %' : 'Aucun texte détecté', text ? 'ok' : 'err', 5000);
+    toast(text ? 'Extraction terminée · confiance ' + avg + ' %' : 'Aucun texte détecté', text ? 'ok' : 'err', 5000);
     return;
   }
 
@@ -4874,7 +4931,7 @@ const Acc = {
     const isBilan = kind !== 'compte_resultat';
     let section = isBilan ? 'actif' : 'charges';
     const rows = [];
-    const amountRe = /-?\(?[\d]{1,3}(?:[ ][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    const amountRe = /-?\(?[\d]{1,3}(?:[ \u00a0\u202f][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
     for (const l of lines) {
       const low = l.toLowerCase();
       if (/^actif\b|total\s*actif/.test(low)) section = 'actif';
@@ -4940,7 +4997,7 @@ const Acc = {
       rate: F(rateM ? rateM[1].replace(',', '.') + ' %' : '', 80),
       duration: F((t.match(/(\d{1,3})\s*(?:mois|mensualités|echeances|échéances)/i) || [])[1] || '', 60)
     };
-    const amountRe = /-?\(?[\d]{1,3}(?:[ ][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    const amountRe = /-?\(?[\d]{1,3}(?:[ \u00a0\u202f][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
     const rows = [];
     for (const l of lines) {
       const dm = l.match(/^(\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?)\s+(.+)$/);
@@ -4974,7 +5031,7 @@ const Acc = {
   extractAssets(text, pagesWords) {
     const t = String(text || '');
     const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
-    const amountRe = /-?\(?[\d]{1,3}(?:[ ][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    const amountRe = /-?\(?[\d]{1,3}(?:[ \u00a0\u202f][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
     const rows = [];
     for (const l of lines) {
       if (/total|libellé|designation|valeur d['’]origine/i.test(l) && !/\d{3,}/.test(l)) continue;
@@ -5027,34 +5084,81 @@ const Acc = {
   },
   _amountOf(s) { const v = Acc.parseAmount(String(s || '').replace(/[€]/g, '')); return (v != null && /\d/.test(String(s))) ? v : null; },
   bankFromPositions(pagesWords) {
+    // Reconstruction par page : en-tête propre à chaque page (jamais un index global),
+    // colonnes par INTERVAILLES (frontières entre ancres), date cherchée dans les
+    // premières cellules, lignes de continuation rattachées à l'opération précédente,
+    // aucun écrasement de montant, affectation ambiguë signalée « à vérifier ».
+    if (!pagesWords || !pagesWords.some(w => w && w.length)) return null;
     const rows = Acc.positionRows(pagesWords);
     if (!rows.length) return null;
-    let anchors = null, headerIdx = -1;
-    rows.forEach((r, i) => {
+    const dateRe = /^\d{1,2}[\\/.\-]\d{1,2}/;
+    const tx = [];
+    let anchors = null, cur = null;
+    const zonesOf = (a) => {
+      const cols = Object.entries(a).sort((x, y) => x[1] - y[1]);
+      return cols.map(([k, xc], i) => ({
+        k, xc,
+        lo: i === 0 ? xc - ((cols[1] ? cols[1][1] : xc + 0.1) - xc) / 2 : (cols[i - 1][1] + xc) / 2,
+        hi: i === cols.length - 1 ? xc + (xc - (cols[i - 1] ? cols[i - 1][1] : xc - 0.1)) / 2 : (xc + cols[i + 1][1]) / 2
+      }));
+    };
+    const assign = (target, cell, amt, labelCells) => {
+      const zones = zonesOf(anchors);
+      const z = zones.find(z2 => cell.xc >= z2.lo && cell.xc < z2.hi);
+      if (!z) {
+        if ((target.debit != null || target.credit != null) && target.balance == null) { target.balance = amt; target.status = 'a-verifier'; target.confidence = Math.min(target.confidence, 50); target.source += ' · colonne droite sans en-tête : solde supposé, à vérifier'; }
+        else labelCells.push(cell.t);
+        return;
+      }
+      const nearBorder = Math.min(Math.abs(cell.xc - z.lo), Math.abs(cell.xc - z.hi)) < 0.02;
+      const col = z.k;
+      if (target[col] != null) {
+        if (col !== 'balance' && target.balance == null) { target.balance = amt; target.status = 'a-verifier'; target.source += ' · second montant dans la colonne ' + col + ' : reporté en solde, à vérifier'; }
+        else labelCells.push(cell.t);
+        return;
+      }
+      target[col] = col === 'balance' ? amt : Math.abs(amt);
+      if (nearBorder) { target.status = 'a-verifier'; target.confidence = Math.min(target.confidence, 45); target.source += ' · colonne ambiguë (montant entre deux colonnes)'; }
+    };
+    let lastPage = -1;
+    for (const r of rows) {
+      if (r.page !== lastPage) { lastPage = r.page; }
       const low = r.text.toLowerCase();
       if (/débit|debit/.test(low) && /crédit|credit/.test(low)) {
-        anchors = {};
-        for (const c of r.cells) { const lt = c.t.toLowerCase(); if (/débit|debit/.test(lt)) anchors.debit = c.xc; if (/crédit|credit/.test(lt)) anchors.credit = c.xc; if (/solde/.test(lt)) anchors.balance = c.xc; }
-        headerIdx = i;
+        const a = {};
+        for (const c of r.cells) { const lt = c.t.toLowerCase(); if (/débit|debit/.test(lt)) a.debit = c.xc; if (/crédit|credit/.test(lt)) a.credit = c.xc; if (/solde/.test(lt)) a.balance = c.xc; }
+        if (a.debit != null && a.credit != null) { anchors = a; continue; }
       }
-    });
-    if (!anchors || anchors.debit == null || anchors.credit == null) return null;
-    const tx = [];
-    rows.forEach((r, i) => {
-      if (i <= headerIdx) return;
-      const first = r.cells[0];
-      if (!first || !/^\d{1,2}[\\/.\\-]\d{1,2}/.test(first.t)) return;
-      let debit = null, credit = null, balance = null; const labelCells = [];
-      for (const c of r.cells.slice(1)) {
+      if (!anchors) continue;
+      const dateIdx = r.cells.findIndex((c, idx) => idx < 3 && dateRe.test(c.t));
+      if (dateIdx < 0) {
+        // Ligne de continuation : elle appartient à l'opération précédente (libellé multi-ligne).
+        if (cur) {
+          const labelCells = [];
+          for (const c of r.cells) {
+            const amt = /[.,]\d{2}/.test(c.t) ? Acc._amountOf(c.t) : null;
+            if (amt == null) labelCells.push(c.t);
+            else if (cur.debit == null && cur.credit == null) assign(cur, c, amt, labelCells);
+            else if (cur.balance == null) cur.balance = amt;
+            else labelCells.push(c.t);
+          }
+          cur.label = (cur.label + ' ' + labelCells.join(' ')).replace(/\s{2,}/g, ' ').trim();
+        }
+        continue;
+      }
+      const labelCells = [];
+      cur = { date: r.cells[dateIdx].t, valueDate: null, label: '', reference: dateIdx > 0 ? r.cells.slice(0, dateIdx).map(c => c.t).join(' ') : null, debit: null, credit: null, balance: null, page: r.page, confidence: 78, status: 'reconnu', source: 'positions OCR (colonnes par intervalles)' };
+      tx.push(cur);
+      let skippedValueDate = false;
+      for (const c of r.cells.slice(dateIdx + 1)) {
+        if (!skippedValueDate && cur.valueDate == null && dateRe.test(c.t)) { cur.valueDate = c.t; skippedValueDate = true; continue; }
         const amt = Acc._amountOf(c.t);
         if (amt == null) { labelCells.push(c.t); continue; }
-        const near = Object.entries(anchors).map(([k, x]) => [k, Math.abs(x - c.xc)]).sort((a, b) => a[1] - b[1])[0];
-        if (near && near[1] <= 0.18) { if (near[0] === 'debit') debit = Math.abs(amt); else if (near[0] === 'credit') credit = Math.abs(amt); else balance = amt; }
-        else labelCells.push(c.t);
+        assign(cur, c, amt, labelCells);
       }
-      if (debit == null && credit == null) return;
-      tx.push({ date: first.t, valueDate: null, label: labelCells.join(' ').trim() || Acc.NR, reference: null, debit, credit, balance, page: r.page, confidence: 78, status: 'reconnu', source: 'positions OCR (colonnes ' + (debit != null ? 'débit' : 'crédit') + ')' });
-    });
+      cur.label = labelCells.join(' ').trim() || Acc.NR;
+    }
+    for (const x of tx) if (!x.label) x.label = Acc.NR;
     return tx.length ? tx : null;
   },
   financialFromPositions(pagesWords) {
@@ -5098,7 +5202,7 @@ const Acc = {
     const t = String(text || '');
     const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
     const cats = [[/train|sncf|taxi|avion|transport|péage|peage|parking/i, 'Transport'], [/hôtel|hotel|hébergement|hebergement|nuit/i, 'Hébergement'], [/restaurant|repas|déjeuner|dejeuner|dîner/i, 'Repas'], [/carburant|essence|gasoil|diesel/i, 'Carburant'], [/fourniture|bureau|logiciel|abonnement/i, 'Fournitures']];
-    const amountRe = /-?\(?[\d]{1,3}(?:[ ][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    const amountRe = /-?\(?[\d]{1,3}(?:[ \u00a0\u202f][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
     const rows = [];
     for (const l of lines) {
       if (/^total|note de frais|salarié|date|libellé/i.test(l)) continue;
@@ -5172,32 +5276,66 @@ const Acc = {
     const opening = moneyAfter(/solde\s*(?:initial|précédent|precedent|d['’]ouverture|de départ)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
     const closing = moneyAfter(/(?:nouveau\s*solde|solde\s*final|solde\s*(?:au|de clôture|de cloture))[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
     const currency = /€|EUR/.test(t) ? 'EUR' : (/\$|USD/.test(t) ? 'USD' : '');
-    const creditWords = /vir\s*reçu|vir\s*recu|crédit|credit|remise|salaire|remboursement|versement reçu|encaissement/i;
+    const creditWords = /vir\s*reçu|vir\s*recu|crédit|credit|remise|salaire|remboursement|versement reçu|encaissement|d[ée]p[ôo]t|esp[èe]ces/i;
     const debitWords = /\bcb\b|carte|prlv|prélèvement|prelevement|vir\s*émis|vir\s*emis|paiement|retrait|chèque|cheque|frais|facture\s*n/i;
-    const amountRe = /-?\(?[\d]{1,3}(?:[ ][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    const amountRe = /-?\(?[\d]{1,3}(?:[ \u00a0\u202f][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
     const transactions = [];
+    // Regroupement préalable : une opération peut s'étaler sur plusieurs lignes
+    // (libellé multi-ligne). Les lignes sans date qui suivent une opération lui
+    // sont rattachées au lieu d'être perdues.
+    const isTotalLine = (l) => /^(?:solde|total|nouveau solde)\b/i.test(l) || /(solde|total)\s*(initial|final|d['’]ouverture|de cl[oô]ture|pr[ée]c[ée]dent)/i.test(l);
+    const rawOps = []; let curOp = null;
     for (const l of lines) {
       const dm = l.match(/^(\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?)\s+(?:(\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?)\s+)?(.+)$/);
-      if (!dm) continue;
-      if (/solde|total|iban|banque|titulaire|relevé|extrait/i.test(l) && !/vir|cb|prlv|paiement/i.test(l)) continue;
-      const rest = dm[3];
-      const amounts = [...rest.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null);
-      if (!amounts.length) continue;
-      let amount, balance = null;
-      if (amounts.length >= 2) { amount = amounts[amounts.length - 2]; balance = amounts[amounts.length - 1]; }
-      else amount = amounts[0];
-      let label = rest.replace(amountRe, ' ').replace(/\s{2,}/g, ' ').replace(/[-–—|:]+$/, '').trim();
+      if (dm) { curOp = { date: dm[1], valueDate: dm[2] || null, parts: [dm[3]] }; rawOps.push(curOp); continue; }
+      if (!curOp) continue;
+      if (isTotalLine(l) || /^(iban|bic|swift|titulaire|banque|relevé|extrait|page\s+\d)/i.test(l)) { curOp = null; continue; }
+      if (/^(date|libellé|opération|operation)\b/i.test(l) && /(débit|crédit|libellé|montant|solde)/i.test(l)) continue;
+      curOp.parts.push(l);
+    }
+    for (const op of rawOps) {
+      const rest = op.parts.join(' ');
+      const matches = [...rest.matchAll(amountRe)].map(m => ({ raw: m[0], start: m.index, end: m.index + m[0].length, v: Acc.parseAmount(m[0]) })).filter(x => x.v != null);
+      if (!matches.length) continue;
+      // Choix du montant d'opération et du solde : JAMAIS « avant-dernier par défaut »
+      // sans contrôle. Si un nombre est suivi de texte dans le libellé, il appartient
+      // au libellé ; le dernier nombre peut être un solde seulement s'il suit le montant.
+      let amountM = null, balanceM = null;
+      if (matches.length >= 2) {
+        const last = matches[matches.length - 1], prev = matches[matches.length - 2];
+        const between = rest.slice(prev.end, last.start).trim();
+        if (matches.length === 2 && between.length > 0) { amountM = last; }
+        else { amountM = prev; balanceM = last; }
+      } else amountM = matches[0];
+      const amount = amountM.v, balance = balanceM ? balanceM.v : null;
+      let label = rest;
+      for (const m of [balanceM, amountM]) if (m) label = label.slice(0, m.start) + ' ' + label.slice(m.end);
+      label = label.replace(/\s{2,}/g, ' ').replace(/[-–—|:]+$/, '').trim();
       const refM = rest.match(/(?:réf\.?|ref\.?|référence)\s*[:#]?\s*([A-Z0-9\-\/]{3,30})/i);
       let debit = null, credit = null, conf = 70, status = 'reconnu';
       const signed = /-\s?[\d]/.test(rest) || /\([\d ]+[.,]\d{2}\)/.test(rest);
       if (signed || debitWords.test(label)) debit = Math.abs(amount);
       else if (creditWords.test(label) || /\+\s?[\d]/.test(rest)) credit = Math.abs(amount);
       else { status = 'a-verifier'; conf = 40; }
-      const normDate = (d) => { const p = d.replace(/[.\-]/g, '/').split('/'); if (p.length === 3 && p[2].length === 2) p[2] = '20' + p[2]; return p.join('/'); };
-      transactions.push({ date: normDate(dm[1]), valueDate: dm[2] ? normDate(dm[2]) : null, label: label || Acc.NR, reference: refM ? refM[1] : null, debit, credit, balance, page: 0, confidence: conf, status });
+      const normDate = (d) => { const pr = d.replace(/[.\-]/g, '/').split('/'); if (pr.length === 3 && pr[2].length === 2) pr[2] = '20' + pr[2]; return pr.join('/'); };
+      const txo = { date: normDate(op.date), valueDate: op.valueDate ? normDate(op.valueDate) : null, label: label || Acc.NR, reference: refM ? refM[1] : null, debit, credit, balance, page: 0, confidence: conf, status };
+      if (pagesWords && pagesWords.length) { const z = Acc.findZone(pagesWords, txo.label); if (z) txo.page = z.page; }
+      transactions.push(txo);
     }
     const posTx = Acc.bankFromPositions(pagesWords);
-    if (posTx && posTx.length) { transactions.length = 0; transactions.push(...posTx); }
+    if (posTx && posTx.length) {
+      // Fusion (jamais de remplacement perdant) : les positions priment quand elles
+      // couvrent au moins autant d'opérations ; sinon on ajoute celles du texte
+      // absentes des positions (même date + même montant).
+      if (!transactions.length || posTx.length >= transactions.length) { transactions.length = 0; transactions.push(...posTx); }
+      else {
+        const key = (x) => x.date + '|' + (x.debit ?? x.credit ?? x.balance ?? '');
+        const seen = new Set(posTx.map(key));
+        transactions.push(...posTx);
+        // les opérations texte déjà couvertes par les positions sont retirées au profit des positions
+        for (let i = transactions.length - posTx.length - 1; i >= 0; i--) if (seen.has(key(transactions[i]))) transactions.splice(i, 1);
+      }
+    }
     // doublons potentiels : même date + même libellé + même montant
     const seen = new Map(); const duplicates = [];
     transactions.forEach((tx, i) => {
@@ -5217,6 +5355,17 @@ const Acc = {
     if (!transactions.length) controls.push(Acc.ctl('Transactions présentes', 'impossible', 'Aucune opération reconnue : relevé non vérifiable.'));
     const lastBal = [...transactions].reverse().find(x => x.balance != null);
     if (lastBal && closing != null) controls.push({ label: 'Dernier solde de ligne = clôture', ok: Math.abs(lastBal.balance - closing) <= 0.05, detail: `Dernier solde reconnu : ${lastBal.balance} · Clôture : ${closing}`, recalculated: lastBal.balance });
+    const withBal = transactions.filter(x => x.balance != null);
+    if (withBal.length >= 2) {
+      let steps = 0, breaks = 0;
+      for (let i = 1; i < withBal.length; i++) {
+        const prev = withBal[i - 1], x = withBal[i];
+        if (x.debit == null && x.credit == null) continue;
+        const expected = Math.round((prev.balance + (x.credit || 0) - (x.debit || 0)) * 100) / 100;
+        steps++; if (Math.abs(expected - x.balance) > 0.05) breaks++;
+      }
+      if (steps) controls.push(Acc.ctl('Cohérence des soldes ligne à ligne', breaks ? 'ecart' : 'conforme', breaks ? breaks + ' rupture(s) de solde sur ' + steps + ' enchaînement(s) vérifié(s) : un montant, un sens ou un solde est probablement mal lu.' : steps + ' enchaînement(s) de solde vérifié(s) sans rupture (solde précédent + crédit − débit = solde de la ligne).'));
+    }
     if (duplicates.length) controls.push({ label: 'Doublons potentiels', ok: false, detail: duplicates.length + ' opération(s) avec même date, libellé et montant : signalées, jamais supprimées automatiquement.', recalculated: null });
     if (unknown) controls.push({ label: 'Opérations à vérifier', ok: false, detail: unknown + ' opération(s) sans sens (débit/crédit) déterminé : à classer manuellement.', recalculated: null });
     const fields = {
@@ -5233,7 +5382,7 @@ const Acc = {
   toBankCsv(data) {
     const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     const rows = [['Date', 'Date de valeur', 'Libellé', 'Référence', 'Débit', 'Crédit', 'Solde', 'Confiance %', 'À vérifier']];
-    for (const x of data.transactions || []) rows.push([x.date, x.valueDate || '', x.label, x.reference || '', x.debit ?? '', x.credit ?? '', x.balance ?? '', x.confidence, x.status === 'a-verifier' ? 'oui' : '']);
+    for (const x of data.transactions || []) rows.push([x.date, x.valueDate || '', x.label, x.reference || '', x.debit ?? '', x.credit ?? '', x.balance ?? '', x.confidence, x.duplicate ? 'doublon ?' : (x.status === 'a-verifier' ? 'oui' : '')]);
     return rows.map(r => r.map(esc).join(';')).join('\n');
   },
   toCsv(data) {
