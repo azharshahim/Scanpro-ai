@@ -72,13 +72,13 @@ svg{display:block}
 
 /* ---------- Header ---------- */
 .appbar{
-  position:sticky;top:0;z-index:30;
+  position:relative;z-index:5;
   background:linear-gradient(160deg,#0B1B34 0%,#13294B 62%,#173A6B 100%);
-  color:#fff;padding:calc(12px + env(safe-area-inset-top,0px)) 16px 14px;
+  color:#fff;padding:calc(8px + env(safe-area-inset-top,0px)) 16px 10px;
   border-radius:0 0 22px 22px;
   box-shadow:0 10px 30px -16px rgba(11,27,52,.65);
 }
-.appbar.plain{position:sticky}
+.appbar.plain{position:relative}
 .appbar-row{display:flex;align-items:center;gap:10px;min-height:36px}
 .appbar h1{font-size:19px;font-weight:700;margin:0;letter-spacing:-.2px;flex:1;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -92,17 +92,17 @@ svg{display:block}
   background:rgba(255,255,255,.09);transition:background .18s, transform .12s}
 .icon-btn:active{transform:scale(.94);background:rgba(255,255,255,.2)}
 .icon-btn.light{color:var(--navy);background:#fff;border:1px solid var(--line)}
-.hello{margin-top:14px}
-.hello h2{font-size:23px;line-height:1.2;margin:0 0 4px;font-weight:750;letter-spacing:-.5px}
+.hello{margin-top:9px}
+.hello h2{font-size:20px;line-height:1.2;margin:0 0 4px;font-weight:750;letter-spacing:-.5px}
 .hello p{margin:0;color:#A9BFDF;font-size:13px}
-.stat-row{display:flex;gap:8px;margin-top:14px}
+.stat-row{display:flex;gap:8px;margin-top:9px}
 .stat{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);
-  border-radius:14px;padding:9px 12px}
+  border-radius:14px;padding:7px 10px}
 .stat b{display:block;font-size:18px;font-weight:750}
 .stat span{font-size:11.5px;color:#A9BFDF;letter-spacing:.2px}
-.local-chip{display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-size:11.5px;
+.local-chip{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:11.5px;
   background:rgba(16,185,129,.16);color:#7FE7C0;border:1px solid rgba(16,185,129,.28);
-  padding:5px 10px;border-radius:999px;font-weight:600}
+  padding:4px 9px;border-radius:999px;font-weight:600}
 
 /* ---------- Content ---------- */
 .content{padding:16px 16px 22px}
@@ -507,6 +507,22 @@ svg{display:block}
 .clean-label.before{left:8px}.clean-label.after{right:8px}
 .invoice-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.invoice-grid label{font-size:11px;color:var(--muted);font-weight:650}.invoice-grid input{width:100%;margin-top:4px;min-height:38px}
 @media(max-width:520px){.invoice-grid{grid-template-columns:1fr}}
+/* V2.5 : surfaces sombres complètes */
+html[data-theme="dark"] #app{background:var(--bg)}
+html[data-theme="dark"] .card,html[data-theme="dark"] .doc-item,html[data-theme="dark"] .quick,
+html[data-theme="dark"] .set-row,html[data-theme="dark"] .ai-card,html[data-theme="dark"] .sheet,
+html[data-theme="dark"] .empty,html[data-theme="dark"] .tool,html[data-theme="dark"] .page-thumb .pt-img{
+  background:var(--card);color:#EAF0FA;border-color:var(--line)}
+html[data-theme="dark"] .btn.ghost{background:var(--card);color:#EAF0FA;border-color:var(--line)}
+html[data-theme="dark"] .btn.soft{background:#1B3560;color:#BFD6FF}
+html[data-theme="dark"] .doc-item b,html[data-theme="dark"] .card-title,html[data-theme="dark"] h2,html[data-theme="dark"] h3{color:#EAF0FA}
+html[data-theme="dark"] .sheet .sub,html[data-theme="dark"] .muted{color:var(--muted)}
+html[data-theme="dark"] .chip{background:#16294D;color:#DCE9FF;border-color:var(--line)}
+html[data-theme="dark"] .chip.on{background:var(--blue);color:#fff}
+html[data-theme="dark"] .textarea{background:#0D1830;color:#EAF0FA}
+html[data-theme="dark"] #bottomNav{background:rgba(10,18,32,.96);border-color:var(--line)}
+html[data-theme="dark"] .nav-item{color:#9DB0CC}
+html[data-theme="dark"] .nav-item.active{color:#fff;background:#1B3560}
 
 </style>
 </head>
@@ -553,6 +569,7 @@ svg{display:block}
     <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7.5 18.5A4 4 0 0 1 7 10.6a5 5 0 0 1 9.6-1.4A3.7 3.7 0 0 1 17 18.5z"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5 19 6v6c0 4-3 7.2-7 8.5-4-1.3-7-4.5-7-8.5V6z"/><path d="m9 12 2 2 4-4"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19 12a7 7 0 0 1-12 4.9"/><path d="M5 12a7 7 0 0 1 12-4.9"/><path d="M4.5 20v-5h5M19.5 4v5h-5"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 13.2A8.5 8.5 0 0 1 10.8 4 8.5 8.5 0 1 0 20 13.2z"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/></symbol>
     <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></symbol>
     <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="7" rx="2"/><path d="M7 14h10v6H7z"/></symbol>
@@ -2072,7 +2089,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
   if (cancelBtn) cancelBtn.addEventListener('click', () => { cancelled = true; OCR.terminate(); });
   const results = [];
   try {
-    const label = { 'fra+eng': 'français + anglais', fra: 'français', eng: 'anglais' }[langs] || langs;
+    const label = ({ 'fra+eng':'français + anglais', fra:'français', eng:'anglais', spa:'espagnol', deu:'allemand', ita:'italien', por:'portugais', 'fra+eng+spa':'français + anglais + espagnol', 'fra+eng+deu':'français + anglais + allemand' })[langs] || langs;
     ui.status('Chargement du moteur OCR (' + label + ')…');
     await OCR.ensure(langs, (m) => {
       if (cancelled) return;
@@ -2124,7 +2141,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.4.0'
+  version: '2.5.0'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */
@@ -2259,6 +2276,7 @@ function viewHome() {
           <div class="brand-sub">Scanner & OCR</div>
         </div>
       </div>
+      <button class="icon-btn" data-act="toggle-theme" aria-label="Basculer mode nuit / jour">${ICON(Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon')}</button>
       <button class="icon-btn" data-act="go-settings" aria-label="Paramètres">${ICON('i-settings')}</button>
     </div>
     <div class="hello">
@@ -2362,6 +2380,7 @@ function viewDocs() {
   <header class="appbar">
     <div class="appbar-row">
       <h1 style="margin-left:2px">Documents</h1>
+      <button class="icon-btn" data-act="toggle-theme" aria-label="Basculer mode nuit / jour">${ICON(Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon')}</button>
       <button class="icon-btn" data-act="merge-pdfs" aria-label="Fusionner des PDF">${ICON('i-merge')}</button>
       <button class="icon-btn" data-act="scan-camera" aria-label="Nouveau scan">${ICON('i-plus')}</button>
     </div>
@@ -2409,7 +2428,7 @@ async function viewSettings() {
   const st = await storageInfo();
   const pct = st.quota ? clamp((st.usage / st.quota) * 100, 0.1, 100) : 0;
   const langs = Settings.get('ocrLangs');
-  const langLabel = { 'fra+eng': 'Français + Anglais', fra: 'Français', eng: 'Anglais' }[langs];
+  const langLabel = ({ 'fra+eng':'Français + Anglais', fra:'Français', eng:'Anglais', spa:'Espagnol', deu:'Allemand', ita:'Italien', por:'Portugais', 'fra+eng+spa':'Français + Anglais + Espagnol', 'fra+eng+deu':'Français + Anglais + Allemand' })[langs] || langs;
   const q = Settings.get('quality');
   return `
   <header class="appbar">
@@ -2501,7 +2520,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.4.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.5.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -4381,7 +4400,7 @@ function settingLangs() {
     title: 'Langues OCR',
     sub: 'Choisissez les langues à reconnaître. Le pack de langue est téléchargé une seule fois.',
     body: `<div class="sheet-list">
-      ${[['fra+eng', 'Français + Anglais', 'recommandé'], ['fra', 'Français', ''], ['eng', 'Anglais', '']].map(([k, l, tag]) =>
+      ${[['fra+eng', 'Français + Anglais', 'recommandé'], ['fra', 'Français', ''], ['eng', 'Anglais', ''], ['spa', 'Espagnol', 'nouveau'], ['deu', 'Allemand', 'nouveau'], ['ita', 'Italien', 'nouveau'], ['por', 'Portugais', 'nouveau'], ['fra+eng+spa', 'Français + Anglais + Espagnol', 'multi'], ['fra+eng+deu', 'Français + Anglais + Allemand', 'multi']].map(([k, l, tag]) =>
         `<button data-lang="${k}"><svg class="ico"><use href="#i-text"/></svg>
           <span class="grow">${l}</span>${tag ? `<span class="tag blue">${tag}</span>` : ''}
           ${Settings.get('ocrLangs') === k ? `<span class="tag ok">actif</span>` : ''}</button>`).join('')}
