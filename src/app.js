@@ -247,7 +247,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
   if (cancelBtn) cancelBtn.addEventListener('click', () => { cancelled = true; OCR.terminate(); });
   const results = [];
   try {
-    const label = { 'fra+eng': 'français + anglais', fra: 'français', eng: 'anglais' }[langs] || langs;
+    const label = ({ 'fra+eng':'français + anglais', fra:'français', eng:'anglais', spa:'espagnol', deu:'allemand', ita:'italien', por:'portugais', 'fra+eng+spa':'français + anglais + espagnol', 'fra+eng+deu':'français + anglais + allemand' })[langs] || langs;
     ui.status('Chargement du moteur OCR (' + label + ')…');
     await OCR.ensure(langs, (m) => {
       if (cancelled) return;
@@ -299,7 +299,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.4.0'
+  version: '2.6.0'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */

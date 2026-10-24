@@ -5,7 +5,7 @@
 'use strict';
 
 /* ------------------------------------------------------------ navigation -- */
-const NAV = { home: 'Accueil', docs: 'Documents', settings: 'Paramètres' };
+const NAV = { home: 'Accueil', docs: 'Documents', tools: 'Outils', settings: 'Paramètres' };
 
 async function go(route, param = null, { push = true, focusSearch = false } = {}) {
   if (App.route === 'capture') closeCamera();
@@ -1594,7 +1594,7 @@ function settingLangs() {
     title: 'Langues OCR',
     sub: 'Choisissez les langues à reconnaître. Le pack de langue est téléchargé une seule fois.',
     body: `<div class="sheet-list">
-      ${[['fra+eng', 'Français + Anglais', 'recommandé'], ['fra', 'Français', ''], ['eng', 'Anglais', '']].map(([k, l, tag]) =>
+      ${[['fra+eng', 'Français + Anglais', 'recommandé'], ['fra', 'Français', ''], ['eng', 'Anglais', ''], ['spa', 'Espagnol', 'nouveau'], ['deu', 'Allemand', 'nouveau'], ['ita', 'Italien', 'nouveau'], ['por', 'Portugais', 'nouveau'], ['fra+eng+spa', 'Français + Anglais + Espagnol', 'multi'], ['fra+eng+deu', 'Français + Anglais + Allemand', 'multi']].map(([k, l, tag]) =>
         `<button data-lang="${k}"><svg class="ico"><use href="#i-text"/></svg>
           <span class="grow">${l}</span>${tag ? `<span class="tag blue">${tag}</span>` : ''}
           ${Settings.get('ocrLangs') === k ? `<span class="tag ok">actif</span>` : ''}</button>`).join('')}
@@ -1859,6 +1859,22 @@ Object.assign(Actions, {
   'backup-export': () => exportLibraryBackup(),
   'backup-import': () => importLibraryBackup(),
 
+  'go-tools': () => go('tools'),
+  'tool-burst': async () => { await openCamera(); setTimeout(() => { if (!Burst.active) toggleBurst(); }, 1800); },
+  'tool-modes': async () => { if (App.draft && App.draft.pages.length) openScanModes(); else { toast('Scannez ou importez une page, puis choisissez un mode', 'err', 4500); await openCamera(); } },
+  'tool-doc-pdf': () => openToolDocPicker('pdf', 'Convertir en PDF'),
+  'tool-doc-images': () => openToolDocPicker('images', 'Exporter en images'),
+  'tool-doc-docx': () => openToolDocPicker('docx', 'Exporter au format Word'),
+  'tool-doc-txt': () => openToolDocPicker('txt', 'Exporter le texte'),
+  'tool-pdf-pages': () => openToolDocPicker('pdf-tools', 'Extraire des pages PDF'),
+  'tool-pdf-signature': () => openToolDocPicker('pdf-tools', 'Signature et filigrane'),
+  'tool-doc-clean': () => openToolDocPicker('clean', 'Nettoyage magique'),
+  'tool-doc-edit': () => openToolDocPicker('edit', 'Modifier et réorganiser'),
+  'tool-doc-zone': () => openToolDocPicker('zone', 'OCR d’une zone'),
+  'tool-doc-ocr': () => openToolDocPicker('ocr', 'Extraire le texte OCR'),
+  'tool-doc-print': () => openToolDocPicker('print', 'Imprimer un document'),
+  'tool-assistant': () => openToolDocPicker('assistant', 'Assistant documentaire local'),
+
   /* paramètres */
   'set-langs': () => settingLangs(),
   'set-quality': () => settingQuality(),
@@ -1978,6 +1994,33 @@ async function findDocumentDuplicates() {
   $$('[data-del-doc-dup]', sh).forEach(b=>b.addEventListener('click', async () => { const x=pairs[+b.dataset.delDocDup]; await Repo.remove(x.b.id); App.selectedDocs.delete(x.b.id); closeSheet(); await render(); toast('Document en double supprimé', 'ok'); }));
 }
 function selectedDocs() { return App.docs.filter(d => App.selectedDocs.has(d.id)); }
+
+/* ------------------------------------------------------- menu Outils V2.6 -- */
+function openToolDocPicker(kind, title) {
+  if (!App.docs.length) { toast('Créez ou importez d’abord un document', 'err'); go('docs'); return; }
+  const sh = openSheet({ title, sub:'Choisissez le document à traiter. L’original reste conservé.', body:`<div class="sheet-list">${App.docs.map(d=>`<button data-tool-doc="${escapeHtml(d.id)}"><span class="grow">${escapeHtml(d.name)}</span><span class="tiny muted">${plural(d.pageCount||0,'page','pages')}</span></button>`).join('')}</div>`, actions:[{label:'Annuler',cls:'ghost'}] });
+  $$('[data-tool-doc]', sh).forEach(btn => btn.addEventListener('click', async () => {
+    const id = btn.dataset.toolDoc; closeSheet();
+    const doc = await Repo.doc(id); if (!doc) return;
+    if (kind === 'pdf') return docDownloadPdf(id);
+    if (kind === 'images') return docExportImages(id);
+    if (kind === 'print') return docPrint(id);
+    if (kind === 'ocr') return docRunOcr(id);
+    if (kind === 'edit' || kind === 'modes') { await docEdit(id); if (kind === 'modes') setTimeout(() => openScanModes(), 450); return; }
+    if (kind === 'docx' || kind === 'txt') {
+      App.doc = doc; App.detailTab = 'text'; await go('detail', id);
+      if (!doc.text || !doc.text.trim()) { toast('Lancez d’abord l’OCR depuis l’onglet Texte', 'err', 4500); return; }
+      return exportDocText(kind);
+    }
+    await go('detail', id);
+    setTimeout(async () => {
+      if (kind === 'clean') { await docEdit(id); setTimeout(() => openCleanStudio(), 450); }
+      else if (kind === 'pdf-tools') openPdfTools();
+      else if (kind === 'zone') { const el = document.querySelector('[data-act="doc-ocr-zone"]'); if (el) el.click(); }
+      else if (kind === 'assistant') { App.detailTab = 'ai'; await render(); }
+    }, 80);
+  }));
+}
 
 /* ---------------------------------------------- exports texte / facture -- */
 async function makeDocxBlob(text, title = 'Document ScanPro AI') {
