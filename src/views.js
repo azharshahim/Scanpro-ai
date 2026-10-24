@@ -296,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.7.1 (Web)<br>
+      <b>ScanPro AI</b> — version 2.8.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -550,6 +550,61 @@ function viewTools() {
   </div>`;
 }
 
+/* ------------------------------------------------------ espace Comptabilité -- */
+function viewAcc() {
+  const docs = App.docs || [];
+  const sel = docs.find(d => d.id === App.accDocId) || null;
+  const acc = sel && sel.acc ? sel.acc : null;
+  const confChip = (c, st) => st === 'corrige' ? '<span class="chip ok">corrigé</span>'
+    : c >= 80 ? `<span class="chip ok">${c} %</span>` : c >= 50 ? `<span class="chip warn">${c} %</span>`
+    : c > 0 ? `<span class="chip err">${c} %</span>` : '<span class="chip err">Non reconnu</span>';
+  let detail = '';
+  if (sel && acc) {
+    const d = acc.data;
+    const labels = { docType: 'Type de document', supplier: 'Fournisseur / Client', address: 'Adresse', siren: 'SIREN', siret: 'SIRET', invoiceNumber: 'Numéro', issueDate: "Date d'émission", dueDate: "Date d'échéance", orderRef: 'Référence commande', paymentTerms: 'Conditions de règlement', deposit: 'Acompte', totalHT: 'Total HT', vatAmount: 'Montant TVA', totalTTC: 'Total TTC', currency: 'Devise' };
+    detail = `
+    <div class="card">
+      <div class="row"><b class="grow">${escapeHtml(sel.name)}</b><span class="chip ${acc.edited ? 'warn' : 'ok'}">${acc.edited ? 'Corrigé manuellement' : 'Extraction automatique'}</span></div>
+      <label class="small muted">Type de document (proposé : ${escapeHtml((Acc.TYPES.find(x => x[0] === d.docType) || [])[1] || d.docType)} — modifiable)
+      <select id="accTypeSel">${Acc.TYPES.map(([v, l]) => `<option value="${v}" ${d.docType === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <div class="invoice-grid">
+      ${Object.keys(labels).map(k => { const f = (d.fields || {})[k] || { value: 'Non reconnu', confidence: 0 }; return `<label>${labels[k]} ${confChip(f.confidence, f.status)}
+        <span class="row"><input data-acc-field="${k}" value="${escapeHtml(f.value === 'Non reconnu' ? '' : f.value)}" placeholder="Non reconnu">
+        ${f.zone ? `<button class="btn xs soft" data-act="acc-zone" data-page="${f.zone.page}" data-x="${f.zone.x}" data-y="${f.zone.y}" data-w="${f.zone.w}" data-h="${f.zone.h}">Voir p.${f.zone.page + 1}</button>` : ''}</span></label>`; }).join('')}
+      </div>
+      <h4>Lignes d'articles</h4>
+      ${(d.lines || []).length ? `<div class="acc-lines">${d.lines.map((l, i) => `<div class="row acc-line"><input data-acc-line="${i}:description" value="${escapeHtml(l.description)}"><input data-acc-line="${i}:qty" value="${l.qty}" size="4"><input data-acc-line="${i}:unitPrice" value="${l.unitPrice}" size="7"><input data-acc-line="${i}:amount" value="${l.amount}" size="8"></div>`).join('')}</div>` : '<p class="small muted">Aucune ligne reconnue — à compléter manuellement si le document en comporte.</p>'}
+      <h4>TVA par taux</h4>
+      ${(d.vat || []).length ? d.vat.map(v => `<div class="row"><span class="grow">TVA ${v.rate} %</span><b>${v.amount}</b></div>`).join('') : '<p class="small muted">Aucun taux de TVA reconnu.</p>'}
+      <h4>Contrôles de cohérence</h4>
+      ${(d.controls || []).length ? d.controls.map(c => `<div class="banner ${c.ok ? 'ok' : 'warn'}"><span>${c.ok ? '✓' : '⚠'} <b>${escapeHtml(c.label)}</b> — ${escapeHtml(c.detail)}</span></div>`).join('') : '<p class="small muted">Données insuffisantes pour un contrôle (il faut HT, TVA et TTC reconnus).</p>'}
+      <p class="tiny muted">${escapeHtml(d.disclaimer || '')} Traitement 100 % local : aucun document comptable n'est envoyé à un service externe.</p>
+      <div class="btn-row">
+        <button class="btn go" data-act="acc-save">Enregistrer les corrections</button>
+        <button class="btn soft" data-act="acc-export" data-fmt="csv">Export CSV</button>
+        <button class="btn soft" data-act="acc-export" data-fmt="xlsx">Export XLSX</button>
+        <button class="btn soft" data-act="acc-export" data-fmt="json">Export JSON</button>
+      </div>
+      <div class="btn-row"><button class="btn ghost" data-act="acc-open-doc">Voir le document (original, OCR, pages)</button>
+      <button class="btn ghost" data-act="acc-analyze">Relancer la reconnaissance</button></div>
+    </div>`;
+  } else if (sel) {
+    detail = `<div class="card"><b>${escapeHtml(sel.name)}</b>
+      <p class="small muted">${sel.text ? 'Texte OCR présent : la reconnaissance structurée peut être lancée.' : "Aucun texte OCR : lancez d'abord l'OCR depuis le document, puis revenez ici."}</p>
+      <label class="small muted">Type de document<select id="accTypeSel"><option value="auto">Automatique (proposé par l'application)</option>${Acc.TYPES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+      <div class="btn-row"><button class="btn go" data-act="acc-analyze">Lancer la reconnaissance</button>
+      <button class="btn ghost" data-act="acc-open-doc">Ouvrir le document</button></div></div>`;
+  }
+  return `<div class="screen">
+    <header class="appbar"><div><h1>Comptabilité</h1><p class="sub">Reconnaissance structurée, contrôle et export — 100 % local</p></div></header>
+    <div class="banner info"><span>Choisissez un document, vérifiez chaque champ (confiance affichée), corrigez si besoin puis exportez. « Non reconnu » signifie que l'information n'a pas été trouvée : elle n'est jamais inventée.</span></div>
+    <h3 class="sect">Documents</h3>
+    ${docs.length ? docs.map(d => `<div class="card row"><div class="grow"><b>${escapeHtml(d.name)}</b><br><span class="tiny muted">${d.acc ? 'Type : ' + escapeHtml((Acc.TYPES.find(x => x[0] === d.acc.data.docType) || [])[1] || d.acc.data.docType) + (d.acc.edited ? ' · corrigé' : '') : (d.text ? 'OCR présent, non analysé' : 'Sans OCR')}</span></div>
+      <button class="btn xs ${sel && sel.id === d.id ? 'go' : 'soft'}" data-act="acc-select" data-id="${d.id}">${sel && sel.id === d.id ? 'Sélectionné' : 'Choisir'}</button></div>`).join('') : '<p class="muted">Aucun document. Scannez ou importez d\'abord un document comptable.</p>'}
+    ${detail}
+  </div>`;
+}
+
 /* -------------------------------------------------- rendu d'une vue (route) -- */
 async function render() {
   const view = $('#view');
@@ -558,12 +613,14 @@ async function render() {
     (App.route === 'docs' && b.dataset.nav === 'docs') ||
     (App.route === 'settings' && b.dataset.nav === 'settings') ||
     (App.route === 'tools' && b.dataset.nav === 'tools') ||
+    (App.route === 'acc' && b.dataset.nav === 'acc') ||
     (['home', 'detail'].includes(App.route) && b.dataset.nav === 'home')));
 
   if (App.route === 'home') view.innerHTML = viewHome();
   else if (App.route === 'docs') view.innerHTML = viewDocs();
   else if (App.route === 'settings') { view.innerHTML = await viewSettings(); }
   else if (App.route === 'tools') view.innerHTML = viewTools();
+  else if (App.route === 'acc') view.innerHTML = viewAcc();
   else if (App.route === 'detail') view.innerHTML = viewDocDetail();
 
   if (App.route === 'home' || App.route === 'docs') {

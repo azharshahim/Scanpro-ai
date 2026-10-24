@@ -452,7 +452,16 @@ const OCR = {
     let text = (data.text || '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
     text = text.split('\n').map(line => { const t=line.trim(); return (t.length>=4 && t.length<=70 && t===t.toUpperCase() && /[A-ZÀ-Ý]{3,}/.test(t)) ? t : line; }).join('\n');
     const uncertain = (data.words || []).filter(w => (w.confidence || 100) < 60 && (w.text || '').trim()).slice(0, 40).map(w => ({ text: w.text, confidence: Math.round(w.confidence || 0) }));
-    return { text, confidence: Math.round(data.confidence || 0), words: (data.words || []).length, lines: (data.lines || []).length, uncertain };
+    // Positions des mots (relatives à l'image analysée) pour la traçabilité comptable :
+    // chaque champ extrait pourra être relié à sa zone sur la page d'origine.
+    let imgW = 0, imgH = 0;
+    try { const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = dataUrl; }); imgW = im.naturalWidth; imgH = im.naturalHeight; } catch (e) {}
+    const wordBoxes = (data.words || []).filter(w => (w.text || '').trim() && w.bbox).slice(0, 3000).map(w => ({
+      t: w.text, c: Math.round(w.confidence || 0),
+      x: imgW ? +(w.bbox.x0 / imgW).toFixed(4) : 0, y: imgH ? +(w.bbox.y0 / imgH).toFixed(4) : 0,
+      w: imgW ? +((w.bbox.x1 - w.bbox.x0) / imgW).toFixed(4) : 0, h: imgH ? +((w.bbox.y1 - w.bbox.y0) / imgH).toFixed(4) : 0
+    }));
+    return { text, confidence: Math.round(data.confidence || 0), words: (data.words || []).length, lines: (data.lines || []).length, uncertain, wordBoxes };
   },
   async terminate() { if (this.worker) { try { await this.worker.terminate(); } catch (e) {} this.worker = null; this.langs = null; } }
 };
