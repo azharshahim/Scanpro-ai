@@ -6,7 +6,7 @@
 /* ------------------------------------------------------------- préférences -- */
 const Settings = {
   k: 'scanpro.settings.v1',
-  defaults: { ocrLangs: 'fra+eng', quality: 'high', defaultFilter: 'doc', autoOcr: false, autoDetect: true, seenOnboarding: false },
+  defaults: { ocrLangs: 'fra+eng', quality: 'high', defaultFilter: 'doc', autoOcr: false, autoDetect: true, seenOnboarding: false, theme: 'light' },
   data: null,
   load() {
     try { this.data = Object.assign({}, this.defaults, JSON.parse(localStorage.getItem(this.k) || '{}')); }
@@ -299,7 +299,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.2.0'
+  version: '2.3.0'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */

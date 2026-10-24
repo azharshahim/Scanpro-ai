@@ -542,6 +542,17 @@ const Vision = {
     return canvas;
   },
 
+  async fingerprint(src) {
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+    const c = document.createElement('canvas'); c.width = 16; c.height = 16;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(img, 0, 0, 16, 16);
+    const d = x.getImageData(0, 0, 16, 16).data, vals = []; let sum = 0;
+    for (let i = 0; i < d.length; i += 4) { const v = 0.299*d[i]+0.587*d[i+1]+0.114*d[i+2]; vals.push(v); sum += v; }
+    const mean = sum / vals.length;
+    return { bits: vals.map(v => v >= mean ? '1' : '0').join(''), mean };
+  },
+  hamming(a, b) { let n = 0; for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) n++; return n; },
+
   vivid(canvas) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const id = ctx.getImageData(0, 0, canvas.width, canvas.height);

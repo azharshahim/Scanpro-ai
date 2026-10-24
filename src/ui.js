@@ -337,6 +337,8 @@ function renderEditor() {
         <button class="tool" data-act="editor-adjust">${ICON('i-sun')}Luminosité</button>
         <button class="tool" data-act="editor-ocr-zone">${ICON('i-zone')}Zone OCR</button>
         <button class="tool" data-act="editor-clean">${ICON('i-sparkles')}Nettoyage</button>
+        <button class="tool" data-act="editor-modes">${ICON('i-folder')}Modes</button>
+        <button class="tool" data-act="editor-find-dup">${ICON('i-copy')}Doublons</button>
         <button class="tool" data-act="editor-duplicate">${ICON('i-copy')}Dupliquer</button>
         <button class="tool" data-act="editor-delete-page">${ICON('i-trash')}Supprimer</button>
       </div>
@@ -868,6 +870,8 @@ async function openCleanStudio() {
       </div>
       <label class="tiny muted" style="display:block">Intensité du nettoyage <b id="cleanStrengthVal">${Math.round(((candidate.cleanup && candidate.cleanup.strength) || 0.7) * 100)} %</b>
         <input id="cleanStrength" type="range" min="10" max="100" value="${Math.round(((candidate.cleanup && candidate.cleanup.strength) || 0.7) * 100)}" style="width:100%;min-height:34px"></label>
+      <button class="btn xs soft" id="cleanOcrCompare" style="margin-top:8px">Comparer l’OCR avant / après</button>
+      <div id="cleanOcrOut" class="ai-out" style="display:none;margin-top:8px"></div>
       <div class="banner info" style="margin-top:8px">${ICON('i-info','ico sm')}<span>La gomme masque en blanc de petits éléments parasites. Elle ne reconstruit pas un texte masqué ou illisible.</span></div>`,
     actions: [{ label: 'Fermer', cls: 'ghost' }, { label: 'Appliquer à toutes les pages', cls: 'soft', act: 'clean-all', close: false },
               { label: 'Enregistrer une copie', cls: 'soft', act: 'clean-copy', close: true }, { label: 'Appliquer', cls: 'primary', act: 'clean-apply', close: true }],
@@ -903,6 +907,17 @@ async function openCleanStudio() {
   erase.addEventListener('pointermove', (e) => { if (!drawing) return; drawing.points.push(pos(e)); const preview = Object.assign({}, candidate, { eraser: [...(candidate.eraser || []), drawing] }); ImageOps.render(preview, { maxPx: 1100 }).then(c => { after.getContext('2d').drawImage(c, 0, 0); }); });
   erase.addEventListener('pointerup', () => { if (!drawing) return; candidate.eraser = [...(candidate.eraser || []), drawing]; drawing = null; refresh(); });
 
+  $('#cleanOcrCompare', sheet).addEventListener('click', async () => {
+    const out = $('#cleanOcrOut', sheet); out.style.display = 'block'; out.textContent = 'OCR en cours sur les deux versions…';
+    try {
+      const original = Object.assign({}, candidate, { filter: 'none', adj: { b: 1, c: 1 }, cleanup: null, eraser: [] });
+      const [co, cc] = await Promise.all([ImageOps.render(original, { maxPx: 1600 }), ImageOps.render(candidate, { maxPx: 1600 })]);
+      const results = await runOcr([co.toDataURL('image/jpeg', .95), cc.toDataURL('image/jpeg', .95)]);
+      if (!results) { out.textContent = 'Comparaison annulée.'; return; }
+      const words = (t) => (t || '').trim().split(/\s+/).filter(Boolean).length;
+      out.innerHTML = `<b>Avant :</b> ${words(results[0].text)} mots · confiance ${results[0].confidence} %<br><b>Après nettoyage :</b> ${words(results[1].text)} mots · confiance ${results[1].confidence} %<br><span class="tiny muted">Comparaison mesurée sur cette page, pas une garantie générale.</span>`;
+    } catch (e) { out.textContent = 'Comparaison OCR impossible : ' + e.message; }
+  });
   $('[data-act="clean-apply"]', sheet).addEventListener('click', async () => {
     applyCleanSettings(page, cleanSettingsOf(candidate));
     page.thumb = await ImageOps.thumb(await ImageOps.render(page, { maxPx: 400 }).then(c => c.toDataURL('image/jpeg', 0.7)));
@@ -1728,6 +1743,12 @@ Object.assign(Actions, {
   },
   'editor-adjust': () => editorAdjust(),
   'editor-clean': () => openCleanStudio(),
+  'editor-modes': () => openScanModes(),
+  'editor-find-dup': () => findDraftDuplicates(),
+  'toggle-theme': async (el) => { const next = (Settings.get('theme') === 'dark') ? 'light' : 'dark'; Settings.set('theme', next); document.documentElement.dataset.theme = next; el.classList.toggle('on', next==='dark'); el.setAttribute('aria-checked', next==='dark'); toast('Mode ' + (next==='dark'?'sombre':'clair') + ' activé', 'ok'); },
+  'ai-ask': () => answerLocalAssistant(),
+  'ai-chip': (el) => { const i=$('#aiAsk'); if(i){ i.value=el.dataset.q || ''; } answerLocalAssistant(); },
+  'doc-history': () => { const h=(App.doc.history||[]); openSheet({ title:'Historique des modifications', body: h.length ? h.slice().reverse().map(x=>`<div class="row" style="justify-content:space-between;padding:7px 0"><span>${escapeHtml(x.action)}</span><span class="tiny muted">${fmtDate(x.at)}</span></div>`).join('') : '<p class="small muted">Aucun historique enregistré pour ce document.</p>', actions:[{label:'Fermer',cls:'ghost'}] }); },
   'editor-filter': (el) => editorSetFilter(el.dataset.f),
   'editor-duplicate': async () => {
     const d = App.draft, p = d.pages[d.active];
@@ -1853,6 +1874,44 @@ Object.assign(Actions, {
   'show-help': () => showInfoSheet('help')
 });
 
+/* ------------------------------------------- modes de scan et doublons -- */
+const SCAN_MODES = {
+  facture: { label: 'Facture / reçu', apply: p => { p.filter = 'doc'; p.cleanup = { enabled: true, strength: .65, denoise: true, sharpen: true, illumination: true }; } },
+  carte: { label: 'Carte de visite', apply: p => { p.filter = 'vivid'; p.cleanup = { enabled: true, strength: .3, denoise: true, sharpen: true, illumination: true }; p.adj = { b: 1.02, c: 1.12 }; } },
+  tableau: { label: 'Tableau blanc', apply: p => { p.filter = 'shadow'; p.cleanup = { enabled: true, strength: .45, denoise: true, sharpen: true, illumination: true }; } },
+  admin: { label: 'Document administratif', apply: p => { p.filter = 'doc'; p.cleanup = { enabled: true, strength: .4, denoise: true, sharpen: true, illumination: true }; } },
+  photo: { label: 'Photo / couleur', apply: p => { p.filter = 'vivid'; p.cleanup = null; } }
+};
+function openScanModes() {
+  const d = App.draft, p = d && d.pages[d.active]; if (!p) return;
+  const s = openSheet({ title: 'Modes de numérisation', sub: 'Applique un préréglage réel à la page active. Le mode livre avec correction de courbure n’est pas disponible.', body: `<div class="sheet-list">${Object.entries(SCAN_MODES).map(([k,v])=>`<button data-mode="${k}"><span class="grow">${v.label}</span>${ICON('i-chevron','ico sm')}</button>`).join('')}</div>`, actions: [{ label: 'Fermer', cls: 'ghost' }] });
+  $$('[data-mode]', s).forEach(b => b.addEventListener('click', async () => { SCAN_MODES[b.dataset.mode].apply(p); p.thumb = await ImageOps.thumb(await ImageOps.render(p,{maxPx:400}).then(c=>c.toDataURL('image/jpeg',.7))); closeSheet(); renderEditor(); toast('Mode appliqué : ' + SCAN_MODES[b.dataset.mode].label, 'ok'); }));
+}
+async function findDraftDuplicates() {
+  const d = App.draft; if (!d || d.pages.length < 2) { toast('Ajoutez au moins deux pages pour détecter les doublons'); return; }
+  busyBar(true);
+  const fps = [];
+  for (const p of d.pages) fps.push(await Vision.fingerprint(p.src));
+  busyBar(false);
+  const pairs = [];
+  for (let i=0;i<fps.length;i++) for (let j=i+1;j<fps.length;j++) { const dist = Vision.hamming(fps[i].bits, fps[j].bits); if (dist <= 10) pairs.push({ i, j, dist }); }
+  const s = openSheet({ title: 'Pages en double', sub: pairs.length ? 'Pages visuellement très proches détectées. Vérifiez avant suppression.' : 'Aucune page en double détectée.', body: pairs.length ? pairs.map(x=>`<div class="row" style="justify-content:space-between;padding:8px 0"><span>Page ${x.i+1} ≈ Page ${x.j+1} <span class="tiny muted">(distance ${x.dist})</span></span><button class="btn xs danger" data-del-dup="${x.j}">Supprimer la page ${x.j+1}</button></div>`).join('') : '<p class="small muted">Les empreintes perceptuelles des pages ne correspondent pas.</p>', actions: [{ label: 'Fermer', cls: 'ghost' }] });
+  $$('[data-del-dup]', s).forEach(b => b.addEventListener('click', () => { const idx=+b.dataset.delDup; d.pages.splice(idx,1); d.active=clamp(d.active,0,d.pages.length-1); closeSheet(); renderEditor(); toast('Page en double supprimée', 'ok'); }));
+}
+async function answerLocalAssistant() {
+  const q = ($('#aiAsk') || {}).value || ''; const doc = App.doc; if (!doc) return;
+  const out = $('#aiAnswer'); if (!out) return;
+  const text = doc.text || ''; const low = q.toLowerCase();
+  if (!text.trim()) { out.innerHTML = 'Lancez d’abord l’OCR : l’assistant local travaille uniquement sur le texte réellement extrait.'; return; }
+  if (/tradu|translate|anglais|english/.test(low)) { out.innerHTML = '<b>Traduction non disponible localement.</b> Elle nécessiterait un service distant avec consentement explicite ; aucun texte n’a été envoyé.'; return; }
+  if (/facture|numéro|numero|montant|tva|total/.test(low)) { const inv = AI.extractInvoice(text); out.innerHTML = `<b>Extraction facture locale :</b><br>` + Object.entries(inv).filter(([k])=>k!=='disclaimer').map(([k,v])=>`${escapeHtml(k)} : ${escapeHtml(v)}`).join('<br>'); return; }
+  if (/date|échéance|echeance/.test(low)) { const e = AI.entities(text); out.innerHTML = '<b>Dates détectées :</b> ' + escapeHtml(e.dates.join(', ') || 'Non détecté'); return; }
+  if (/résume|resume|synthèse|synthese/.test(low)) { out.innerHTML = '<b>Résumé local extractif :</b><br>' + escapeHtml(AI.summary(text)); return; }
+  if (/classe|type|catégorie|categorie/.test(low)) { const c = AI.classify(text); out.innerHTML = `<b>Classification locale :</b> ${escapeHtml(c.label)} (confiance estimée ${c.confidence} %)`; return; }
+  const hits = AI.search(text, q.replace(/^(trouve|recherche|cherche|où est|ou est)\s+/i,''));
+  out.innerHTML = hits.length ? hits.slice(0,5).map(h=>`…${escapeHtml(h.before)}<b>${escapeHtml(h.match)}</b>${escapeHtml(h.after)}…`).join('<br><br>') : 'Aucun passage correspondant trouvé dans le texte OCR.';
+}
+
 /* ---------------------------------------------- exports texte / facture -- */
 async function makeDocxBlob(text, title = 'Document ScanPro AI') {
   if (typeof JSZip === 'undefined') throw new Error('JSZip indisponible pour le DOCX');
@@ -1972,6 +2031,7 @@ document.addEventListener('click', (e) => {
 /* =================================================================== INIT == */
 async function init() {
   Settings.load();
+  document.documentElement.dataset.theme = Settings.get('theme') || 'light';
   await Store.open();
   App.docs = await Repo.list();
   if (!location.hash) { try { history.replaceState({ route: 'home' }, '', '#home'); } catch (e) {} }
