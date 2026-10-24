@@ -1616,6 +1616,7 @@ const Acc = {
       invoiceNumber: F(numLabeled || numPattern, numLabeled ? 90 : 72),
       issueDate: F(issueDate, issueDate ? 88 : 0),
       dueDate: F(dueDate, dueDate ? 85 : 0),
+      validityDate: F(labeled(/(?:validité|valable jusqu['’]au|date de validité)\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/i), 80),
       orderRef: F(orderRef, orderRef ? 85 : 0),
       paymentTerms: F(paymentTerms, paymentTerms ? 70 : 0),
       deposit: F(deposit != null ? String(deposit) : '', 75),
@@ -1811,6 +1812,53 @@ const Acc = {
   toTableCsv(headers, rows) {
     const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     return [headers, ...rows].map(r => r.map(esc).join(';')).join('\n');
+  },
+  extractExpenses(text, pagesWords) {
+    const t = String(text || '');
+    const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
+    const cats = [[/train|sncf|taxi|avion|transport|péage|peage|parking/i, 'Transport'], [/hôtel|hotel|hébergement|hebergement|nuit/i, 'Hébergement'], [/restaurant|repas|déjeuner|dejeuner|dîner/i, 'Repas'], [/carburant|essence|gasoil|diesel/i, 'Carburant'], [/fourniture|bureau|logiciel|abonnement/i, 'Fournitures']];
+    const amountRe = /-?\(?[\d]{1,3}(?:[ ][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    const rows = [];
+    for (const l of lines) {
+      if (/^total|note de frais|salarié|date|libellé/i.test(l)) continue;
+      const amounts = [...l.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null);
+      if (!amounts.length) continue;
+      const dm = l.match(/^(\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?)\s+/);
+      let label = l.replace(amountRe, ' ').replace(/^(\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?)\s+/, '').replace(/\s{2,}/g, ' ').trim();
+      if (!label || label.length < 2) continue;
+      const cat = (cats.find(([re]) => re.test(label)) || [])[1] || 'Divers';
+      rows.push({ date: dm ? dm[1] : '', label, category: cat, amount: amounts[amounts.length - 1], vat: amounts.length >= 2 ? amounts[amounts.length - 2] : null, confidence: 60 });
+    }
+    const total = (() => { const m = t.match(/total[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i); return m ? Acc.parseAmount(m[1]) : null; })();
+    const sum = Math.round(rows.reduce((s, r) => s + (r.amount || 0), 0) * 100) / 100;
+    const controls = [];
+    if (total != null && rows.length) controls.push({ label: 'Somme des justificatifs vs total de la note', ok: Math.abs(sum - total) <= 0.05, detail: `Justificatifs reconnus : ${sum} · Total reconnu : ${total}`, recalculated: sum });
+    const F = (v, c) => ({ value: v == null || v === '' ? Acc.NR : v, confidence: v == null || v === '' ? 0 : c, page: 0, zone: null, status: v ? 'reconnu' : 'non-reconnu' });
+    const fields = { employee: F((t.match(/(?:salarié|collaborateur|nom)\s*[:\-]\s*(.+)/i) || [])[1] || '', 75), expenseTotal: F(total != null ? String(total) : '', 85), expenseCount: F(rows.length ? String(rows.length) : '', 90), currency: F(/€|EUR/.test(t) ? 'EUR' : '', 80) };
+    return { docType: 'note_frais', kind: 'expenses', fields, expenseRows: rows, controls, disclaimer: "Note de frais reconnue localement : catégories proposées par mots-clés, à vérifier avant remboursement." };
+  },
+  journalEntries(data, docMeta = {}) {
+    // Écritures proposées (comptes PCG usuels, À VÉRIFIER par le comptable).
+    const num = (k) => { const f = (data.fields || {})[k]; const n = f ? Acc.parseAmount(f.value) : null; return n; };
+    const ht = num('totalHT'), vat = num('vatAmount'), ttc = num('totalTTC');
+    if (ht == null || ttc == null) return null;
+    const vatAmt = vat != null ? vat : Math.round((ttc - ht) * 100) / 100;
+    const date = (data.fields.issueDate && data.fields.issueDate.value !== Acc.NR) ? data.fields.issueDate.value : '';
+    const party = (data.fields.supplier && data.fields.supplier.value !== Acc.NR) ? data.fields.supplier.value : 'Non reconnu';
+    const isSale = data.docType === 'facture_vente';
+    const sign = ttc < 0 ? -1 : 1;
+    const A = (n) => Math.round(Math.abs(n) * sign * 100) / 100;
+    const rows = isSale ? [
+      { date, journal: 'VT', account: '411000', label: 'Client ' + party, debit: A(ttc), credit: 0 },
+      { date, journal: 'VT', account: '706000', label: 'Ventes / prestations', debit: 0, credit: A(ht) },
+      { date, journal: 'VT', account: '445710', label: 'TVA collectée', debit: 0, credit: A(vatAmt) }
+    ] : [
+      { date, journal: 'AC', account: '607000', label: 'Achats / charges', debit: A(ht), credit: 0 },
+      { date, journal: 'AC', account: '445660', label: 'TVA déductible', debit: A(vatAmt), credit: 0 },
+      { date, journal: 'AC', account: '401000', label: 'Fournisseur ' + party, debit: 0, credit: A(ttc) }
+    ];
+    const sd = Math.round(rows.reduce((s, r) => s + r.debit, 0) * 100) / 100, sc = Math.round(rows.reduce((s, r) => s + r.credit, 0) * 100) / 100;
+    return { rows, balanced: Math.abs(sd - sc) <= 0.01, totalDebit: sd, totalCredit: sc, warning: 'Comptes proposés (607/44566/401 ou 411/706/44571) : à adapter au plan comptable du dossier. Écriture générée localement, non validée par un expert-comptable.' };
   },
   extractBank(text, pagesWords) {
     const t = String(text || '');
@@ -2235,6 +2283,7 @@ Object.assign(Actions, {
   'acc-save': () => accSave(App.accDocId),
   'acc-export': (el) => accExport(App.accDocId, el.dataset.fmt),
   'acc-zone': (el) => accShowZone(el),
+  'acc-analyze-all': () => accAnalyzeAll(),
   'acc-open-doc': async () => { if (App.accDocId) { App.detailTab = 'preview'; go('detail', App.accDocId); } },
   'doc-rename': () => docRename(App.doc.id),
   'doc-delete': () => docDelete(App.doc.id),
@@ -2539,6 +2588,7 @@ async function accAnalyze(docId) {
   else if (effType === 'bilan' || effType === 'compte_resultat') data = Acc.extractFinancial(doc.text, effType, pagesWords);
   else if (effType === 'pret_echeancier' || effType === 'amort_emprunt') data = Acc.extractLoan(doc.text, pagesWords);
   else if (effType === 'amort_immobilisation') data = Acc.extractAssets(doc.text, pagesWords);
+  else if (effType === 'note_frais') data = Acc.extractExpenses(doc.text, pagesWords);
   else data = Acc.extractInvoice(doc.text, pagesWords);
   data.requestedType = effType;
   if (!data.fields) data.fields = {};
@@ -2613,6 +2663,13 @@ async function accExport(docId, fmt) {
   const data = await accReadForm(doc);
   const base = slugify(doc.name) + '-comptabilite';
   try {
+    if (fmt === 'entries') {
+      const j = Acc.journalEntries(data, doc);
+      if (!j) { toast("Totaux HT/TTC insuffisants pour générer des écritures équilibrées", 'err', 5000); return; }
+      const csvE = ['Date;Journal;Compte;Libellé;Débit;Crédit', ...j.rows.map(r => [r.date, r.journal, r.account, '"' + String(r.label).replace(/"/g, '""') + '"', String(r.debit).replace('.', ','), String(r.credit).replace('.', ',')].join(';'))].join('\n');
+      downloadBlob(new Blob(['\ufeff' + csvE], { type: 'text/csv;charset=utf-8' }), base + '-ecritures.csv');
+      toast('Écritures proposées exportées (à vérifier) — équilibrées : ' + (j.balanced ? 'oui' : 'NON'), j.balanced ? 'ok' : 'err', 5000); return;
+    }
     if (fmt === 'csv') downloadBlob(new Blob(['\ufeff' + ((data.transactions && data.transactions.length) ? Acc.toBankCsv(data) : (data.statementRows && data.statementRows.length) ? Acc.toFinancialCsv(data) : (data.scheduleRows && data.scheduleRows.length) ? Acc.toTableCsv(['Date','Échéance totale','Capital remboursé','Intérêts','Assurance','Capital restant dû (reconnu)','Capital restant (recalculé)','Confiance %'], data.scheduleRows.map(r => [r.date, r.total, r.capital, r.interest, r.insurance, r.remaining, r.computedRemaining ?? '', r.confidence])) : (data.assetRows && data.assetRows.length) ? Acc.toTableCsv(['Immobilisation','Valeur d\'origine','Date de mise en service','Durée (ans)','Taux %','Dotation annuelle','Amortissements cumulés','Valeur nette comptable'], data.assetRows.map(r => [r.label, r.originalValue, r.serviceDate, r.durationYears, r.rate, r.annualDepreciation, r.accumulated, r.netBookValue])) : Acc.toCsv(data))], { type: 'text/csv;charset=utf-8' }), base + '.csv');
     else if (fmt === 'json') downloadBlob(new Blob([JSON.stringify({ document: doc.name, exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: 'application/json' }), base + '.json');
     else if (fmt === 'xlsx') downloadBlob(await accXlsxBlob(doc, data), base + '.xlsx');
@@ -2669,6 +2726,32 @@ async function accXlsxBlob(doc, data) {
   rows.push([]); rows.push(['Taux TVA %', 'Montant TVA']);
   for (const v of data.vat || []) rows.push([v.rate, v.amount]);
   return accBuildXlsx(rows, esc);
+}
+async function accAnalyzeAll() {
+  let done = 0, skipped = 0;
+  for (const meta of (App.docs || [])) {
+    const doc = await Repo.doc(meta.id);
+    if (!doc || !doc.text || !doc.text.trim()) { skipped++; continue; }
+    if (doc.acc) { skipped++; continue; }
+    const pagesWords = await accLoadPagesWords(doc);
+    const type = Acc.classifyType(doc.text).type;
+    let data;
+    if (type === 'releve_bancaire') data = Acc.extractBank(doc.text, pagesWords);
+    else if (type === 'bulletin_salaire') data = Acc.extractPayroll(doc.text, pagesWords);
+    else if (type === 'bilan' || type === 'compte_resultat') data = Acc.extractFinancial(doc.text, type, pagesWords);
+    else if (type === 'pret_echeancier' || type === 'amort_emprunt') data = Acc.extractLoan(doc.text, pagesWords);
+    else if (type === 'amort_immobilisation') data = Acc.extractAssets(doc.text, pagesWords);
+    else if (type === 'note_frais') data = Acc.extractExpenses(doc.text, pagesWords);
+    else data = Acc.extractInvoice(doc.text, pagesWords);
+    if (!data.fields) data.fields = {};
+    if (!data.fields.docType) data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === data.docType) || [])[1] || data.docType, confidence: 60, page: 0, zone: null, status: 'reconnu' };
+    doc.acc = { version: 2, at: Date.now(), edited: false, data };
+    doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Analyse comptable en lot' });
+    await Repo.update(doc); done++;
+  }
+  App.docs = await Repo.list();
+  await render();
+  toast(done + ' document(s) analysé(s), ' + skipped + ' ignoré(s) (déjà analysés ou sans OCR)', 'ok', 5000);
 }
 async function accShowZone(el) {
   const doc = await Repo.doc(App.accDocId);
