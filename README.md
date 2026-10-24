@@ -1,11 +1,11 @@
-# ScanPro AI — V2.3 (Nettoyage magique, modes et assistant local)
+# ScanPro AI — V2.4 (sauvegarde, bibliothèque pro et PDF)
 
 Scanner de documents pour Android (web app installable) : caméra, **détection automatique des
 contours**, **correction de perspective**, redressement, recadrage, filtres avancés,
 **OCR réel français/anglais**, texte éditable, **export PDF**, fusion de PDF, OCR des PDF importés,
 assistant local — **100 % sur l'appareil, sans compte ni serveur**.
 
-**Versions** — V2 : `docs/V2-NOUVEATURES.md` · V2.1 : `docs/V2.1-NOUVEATURES.md` · V2.2 : `docs/V2.2-NOUVEATURES.md` · V2.3 : `docs/V2.3-NOUVEATURES.md`.
+**Versions** — V2 : `docs/V2-NOUVEATURES.md` · V2.1 : `docs/V2.1-NOUVEATURES.md` · V2.2 : `docs/V2.2-NOUVEATURES.md` · V2.3 : `docs/V2.3-NOUVEATURES.md` · V2.4 : `docs/V2.4-NOUVEATURES.md`.
 
 👉 **Tester maintenant :** ouvrez la prévisualisation live du workspace (dossier `scanpro`),
 ou `docs/GUIDE-TEST.md` pour la procédure pas à pas sur téléphone.
@@ -86,3 +86,5 @@ python3 build.py        # src/ -> index.html
 Aucune clé API n'est présente dans le code. Aucun document n'est transmis à un serveur.
 Licences des composants tiers : Tesseract.js (Apache-2.0), jsPDF (MIT), pdf-lib (MIT),
 pdf.js (Apache-2.0), JSZip (MIT/GPLv3).
+
+- V2.4 `tests/e2e-v24.mjs` : **8/8 OK** (sauvegarde/restauration ZIP, doublons de documents, sélection multiple, tri)

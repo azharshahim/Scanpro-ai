@@ -27,7 +27,7 @@ const App = {
   param: null,
   docs: [],            // métadonnées
   search: '',
-  docFilter: 'all',
+  docFilter: 'all', docSort: 'date-desc', selectionMode: false, selectedDocs: new Set(),
   draft: null,         // {docId?, name, pages:[{id,src,crop,rotate,filter}], active, cropMode, cropRect}
   doc: null,           // document ouvert
   docPages: [],
@@ -299,7 +299,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.3.0'
+  version: '2.4.0'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */
