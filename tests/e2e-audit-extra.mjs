@@ -10,7 +10,7 @@ const errors=[]; const failed=[]; const external=new Set();
 page.on('console', m=>{ if(m.type()==='error') errors.push(m.text()); });
 page.on('pageerror', e=>errors.push(e.message));
 page.on('requestfailed', r=>failed.push(r.url()));
-page.on('request', r=>{ const u=new URL(r.url()); if(!['127.0.0.1','localhost'].includes(u.hostname) && !r.url().startsWith('blob:') && !r.url().startsWith('data:')) external.add(u.origin); });
+page.on('request', r=>{ if(r.url().startsWith('blob:')||r.url().startsWith('data:')) return; const u=new URL(r.url()); if(u.origin!==new URL(APPURL).origin) external.add(u.origin); });
 await page.goto(APPURL,{waitUntil:'networkidle'}).catch(()=>page.goto(APPURL));
 await page.waitForTimeout(1500);
 const title = await page.locator('body').innerText().catch(()=> '');
