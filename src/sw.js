@@ -1,6 +1,6 @@
 /* ScanPro AI — service worker : app + bibliothèques + pack de langue en cache
    pour un fonctionnement hors-ligne après la première visite. */
-const CACHE = 'scanpro-ai-v2.12.0';
+const CACHE = 'scanpro-ai-v2.12.1';
 const ASSETS = [
   './', './manifest.webmanifest', './assets/icon.svg',
   './vendor/tesseract.min.js', './vendor/tesseract-worker.min.js',
@@ -14,12 +14,28 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).catch(() => {}).then(() => self.skipWaiting()));
+  // Mise en cache ressource par ressource : un échec est enregistré et signalé,
+  // jamais ignoré silencieusement. L'état est lisible par l'application (cache meta).
+  e.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    const failed = [];
+    for (const asset of ASSETS) {
+      try { await cache.add(asset); } catch (err) { failed.push(asset); }
+    }
+    try {
+      const meta = await caches.open('scanpro-ai-meta');
+      await meta.put('./__offline_status', new Response(JSON.stringify({ cache: CACHE, at: Date.now(), failed, complete: failed.length === 0 }), { headers: { 'Content-Type': 'application/json' } }));
+    } catch (err) {}
+    const clients = await self.clients.matchAll();
+    clients.forEach(c => c.postMessage({ type: 'scanpro-offline-status', complete: failed.length === 0, failed }));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (e) => {
+  // Ne supprimer QUE les caches ScanPro AI (l'origine GitHub Pages peut héberger d'autres applications).
   e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
+    Promise.all(keys.filter(k => k.startsWith('scanpro-ai-') && k !== CACHE && k !== 'scanpro-ai-meta').map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', (e) => {

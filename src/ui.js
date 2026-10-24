@@ -2861,10 +2861,37 @@ document.addEventListener('click', (e) => {
 
 /* =================================================================== INIT == */
 async function init() {
+  window.__scanproBackupExport = () => exportLibraryBackup();
   Settings.load();
   document.documentElement.dataset.theme = Settings.get('theme') || 'light';
   await Store.open();
+  if (Store.isFallback || Store._writeError) Store._notifyStorage();
   App.docs = await Repo.list();
+  // Service worker : vérifier activement les mises à jour et signaler l'état hors-ligne
+  if ('serviceWorker' in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        reg.update().catch(() => {});
+        reg.addEventListener('updatefound', () => {
+          const w = reg.installing;
+          if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) toast('Nouvelle version de ScanPro AI disponible : rechargez la page pour l\'appliquer.', 'ok', 7000); });
+        });
+      }
+      // Complétude du cache hors-ligne : informer clairement si incomplet
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        const ours = keys.filter(k => k.startsWith('scanpro-ai-'));
+        if (ours.length) {
+          const cache = await caches.open(ours[ours.length - 1]);
+          const needed = ['./', './vendor/tesseract.min.js', './vendor/jspdf.umd.min.js', './vendor/lang/fra.traineddata.gz'];
+          const missing = [];
+          for (const n of needed) { const hit = await cache.match(n, { ignoreSearch: true }); if (!hit) missing.push(n); }
+          if (missing.length) toast('Mode hors-ligne incomplet (' + missing.length + ' ressource(s) manquante(s)) : restez en ligne puis rechargez la page pour compléter le cache.', 'err', 8000);
+        }
+      }
+    } catch (e) {}
+  }
   if (!location.hash) { try { history.replaceState({ route: 'home' }, '', '#home'); } catch (e) {} }
   await go('home', null, { push: false });
   App.ready = true;

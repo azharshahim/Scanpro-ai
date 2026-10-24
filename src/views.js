@@ -216,8 +216,8 @@ async function viewSettings() {
   </header>
   <div class="content">
     <div class="banner ok">${ICON('i-shield', 'ico sm')}
-      <span><b>Aucun envoi vers un serveur.</b> Les images, le texte et les PDF restent dans le stockage
-      du navigateur sur cet appareil. Aucun compte n'est requis.</span></div>
+      <span><b>Aucun document n'est envoyé à un serveur.</b> Images, textes OCR et PDF restent sur cet appareil, sans compte.
+      Seules les bibliothèques et modèles OCR publics peuvent être téléchargés depuis le CDN jsDelivr si les fichiers locaux sont bloqués par l'hébergeur — aucun document n'est transmis dans ce cas.</span></div>
 
     <div class="set-group">
       <h3>Reconnaissance de texte</h3>
@@ -296,9 +296,9 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.12.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.12.1 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
-      100 % hors-ligne après le premier chargement<br>
+      Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
     </div>
   </div>`;

@@ -1,9 +1,9 @@
-# ScanPro AI — V2.7 (import droit corrigé, Scan central, partages)
+# ScanPro AI — V2.12.1 (scanner + espace Comptabilité local)
 
 Scanner de documents pour Android (web app installable) : caméra, **détection automatique des
 contours**, **correction de perspective**, redressement, recadrage, filtres avancés,
 **OCR réel français/anglais**, texte éditable, **export PDF**, fusion de PDF, OCR des PDF importés,
-assistant local — **100 % sur l'appareil, sans compte ni serveur**.
+assistant local et **espace Comptabilité** (factures, relevés, paie, états, prêts) — **traitement sur l'appareil, sans compte** (voir confidentialité ci-dessous).
 
 **Versions** — V2 : `docs/V2-NOUVEATURES.md` · V2.1 : `docs/V2.1-NOUVEATURES.md` · V2.2 : `docs/V2.2-NOUVEATURES.md` · V2.3 : `docs/V2.3-NOUVEATURES.md` · V2.4 : `docs/V2.4-NOUVEATURES.md`.
 
@@ -34,6 +34,11 @@ persistance, recherche, paramètres, zéro erreur console/réseau).
 Les modèles OCR et bibliothèques sont servis localement (`vendor/`). Si un hébergeur bloque les
 fichiers binaires lourds, l'app bascule automatiquement sur le CDN jsDelivr du dépôt (tag `v1.0.0`,
 fichiers immuables) — et instancie alors le Worker OCR via Blob pour rester compatible CORS.
+**Confidentialité précise :** ce repli ne télécharge que du code et des modèles publics ; aucun
+document, image, PDF ou texte OCR n'est jamais transmis à un serveur. En revanche, l'application
+n'est « entièrement autonome » qu'une fois ces fichiers locaux chargés et mis en cache ; si
+IndexedDB est indisponible (navigation privée), un avertissement persistant s'affiche et les
+documents ne sont conservés qu'en mémoire. Comptabilité : voir `docs/RAPPORT-AUDIT-COMPTABLE.md`.
 
 ## Démarrage rapide
 
@@ -48,7 +53,7 @@ python3 -m http.server 8080 --bind 0.0.0.0
 | Fichier / dossier | Rôle |
 |---|---|
 | `index.html` | **Application complète** (CSS + JS inlinés, segments lisibles) |
-| `vendor/` | Tesseract.js + moteur WASM + modèles `fra`/`eng`, jsPDF, pdf-lib, pdf.js, JSZip |
+| `vendor/` | Tesseract.js + moteur WASM + modèles OCR `fra/eng/spa/deu/ita/por`, jsPDF, pdf-lib, pdf.js, JSZip |
 | `sw.js`, `manifest.webmanifest` | Cache hors-ligne et installation sur l'écran d'accueil Android |
 | `src/` | Sources séparées : `style.css`, `core.js`, `vision.js` (V2), `app.js`, `views.js`, `ui.js`, `shell.html` |
 | `build.py` | Réassemble `index.html` depuis `src/` |
