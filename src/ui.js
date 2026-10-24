@@ -221,7 +221,7 @@ async function capturePhoto(opts = {}) {
   if (navigator.vibrate) navigator.vibrate(18);
 }
 
-async function addPageFromDataUrl(src, { detect = true } = {}) {
+async function addPageFromDataUrl(src, { detect = true, source = 'camera' } = {}) {
   const norm = await normalizeSource(src);
   const page = {
     id: uid('pg'), src: norm, crop: { x: 0, y: 0, w: 1, h: 1 }, rotate: 0,
@@ -234,13 +234,14 @@ async function addPageFromDataUrl(src, { detect = true } = {}) {
     try {
       const canvas = await ImageOps.render(page, { maxPx: 1200, skipQuad: true });
       const det = Vision.detectQuad(canvas);
-      if (det && Vision._quadValid(det.quad)) {
+      if (det && Vision.acceptQuad(det, source)) {
         page.quad = det.quad;
         page.detected = true;
-        // redressement estimé sur l'image redressée
+        // redressement seulement si le gain d'alignement est net (évite de pivoter un document déjà droit)
         try {
           const warped = Vision.warp(canvas, det.quad, { maxPx: 900 });
-          page.deskew = Vision.deskewAngle(warped);
+          const est = Vision.deskewAngleDetailed(warped);
+          page.deskew = (Math.abs(est.angle) >= 1 && est.improvement >= 0.15) ? est.angle : 0;
         } catch (e) { page.deskew = 0; }
       }
     } catch (e) { console.warn('[ScanPro] détection', e); }
@@ -271,7 +272,7 @@ async function importImagesToDraft(files) {
   for (const f of files) {
     try {
       const { dataUrl } = await ImageOps.fileToDataUrl(f, 2400, 0.9);
-      await addPageFromDataUrl(dataUrl);
+      await addPageFromDataUrl(dataUrl, { source: 'import' });
       added++;
     } catch (e) {
       toast(e.message || 'Import impossible', 'err');
@@ -1114,6 +1115,50 @@ async function editorOcr() {
   });
 }
 
+/* ------------------------------------------- partage Word / Excel / Texte -- */
+async function makeXlsxBlob(doc) {
+  if (typeof JSZip === 'undefined') throw new Error('JSZip indisponible pour Excel');
+  const esc = (x) => String(x ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inv = doc.text && /facture|total|tva/i.test(doc.text) ? AI.extractInvoice(doc.text) : null;
+  let rows;
+  if (inv) rows = [['Champ','Valeur'], ...Object.entries(inv).filter(([k])=>k!=='disclaimer').map(([k,v])=>[k,v])];
+  else rows = [['Document', doc.name], ['Texte reconnu',''], ...String(doc.text||'').split('\n').map(l=>[l])];
+  const sheet = rows.map((r,i)=>`<row r="${i+1}">${r.map((c,j)=>`<c r="${String.fromCharCode(65+j)}${i+1}" t="inlineStr"><is><t xml:space="preserve">${esc(c)}</t></is></c>`).join('')}</row>`).join('');
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+  zip.folder('_rels').file('.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  zip.folder('xl').file('workbook.xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Document" sheetId="1" r:id="rId1"/></sheets></workbook>');
+  zip.folder('xl').folder('_rels').file('workbook.xml.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
+  zip.folder('xl').folder('worksheets').file('sheet1.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheet}</sheetData></worksheet>`);
+  return zip.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+async function shareDocumentAs(docId, format) {
+  const doc = await Repo.doc(docId); if (!doc) return;
+  try {
+    busyBar(true);
+    let blob, filename;
+    if (format === 'pdf') { const built = await buildDocPdf(doc); blob = built.blob; filename = pdfName(doc); }
+    else {
+      if (!doc.text || !doc.text.trim()) { busyBar(false); toast('Aucun texte OCR : lancez d’abord l’extraction du texte pour partager en Word, Excel ou Texte.', 'err', 6000); App.detailTab='text'; await render(); return; }
+      if (format === 'docx') { blob = await makeDocxBlob(doc.text, doc.name); filename = slugify(doc.name)+'.docx'; }
+      else if (format === 'xlsx') { blob = await makeXlsxBlob(doc); filename = slugify(doc.name)+'.xlsx'; }
+      else { blob = new Blob([doc.text], {type:'text/plain;charset=utf-8'}); filename = slugify(doc.name)+'.txt'; }
+    }
+    busyBar(false);
+    try { await shareFile(blob, filename, doc.name); toast('Partage ouvert : ' + filename, 'ok'); }
+    catch (e) { downloadBlob(blob, filename); toast('Partage direct indisponible : fichier téléchargé ('+filename+')', 'ok', 5000); }
+  } catch (e) { busyBar(false); toast('Partage impossible : ' + e.message, 'err', 6000); }
+}
+function openShareSheet(docId) {
+  const doc = App.doc && App.doc.id===docId ? App.doc : App.docs.find(d=>d.id===docId);
+  const s = openSheet({ title:'Partager le document', sub:'Choisissez le format. Word, Excel et Texte utilisent le texte OCR ; lancez l’OCR si nécessaire.', body:`<div class="sheet-list">
+    <button data-share-fmt="pdf">${ICON('i-pdf')}<span class="grow">PDF</span></button>
+    <button data-share-fmt="docx">${ICON('i-file')}<span class="grow">Word (.docx)</span></button>
+    <button data-share-fmt="xlsx">${ICON('i-grid')}<span class="grow">Excel (.xlsx)</span></button>
+    <button data-share-fmt="txt">${ICON('i-text')}<span class="grow">Texte (.txt)</span></button></div>`, actions:[{label:'Annuler',cls:'ghost'}] });
+  $$('[data-share-fmt]', s).forEach(b=>b.addEventListener('click',()=>{ const f=b.dataset.shareFmt; closeSheet(); setTimeout(()=>shareDocumentAs(docId,f),30); }));
+}
+
 /* ====================================================== ACTIONS DOCUMENTS = */
 async function openDocMenu(id) {
   const doc = App.docs.find(d => d.id === id) || await Repo.doc(id);
@@ -1136,7 +1181,7 @@ async function openDocMenu(id) {
   const bind = (act, fn) => $(`[data-act="${act}"]`, s).addEventListener('click', () => { closeSheet(); setTimeout(fn, 10); });
   bind('doc-open', () => { App.detailTab = 'preview'; go('detail', doc.id); });
   bind('doc-download', () => docDownloadPdf(doc.id));
-  bind('doc-share', () => docSharePdf(doc.id));
+  bind('doc-share', () => openShareSheet(doc.id));
   bind('doc-print-sheet', () => docPrint(doc.id));
   bind('doc-images', () => docExportImages(doc.id));
   bind('doc-rename-sheet', () => docRename(doc.id));
@@ -1769,7 +1814,8 @@ Object.assign(Actions, {
   'preview-prev': async () => { App.detailPage = Math.max(0, App.detailPage - 1); await render(); showFullPreview(); },
   'preview-next': async () => { App.detailPage = Math.min(App.docPages.length - 1, App.detailPage + 1); await render(); showFullPreview(); },
   'doc-pdf-download': () => docDownloadPdf(App.doc.id),
-  'doc-share-pdf': () => docSharePdf(App.doc.id),
+  'doc-share-pdf': () => openShareSheet(App.doc.id),
+  'doc-share-as': (el) => shareDocumentAs(App.doc.id, el.dataset.fmt),
   'doc-print': () => docPrint(App.doc.id),
   'doc-export-images': () => docExportImages(App.doc.id),
   'doc-ocr': () => docRunOcr(App.doc.id),

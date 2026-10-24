@@ -368,7 +368,18 @@ const Vision = {
   /* ---------------------------------------------------------------- deskew -- */
 
   /** Angle (degrés) qui redresse le mieux les lignes de texte, ou 0. */
-  deskewAngle(canvas, { maxAngle = 10, step = 0.5 } = {}) {
+  acceptQuad(det, source = 'camera') {
+    if (!det || !det.quad || !this._quadValid(det.quad)) return false;
+    const q = det.quad, area = det.areaFrac || this.quadArea(q);
+    const lim = source === 'import' ? 0.32 : 0.48;
+    const cornersNear = q.tl.x <= lim && q.tl.y <= lim && q.tr.x >= 1-lim && q.tr.y <= lim && q.br.x >= 1-lim && q.br.y >= 1-lim && q.bl.x <= lim && q.bl.y >= 1-lim;
+    if (!cornersNear) return false;
+    if (source === 'import' && (area < 0.50 || area > 0.985)) return false;
+    if (source !== 'import' && (area < 0.28 || area > 0.99)) return false;
+    return true;
+  },
+  deskewAngle(canvas, opts = {}) { return this.deskewAngleDetailed(canvas, opts).angle; },
+  deskewAngleDetailed(canvas, { maxAngle = 10, step = 0.5 } = {}) {
     try {
       const { g, w, h } = this._gray(canvas, 480);
       const hist = new Uint32Array(256);
@@ -378,10 +389,10 @@ const Vision = {
       const bin = new Uint8Array(w * h);
       let ink = 0;
       for (let i = 0; i < g.length; i++) if (g[i] < thr) { bin[i] = 1; ink++; }
-      if (ink < w * h * 0.002 || ink > w * h * 0.6) return 0;   // pas de texte net
+      if (ink < w * h * 0.002 || ink > w * h * 0.6) return { angle: 0, improvement: 0, score: 0 };   // pas de texte net
 
       const cx = w / 2, cy = h / 2;
-      let bestAngle = 0, bestScore = -1;
+      let bestAngle = 0, bestScore = -1; const scores = [];
       for (let a = -maxAngle; a <= maxAngle + 1e-9; a += step) {
         const rad = a * Math.PI / 180;
         const cos = Math.cos(rad), sin = Math.sin(rad);
@@ -404,9 +415,13 @@ const Vision = {
         mean /= h;
         let varr = 0;
         for (let y = 0; y < h; y++) { const d2 = rows[y] - mean; varr += d2 * d2; }
+        scores.push({ a, varr });
         if (varr > bestScore) { bestScore = varr; bestAngle = a; }
       }
-      return Math.abs(bestAngle) < 0.6 ? 0 : Math.round(bestAngle * 10) / 10;
+      const zero = scores.reduce((acc, x) => Math.abs(x.a) < Math.abs(acc.a) ? x : acc, scores[0] || { varr: 0 });
+      const improvement = zero.varr > 0 ? (bestScore - zero.varr) / zero.varr : 0;
+      const angle = (Math.abs(bestAngle) < 0.6 || improvement < 0.08) ? 0 : Math.round(bestAngle * 10) / 10;
+      return { angle, improvement, score: bestScore };
     } catch (e) {
       console.warn('[Vision] deskew', e);
       return 0;
