@@ -1,6 +1,6 @@
 /* ScanPro AI — service worker : app + bibliothèques + pack de langue en cache
    pour un fonctionnement hors-ligne après la première visite. */
-const CACHE = 'scanpro-ai-v1';
+const CACHE = 'scanpro-ai-v2.7.1';
 const ASSETS = [
   './', './manifest.webmanifest', './assets/icon.svg',
   './vendor/tesseract.min.js', './vendor/tesseract-worker.min.js',
@@ -8,7 +8,9 @@ const ASSETS = [
   './vendor/tesseract-core-simd-lstm.wasm.js', './vendor/tesseract-core.wasm.js', './vendor/jspdf.umd.min.js',
   './vendor/pdf-lib.min.js', './vendor/pdf.min.js', './vendor/pdf.worker.min.js',
   './vendor/jszip.min.js',
-  './vendor/lang/fra.traineddata.gz', './vendor/lang/eng.traineddata.gz'
+  './vendor/lang/fra.traineddata.gz', './vendor/lang/eng.traineddata.gz',
+  './vendor/lang/spa.traineddata.gz', './vendor/lang/deu.traineddata.gz',
+  './vendor/lang/ita.traineddata.gz', './vendor/lang/por.traineddata.gz'
 ];
 
 self.addEventListener('install', (e) => {

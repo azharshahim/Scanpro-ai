@@ -512,6 +512,18 @@ const Vision = {
     const denoise = opts.denoise !== false;
     const sharpen = opts.sharpen !== false;
     if (opts.illumination !== false) this.shadowRemove(canvas);
+    if (opts.watermark) {
+      const wctx = canvas.getContext('2d', { willReadFrequently: true });
+      const wimg = wctx.getImageData(0, 0, canvas.width, canvas.height); const wd = wimg.data;
+      const wf = 0.55 + strength * 0.4;
+      for (let i = 0; i < wd.length; i += 4) {
+        const mx = Math.max(wd[i], wd[i+1], wd[i+2]), mn = Math.min(wd[i], wd[i+1], wd[i+2]);
+        const lum = 0.299*wd[i] + 0.587*wd[i+1] + 0.114*wd[i+2];
+        // filigrane clair/grisé ou teinté léger : on le pousse vers le blanc, l'encre sombre est préservée
+        if (lum > 100 && (mx - mn) < 70) { wd[i] += (255-wd[i])*wf; wd[i+1] += (255-wd[i+1])*wf; wd[i+2] += (255-wd[i+2])*wf; }
+      }
+      wctx.putImageData(wimg, 0, 0);
+    }
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const W = canvas.width, H = canvas.height;
     if (!W || !H) return canvas;
