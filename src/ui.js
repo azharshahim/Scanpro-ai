@@ -1639,6 +1639,77 @@ const Acc = {
     return { docType: isAvoir ? 'avoir' : cls.type, proposedType: cls, fields, lines: items, vat, controls,
       disclaimer: 'Extraction locale à vérifier champ par champ. Les valeurs recalculées (contrôles) ne remplacent jamais les montants reconnus.' };
   },
+  extractBank(text, pagesWords) {
+    const t = String(text || '');
+    const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
+    const F = (value, confidence) => ({ value: value == null || value === '' ? Acc.NR : value, confidence: value == null || value === '' ? 0 : confidence, page: 0, zone: value ? Acc.findZone(pagesWords, value) : null, status: value ? 'reconnu' : 'non-reconnu' });
+    const labeled = (re) => { for (const l of lines) { const m = l.match(re); if (m && m[1]) return m[1].trim(); } return ''; };
+    const moneyAfter = (re) => { const m = t.match(re); return m ? Acc.parseAmount(m[1]) : null; };
+    const ibanM = t.match(/\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{4}){2,7}(?:[ ]?\d{1,3})?\b/);
+    const iban = ibanM ? ibanM[0].replace(/\s/g, '') : '';
+    const opening = moneyAfter(/solde\s*(?:initial|précédent|precedent|d['’]ouverture|de départ)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    const closing = moneyAfter(/(?:nouveau\s*solde|solde\s*final|solde\s*(?:au|de clôture|de cloture))[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    const currency = /€|EUR/.test(t) ? 'EUR' : (/\$|USD/.test(t) ? 'USD' : '');
+    const creditWords = /vir\s*reçu|vir\s*recu|crédit|credit|remise|salaire|remboursement|versement reçu|encaissement/i;
+    const debitWords = /\bcb\b|carte|prlv|prélèvement|prelevement|vir\s*émis|vir\s*emis|paiement|retrait|chèque|cheque|frais|facture\s*n/i;
+    const amountRe = /-?\(?[\d]{1,3}(?:[ ][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    const transactions = [];
+    for (const l of lines) {
+      const dm = l.match(/^(\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?)\s+(?:(\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?)\s+)?(.+)$/);
+      if (!dm) continue;
+      if (/solde|total|iban|banque|titulaire|relevé|extrait/i.test(l) && !/vir|cb|prlv|paiement/i.test(l)) continue;
+      const rest = dm[3];
+      const amounts = [...rest.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null);
+      if (!amounts.length) continue;
+      let amount, balance = null;
+      if (amounts.length >= 2) { amount = amounts[amounts.length - 2]; balance = amounts[amounts.length - 1]; }
+      else amount = amounts[0];
+      let label = rest.replace(amountRe, ' ').replace(/\s{2,}/g, ' ').replace(/[-–—|:]+$/, '').trim();
+      const refM = rest.match(/(?:réf\.?|ref\.?|référence)\s*[:#]?\s*([A-Z0-9\-\/]{3,30})/i);
+      let debit = null, credit = null, conf = 70, status = 'reconnu';
+      const signed = /-\s?[\d]/.test(rest) || /\([\d ]+[.,]\d{2}\)/.test(rest);
+      if (signed || debitWords.test(label)) debit = Math.abs(amount);
+      else if (creditWords.test(label) || /\+\s?[\d]/.test(rest)) credit = Math.abs(amount);
+      else { status = 'a-verifier'; conf = 40; }
+      const normDate = (d) => { const p = d.replace(/[.\-]/g, '/').split('/'); if (p.length === 3 && p[2].length === 2) p[2] = '20' + p[2]; return p.join('/'); };
+      transactions.push({ date: normDate(dm[1]), valueDate: dm[2] ? normDate(dm[2]) : null, label: label || Acc.NR, reference: refM ? refM[1] : null, debit, credit, balance, page: 0, confidence: conf, status });
+    }
+    // doublons potentiels : même date + même libellé + même montant
+    const seen = new Map(); const duplicates = [];
+    transactions.forEach((tx, i) => {
+      const key = [tx.date, Acc._norm(tx.label), tx.debit ?? tx.credit ?? ''].join('|');
+      if (seen.has(key)) { duplicates.push({ index: i, with: seen.get(key) }); tx.duplicate = true; }
+      else seen.set(key, i);
+    });
+    const sumC = transactions.reduce((s, x) => s + (x.credit || 0), 0);
+    const sumD = transactions.reduce((s, x) => s + (x.debit || 0), 0);
+    const unknown = transactions.filter(x => x.status === 'a-verifier').length;
+    const controls = [];
+    if (opening != null && closing != null) {
+      const calc = Math.round((opening + sumC - sumD) * 100) / 100;
+      controls.push({ label: 'Solde d\'ouverture + crédits − débits = clôture', ok: unknown === 0 && Math.abs(calc - closing) <= 0.05, detail: `Ouverture ${opening} + crédits ${Math.round(sumC * 100) / 100} − débits ${Math.round(sumD * 100) / 100} = ${calc} · Clôture reconnue : ${closing}` + (unknown ? ` · ${unknown} opération(s) sans sens déterminé exclue(s) du calcul` : ''), recalculated: calc });
+    }
+    const lastBal = [...transactions].reverse().find(x => x.balance != null);
+    if (lastBal && closing != null) controls.push({ label: 'Dernier solde de ligne = clôture', ok: Math.abs(lastBal.balance - closing) <= 0.05, detail: `Dernier solde reconnu : ${lastBal.balance} · Clôture : ${closing}`, recalculated: lastBal.balance });
+    if (duplicates.length) controls.push({ label: 'Doublons potentiels', ok: false, detail: duplicates.length + ' opération(s) avec même date, libellé et montant : signalées, jamais supprimées automatiquement.', recalculated: null });
+    if (unknown) controls.push({ label: 'Opérations à vérifier', ok: false, detail: unknown + ' opération(s) sans sens (débit/crédit) déterminé : à classer manuellement.', recalculated: null });
+    const fields = {
+      bank: F(labeled(/(?:banque|établissement|etablissement)\s*[:\-]\s*(.+)$/i), 70),
+      holder: F(labeled(/(?:titulaire|nom du compte|compte de)\s*[:\-]\s*(.+)$/i), 75),
+      iban: F(iban, 90), bic: F(labeled(/\b(?:bic|swift)\s*[:\-]?\s*([A-Z]{6}[A-Z0-9]{2,5})/i), 85),
+      openingBalance: F(opening != null ? String(opening) : '', 85), closingBalance: F(closing != null ? String(closing) : '', 85),
+      currency: F(currency, 80)
+    };
+    return { docType: 'releve_bancaire', kind: 'bank', fields, transactions, duplicates, controls,
+      totals: { credit: Math.round(sumC * 100) / 100, debit: Math.round(sumD * 100) / 100, count: transactions.length },
+      disclaimer: "Relevé reconnu localement. Contrôles de cohérence uniquement : ceci n'est pas un rapprochement bancaire complet (aucune comparaison avec des écritures comptables)." };
+  },
+  toBankCsv(data) {
+    const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const rows = [['Date', 'Date de valeur', 'Libellé', 'Référence', 'Débit', 'Crédit', 'Solde', 'Confiance %', 'À vérifier']];
+    for (const x of data.transactions || []) rows.push([x.date, x.valueDate || '', x.label, x.reference || '', x.debit ?? '', x.credit ?? '', x.balance ?? '', x.confidence, x.status === 'a-verifier' ? 'oui' : '']);
+    return rows.map(r => r.map(esc).join(';')).join('\n');
+  },
   toCsv(data) {
     const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     const rows = [['Type', data.docType || ''], ['Champ', 'Valeur', 'Confiance %', 'Page']];
@@ -2287,7 +2358,8 @@ async function accAnalyze(docId) {
   if (!doc.text || !doc.text.trim()) { toast("Lancez d'abord l'OCR depuis le document (onglet Texte OCR), puis revenez dans Comptabilité.", 'err', 5000); App.accDocId = docId; await render(); return; }
   const pagesWords = await accLoadPagesWords(doc);
   const typeSel = $('#accTypeSel'); const forced = (typeSel && typeSel.value !== 'auto') ? typeSel.value : (App.accType && App.accType !== 'auto' ? App.accType : null);
-  const data = Acc.extractInvoice(doc.text, pagesWords);
+  const autoType = Acc.classifyType(doc.text).type;
+  const data = (forced === 'releve_bancaire' || (!forced && autoType === 'releve_bancaire')) ? Acc.extractBank(doc.text, pagesWords) : Acc.extractInvoice(doc.text, pagesWords);
   if (forced) {
     data.docType = forced;
     data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === forced) || [])[1] || forced, confidence: 100, page: 0, zone: null, status: 'corrige' };
@@ -2309,6 +2381,12 @@ async function accReadForm(doc) {
     if (k !== 'docType' && prev.zone) data.fields[k].zone = prev.zone;
   });
   const sel = $('#accTypeSel'); if (sel) { data.docType = sel.value; data.fields.docType.value = (Acc.TYPES.find(x => x[0] === sel.value) || [])[1] || sel.value; }
+  $$('[data-acc-tx]').forEach(i => {
+    const [idx, field] = i.dataset.accTx.split(':');
+    const x = (data.transactions || [])[+idx]; if (!x) return;
+    x[field] = (field === 'label' || field === 'date' || field === 'valueDate') ? i.value : Acc.parseAmount(i.value);
+    x.status = 'corrige';
+  });
   $$('[data-acc-line]').forEach(i => {
     const [idx, field] = i.dataset.accLine.split(':');
     const l = data.lines[+idx]; if (!l) return;
@@ -2334,26 +2412,17 @@ async function accExport(docId, fmt) {
   const data = await accReadForm(doc);
   const base = slugify(doc.name) + '-comptabilite';
   try {
-    if (fmt === 'csv') downloadBlob(new Blob(['\ufeff' + Acc.toCsv(data)], { type: 'text/csv;charset=utf-8' }), base + '.csv');
+    if (fmt === 'csv') downloadBlob(new Blob(['\ufeff' + ((data.transactions && data.transactions.length) ? Acc.toBankCsv(data) : Acc.toCsv(data))], { type: 'text/csv;charset=utf-8' }), base + '.csv');
     else if (fmt === 'json') downloadBlob(new Blob([JSON.stringify({ document: doc.name, exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: 'application/json' }), base + '.json');
     else if (fmt === 'xlsx') downloadBlob(await accXlsxBlob(doc, data), base + '.xlsx');
     toast('Export ' + fmt.toUpperCase() + ' téléchargé', 'ok');
   } catch (e) { toast('Export impossible : ' + e.message, 'err'); }
 }
-async function accXlsxBlob(doc, data) {
-  if (typeof JSZip === 'undefined') throw new Error('JSZip indisponible');
-  const esc = (x) => String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+async function accBuildXlsx(rows, esc) {
   const cell = (v, r, c) => {
     const ref = String.fromCharCode(65 + c) + r;
     return (typeof v === 'number' && Number.isFinite(v)) ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
   };
-  const rows = [['Document', doc.name], ['Type', data.docType], [], ['Champ', 'Valeur', 'Confiance %', 'Page']];
-  const numKeys = new Set(['totalHT', 'vatAmount', 'totalTTC', 'deposit']);
-  for (const [k, f] of Object.entries(data.fields || {})) rows.push([k, numKeys.has(k) && Acc.parseAmount(f.value) != null ? Acc.parseAmount(f.value) : f.value, f.confidence, (f.page || 0) + 1]);
-  rows.push([]); rows.push(['Description', 'Quantité', 'Prix unitaire HT', 'Remise', 'TVA %', 'Montant HT']);
-  for (const l of data.lines || []) rows.push([l.description, l.qty, l.unitPrice, l.discount, l.vatRate, l.amount]);
-  rows.push([]); rows.push(['Taux TVA %', 'Montant TVA']);
-  for (const v of data.vat || []) rows.push([v.rate, v.amount]);
   const sheet = rows.map((r, i) => `<row r="${i + 1}">${r.map((c, j) => cell(c, i + 1, j)).join('')}</row>`).join('');
   const zip = new JSZip();
   zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
@@ -2362,6 +2431,28 @@ async function accXlsxBlob(doc, data) {
   zip.folder('xl').folder('_rels').file('workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
   zip.folder('xl').folder('worksheets').file('sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheet}</sheetData></worksheet>`);
   return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+async function accXlsxBlob(doc, data) {
+  if (typeof JSZip === 'undefined') throw new Error('JSZip indisponible');
+  const esc = (x) => String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const cell = (v, r, c) => {
+    const ref = String.fromCharCode(65 + c) + r;
+    return (typeof v === 'number' && Number.isFinite(v)) ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
+  };
+  if (data.transactions && data.transactions.length) {
+    const rowsB = [['Document', doc.name], ['Type', 'Relevé bancaire'], ['IBAN', data.fields.iban ? data.fields.iban.value : ''], [],
+      ['Date', 'Date de valeur', 'Libellé', 'Référence', 'Débit', 'Crédit', 'Solde', 'Confiance %']];
+    for (const x of data.transactions) rowsB.push([x.date, x.valueDate || '', x.label, x.reference || '', x.debit, x.credit, x.balance, x.confidence]);
+    return accBuildXlsx(rowsB, esc);
+  }
+  const rows = [['Document', doc.name], ['Type', data.docType], [], ['Champ', 'Valeur', 'Confiance %', 'Page']];
+  const numKeys = new Set(['totalHT', 'vatAmount', 'totalTTC', 'deposit']);
+  for (const [k, f] of Object.entries(data.fields || {})) rows.push([k, numKeys.has(k) && Acc.parseAmount(f.value) != null ? Acc.parseAmount(f.value) : f.value, f.confidence, (f.page || 0) + 1]);
+  rows.push([]); rows.push(['Description', 'Quantité', 'Prix unitaire HT', 'Remise', 'TVA %', 'Montant HT']);
+  for (const l of data.lines || []) rows.push([l.description, l.qty, l.unitPrice, l.discount, l.vatRate, l.amount]);
+  rows.push([]); rows.push(['Taux TVA %', 'Montant TVA']);
+  for (const v of data.vat || []) rows.push([v.rate, v.amount]);
+  return accBuildXlsx(rows, esc);
 }
 async function accShowZone(el) {
   const doc = await Repo.doc(App.accDocId);

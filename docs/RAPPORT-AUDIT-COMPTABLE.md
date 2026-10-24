@@ -109,3 +109,23 @@ Branche `feature/comptabilite-livraison2`, version **2.8.0**. `main` fusionnée 
 - Lignes reconnues sur le motif « description quantité × prix = total » ; d'autres présentations (tableaux à colonnes séparées par l'OCR) seront couvertes avec les tableaux des Livraisons 3-4.
 - Relevés, paie, bilans, amortissements : **non implémentés** (Livraisons 3→5), l'onglet les annoncera comme types sans extraction dédiée tant qu'ils ne sont pas livrés.
 - Aucun test sur Android physique.
+
+---
+
+## Livraison 3 — Relevés bancaires (24/10/2026)
+
+Branche `feature/comptabilite-livraison3`, version **2.9.0**.
+
+### Réalisé et testé (`tests/e2e-compta-l3.mjs` : **23/23**, navigateur émulé)
+- **Extraction `Acc.extractBank`** (déclenchée si le type « Relevé bancaire » est choisi ou détecté) : banque, titulaire, **IBAN préservé comme texte** (zéros et format conservés à l'export), BIC, devise, soldes d'ouverture/clôture.
+- **Transactions ligne par ligne, ordre préservé** : date, date de valeur si présente, libellé, référence, **débit et crédit dans des champs distincts**, solde après opération lorsqu'il est imprimé. Sens déterminé par signe ou mots-clés (CB/PRLV/paiement… en débit ; salaire/remise/remboursement… en crédit) ; **sens indéterminé = « à vérifier », jamais deviné**, exclu des totaux avec avertissement.
+- **Contrôles** : ouverture + crédits − débits vs clôture, dernier solde de ligne vs clôture, **doublons potentiels** (même date/libellé/montant) signalés et jamais supprimés automatiquement.
+- **UI Comptabilité** : tableau d'opérations éditable (date, libellé, débit, crédit, solde), badges « doublon ? » et « à vérifier », totaux reconnus, corrections **persistées** (vérifié).
+- **Exports** : CSV une ligne par opération (débit/crédit séparés), XLSX montants numériques, JSON structuré (compte + opérations).
+- Avertissement explicite : contrôles de cohérence uniquement, **pas un rapprochement bancaire complet**.
+- Non-régressions : Compta L2 30/30, V2.7 10/10, audit 16/16, V2 16/16.
+
+### Limites honnêtes
+- Sur un OCR de relevé réel, les colonnes débit/crédit imprimées peuvent être fusionnées par l'OCR texte : le sens repose alors sur le signe et les mots-clés, d'où le statut « à vérifier » plutôt qu'une affectation inventée.
+- Formats de dates sans année conservés tels quels (jj/mm).
+- Aucun test sur Android physique ; aucun rapprochement avec des écritures comptables (non implémenté, non annoncé).

@@ -296,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.8.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.9.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -561,17 +561,20 @@ function viewAcc() {
   let detail = '';
   if (sel && acc) {
     const d = acc.data;
-    const labels = { docType: 'Type de document', supplier: 'Fournisseur / Client', address: 'Adresse', siren: 'SIREN', siret: 'SIRET', invoiceNumber: 'Numéro', issueDate: "Date d'émission", dueDate: "Date d'échéance", orderRef: 'Référence commande', paymentTerms: 'Conditions de règlement', deposit: 'Acompte', totalHT: 'Total HT', vatAmount: 'Montant TVA', totalTTC: 'Total TTC', currency: 'Devise' };
+    const labels = { docType: 'Type de document', bank: 'Banque', holder: 'Titulaire du compte', iban: 'IBAN', bic: 'BIC', openingBalance: "Solde d'ouverture", closingBalance: 'Solde de clôture', supplier: 'Fournisseur / Client', address: 'Adresse', siren: 'SIREN', siret: 'SIRET', invoiceNumber: 'Numéro', issueDate: "Date d'émission", dueDate: "Date d'échéance", orderRef: 'Référence commande', paymentTerms: 'Conditions de règlement', deposit: 'Acompte', totalHT: 'Total HT', vatAmount: 'Montant TVA', totalTTC: 'Total TTC', currency: 'Devise' };
     detail = `
     <div class="card">
       <div class="row"><b class="grow">${escapeHtml(sel.name)}</b><span class="chip ${acc.edited ? 'warn' : 'ok'}">${acc.edited ? 'Corrigé manuellement' : 'Extraction automatique'}</span></div>
       <label class="small muted">Type de document (proposé : ${escapeHtml((Acc.TYPES.find(x => x[0] === d.docType) || [])[1] || d.docType)} — modifiable)
       <select id="accTypeSel">${Acc.TYPES.map(([v, l]) => `<option value="${v}" ${d.docType === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <div class="invoice-grid">
-      ${Object.keys(labels).map(k => { const f = (d.fields || {})[k] || { value: 'Non reconnu', confidence: 0 }; return `<label>${labels[k]} ${confChip(f.confidence, f.status)}
+      ${Object.keys(labels).filter(k => k === 'docType' || (d.fields || {})[k]).map(k => { const f = (d.fields || {})[k] || { value: 'Non reconnu', confidence: 0 }; return `<label>${labels[k]} ${confChip(f.confidence, f.status)}
         <span class="row"><input data-acc-field="${k}" value="${escapeHtml(f.value === 'Non reconnu' ? '' : f.value)}" placeholder="Non reconnu">
         ${f.zone ? `<button class="btn xs soft" data-act="acc-zone" data-page="${f.zone.page}" data-x="${f.zone.x}" data-y="${f.zone.y}" data-w="${f.zone.w}" data-h="${f.zone.h}">Voir p.${f.zone.page + 1}</button>` : ''}</span></label>`; }).join('')}
       </div>
+      ${(d.transactions && d.transactions.length) ? `<h4>Opérations (${d.transactions.length}) — ordre du relevé préservé</h4>
+      <div class="acc-lines">${d.transactions.map((x, i) => `<div class="row acc-line"><input data-acc-tx="${i}:date" value="${escapeHtml(x.date)}" size="9"><input data-acc-tx="${i}:label" value="${escapeHtml(x.label)}"><input data-acc-tx="${i}:debit" value="${x.debit ?? ''}" placeholder="Débit" size="7"><input data-acc-tx="${i}:credit" value="${x.credit ?? ''}" placeholder="Crédit" size="7"><input data-acc-tx="${i}:balance" value="${x.balance ?? ''}" placeholder="Solde" size="7">${x.duplicate ? '<span class="chip warn">doublon ?</span>' : ''}${x.status === 'a-verifier' ? '<span class="chip err">à vérifier</span>' : ''}</div>`).join('')}</div>
+      <p class="small muted">Totaux reconnus — débits : ${d.totals ? d.totals.debit : 'Non reconnu'} · crédits : ${d.totals ? d.totals.credit : 'Non reconnu'} (les opérations « à vérifier » ne sont pas totalisées).</p>` : ''}
       <h4>Lignes d'articles</h4>
       ${(d.lines || []).length ? `<div class="acc-lines">${d.lines.map((l, i) => `<div class="row acc-line"><input data-acc-line="${i}:description" value="${escapeHtml(l.description)}"><input data-acc-line="${i}:qty" value="${l.qty}" size="4"><input data-acc-line="${i}:unitPrice" value="${l.unitPrice}" size="7"><input data-acc-line="${i}:amount" value="${l.amount}" size="8"></div>`).join('')}</div>` : '<p class="small muted">Aucune ligne reconnue — à compléter manuellement si le document en comporte.</p>'}
       <h4>TVA par taux</h4>
