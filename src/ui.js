@@ -1507,6 +1507,9 @@ const Acc = {
     ['note_frais', 'Note de frais / justificatif'], ['autre_comptable', 'Autre état comptable']
   ],
   NR: 'Non reconnu',
+  // Statuts de contrôle V2.13 : un contrôle n'est « conforme » que si la comparaison a réellement eu lieu.
+  ctl(label, status, detail, recalculated = null) { return { label, status, ok: status === 'conforme', detail, recalculated }; },
+  _finishControls(controls) { for (const c of controls) if (!c.status) c.status = c.ok ? 'conforme' : 'ecart'; return controls; },
   parseAmount(v) {
     if (v == null) return null;
     let s = String(v).trim().replace(/\s|€|EUR/gi, '').replace(/\(([^)]+)\)/, '-$1');
@@ -1630,13 +1633,15 @@ const Acc = {
     if (totalHT != null && totalTTC != null && vatTotal != null) {
       const calc = Math.round((totalHT + vatTotal) * 100) / 100;
       const okCtl = Math.abs(calc - totalTTC) <= Math.max(0.05, Math.abs(totalTTC) * 0.005);
-      controls.push({ label: 'HT + TVA = TTC', ok: okCtl, detail: `Reconnu : ${totalHT} + ${Math.round(vatTotal * 100) / 100} = ${calc} · TTC reconnu : ${totalTTC}`, recalculated: calc });
+      controls.push({ label: 'HT + TVA = TTC', status: okCtl ? 'conforme' : 'ecart', ok: okCtl, detail: `Reconnu : ${totalHT} + ${Math.round(vatTotal * 100) / 100} = ${calc} · TTC reconnu : ${totalTTC}`, recalculated: calc });
     }
+    if (totalHT == null || totalTTC == null || vatTotal == null) controls.push(Acc.ctl('HT + TVA = TTC', 'impossible', `Données indispensables manquantes (HT : ${totalHT == null ? 'non reconnu' : totalHT} · TVA : ${vatTotal == null ? 'non reconnue' : vatTotal} · TTC : ${totalTTC == null ? 'non reconnu' : totalTTC}) : aucune comparaison effectuée, aucune TVA inventée.`));
     if (items.length && totalHT != null) {
       const sum = Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100;
       controls.push({ label: 'Somme des lignes = Total HT', ok: Math.abs(sum - totalHT) <= Math.max(0.05, Math.abs(totalHT) * 0.01), detail: `Lignes : ${sum} · HT reconnu : ${totalHT}`, recalculated: sum });
     }
     if (isAvoir && totalTTC != null && totalTTC > 0) controls.push({ label: 'Avoir à montants positifs', ok: false, detail: 'Un avoir comporte habituellement des montants négatifs : à vérifier, aucune correction automatique appliquée.', recalculated: null });
+    Acc._finishControls(controls);
     return { docType: isAvoir ? 'avoir' : cls.type, proposedType: cls, fields, lines: items, vat, controls,
       disclaimer: 'Extraction locale à vérifier champ par champ. Les valeurs recalculées (contrôles) ne remplacent jamais les montants reconnus.' };
   },
@@ -1714,18 +1719,24 @@ const Acc = {
     const controls = [];
     if (isBilan) {
       const ta = totalOf('actif'), tp = totalOf('passif');
-      if (ta != null && tp != null) controls.push({ label: 'Total actif = Total passif', ok: Math.abs(ta - tp) <= 0.05, detail: `Actif reconnu : ${ta} · Passif reconnu : ${tp}`, recalculated: null });
+      if (ta != null && tp != null) controls.push(Acc.ctl('Total actif = Total passif', Math.abs(ta - tp) <= 0.05 ? 'conforme' : 'ecart', `Actif reconnu : ${ta} · Passif reconnu : ${tp}`));
+      else controls.push(Acc.ctl('Total actif = Total passif', 'impossible', `Données indispensables manquantes (total actif : ${ta == null ? 'non reconnu' : ta} · total passif : ${tp == null ? 'non reconnu' : tp}) : aucune comparaison effectuée.`));
     } else {
       const tc = totalOf('charges'), tp = totalOf('produits');
-      if (tc != null && tp != null) controls.push({ label: 'Résultat = Produits − Charges', ok: true, detail: `Produits reconnus : ${tp} − Charges reconnues : ${tc} = ${Math.round((tp - tc) * 100) / 100} (valeur recalculée, à comparer au résultat imprimé)`, recalculated: Math.round((tp - tc) * 100) / 100 });
+      const printed = (() => { const r = [...rows].reverse().find(x => x.section === 'resultat'); return r ? r.amountN : null; })();
+      if (tc != null && tp != null) {
+        const calc = Math.round((tp - tc) * 100) / 100;
+        if (printed != null) controls.push(Acc.ctl('Résultat recalculé vs résultat imprimé', Math.abs(calc - printed) <= Math.max(0.05, Math.abs(printed) * 0.005) ? 'conforme' : 'ecart', `Recalculé (produits ${tp} − charges ${tc}) : ${calc} · Résultat imprimé reconnu : ${printed}`, calc));
+        else controls.push(Acc.ctl('Résultat recalculé vs résultat imprimé', 'a-controler', `Résultat recalculé : ${calc} (produits ${tp} − charges ${tc}), mais aucun résultat imprimé n'a été reconnu : comparaison impossible, valeur recalculée non certaine.`, calc));
+      } else controls.push(Acc.ctl('Résultat recalculé vs résultat imprimé', 'impossible', `Totaux indispensables manquants (charges : ${tc == null ? 'non reconnues' : tc} · produits : ${tp == null ? 'non reconnus' : tp}) : aucune comparaison effectuée.`));
     }
     for (const sec of (isBilan ? ['actif', 'passif'] : ['charges', 'produits'])) {
       const tot = totalOf(sec); if (tot == null) continue;
       const details = rows.filter(x => x.section === sec && !x.isTotal);
       if (details.length >= 2) {
         const sum = Math.round(details.reduce((s, x) => s + (x.amountN || 0), 0) * 100) / 100;
-        controls.push({ label: 'Somme des lignes ' + sec + ' vs total ' + sec, ok: Math.abs(sum - tot) <= Math.max(0.05, Math.abs(tot) * 0.01), detail: `Lignes reconnues : ${sum} · Total ${sec} reconnu : ${tot} (écart possible si des lignes n'ont pas été reconnues)`, recalculated: sum });
-      }
+        controls.push(Acc.ctl('Somme des lignes ' + sec + ' vs total ' + sec, Math.abs(sum - tot) <= Math.max(0.05, Math.abs(tot) * 0.01) ? 'conforme' : 'a-controler', `Lignes reconnues : ${sum} · Total ${sec} reconnu : ${tot} (si des lignes n'ont pas été reconnues, l'écart ne prouve pas une erreur du document)`, sum));
+      } else controls.push(Acc.ctl('Somme des lignes ' + sec + ' vs total ' + sec, 'impossible', `Lignes de détail insuffisantes (${details.length}) pour vérifier le total ${sec} reconnu : ${tot}.`));
     }
     return { docType: kind, kind: 'financial', fields: {}, statementRows: rows, controls,
       disclaimer: "Aperçu tabulaire reconnu par OCR : vérifiez lignes, signes et colonnes N / N-1 avant export. Les contrôles arithmétiques n'ont de valeur que si toutes les lignes ont été reconnues." };
@@ -1842,10 +1853,12 @@ const Acc = {
     const num = (k) => { const f = (data.fields || {})[k]; const n = f ? Acc.parseAmount(f.value) : null; return n; };
     const ht = num('totalHT'), vat = num('vatAmount'), ttc = num('totalTTC');
     if (ht == null || ttc == null) return null;
-    const vatAmt = vat != null ? vat : Math.round((ttc - ht) * 100) / 100;
+    if (vat == null && Math.abs(ttc - ht) > 0.01) return null; // TVA absente et HT != TTC : on n'invente pas de TVA
+    const vatAmt = vat != null ? vat : 0;
     const date = (data.fields.issueDate && data.fields.issueDate.value !== Acc.NR) ? data.fields.issueDate.value : '';
     const party = (data.fields.supplier && data.fields.supplier.value !== Acc.NR) ? data.fields.supplier.value : 'Non reconnu';
     const isSale = data.docType === 'facture_vente';
+    const isAvoir = data.docType === 'avoir';
     const sign = ttc < 0 ? -1 : 1;
     const A = (n) => Math.round(Math.abs(n) * sign * 100) / 100;
     const rows = isSale ? [
@@ -1857,8 +1870,9 @@ const Acc = {
       { date, journal: 'AC', account: '445660', label: 'TVA déductible', debit: A(vatAmt), credit: 0 },
       { date, journal: 'AC', account: '401000', label: 'Fournisseur ' + party, debit: 0, credit: A(ttc) }
     ];
+    if (isAvoir) for (const r of rows) { const d = r.debit; r.debit = r.credit; r.credit = d; r.label = 'Avoir — ' + r.label; }
     const sd = Math.round(rows.reduce((s, r) => s + r.debit, 0) * 100) / 100, sc = Math.round(rows.reduce((s, r) => s + r.credit, 0) * 100) / 100;
-    return { rows, balanced: Math.abs(sd - sc) <= 0.01, totalDebit: sd, totalCredit: sc, warning: 'Comptes proposés (607/44566/401 ou 411/706/44571) : à adapter au plan comptable du dossier. Écriture générée localement, non validée par un expert-comptable.' };
+    return { rows, balanced: Math.abs(sd - sc) <= 0.01, totalDebit: sd, totalCredit: sc, warning: 'Écriture PROPOSÉE et équilibrée — cela ne signifie pas validée par un comptable. Comptes (607/44566/401 ou 411/706/44571) à adapter au plan comptable du dossier avant tout import.' };
   },
   extractBank(text, pagesWords) {
     const t = String(text || '');
@@ -1910,6 +1924,8 @@ const Acc = {
       const calc = Math.round((opening + sumC - sumD) * 100) / 100;
       controls.push({ label: 'Solde d\'ouverture + crédits − débits = clôture', ok: unknown === 0 && Math.abs(calc - closing) <= 0.05, detail: `Ouverture ${opening} + crédits ${Math.round(sumC * 100) / 100} − débits ${Math.round(sumD * 100) / 100} = ${calc} · Clôture reconnue : ${closing}` + (unknown ? ` · ${unknown} opération(s) sans sens déterminé exclue(s) du calcul` : ''), recalculated: calc });
     }
+    if (opening == null || closing == null) controls.push(Acc.ctl('Solde d\'ouverture + crédits − débits = clôture', 'impossible', `Solde d'ouverture : ${opening == null ? 'non reconnu' : opening} · Solde de clôture : ${closing == null ? 'non reconnu' : closing} : aucune comparaison effectuée.`));
+    if (!transactions.length) controls.push(Acc.ctl('Transactions présentes', 'impossible', 'Aucune opération reconnue : relevé non vérifiable.'));
     const lastBal = [...transactions].reverse().find(x => x.balance != null);
     if (lastBal && closing != null) controls.push({ label: 'Dernier solde de ligne = clôture', ok: Math.abs(lastBal.balance - closing) <= 0.05, detail: `Dernier solde reconnu : ${lastBal.balance} · Clôture : ${closing}`, recalculated: lastBal.balance });
     if (duplicates.length) controls.push({ label: 'Doublons potentiels', ok: false, detail: duplicates.length + ' opération(s) avec même date, libellé et montant : signalées, jamais supprimées automatiquement.', recalculated: null });
@@ -2280,6 +2296,8 @@ Object.assign(Actions, {
   'doc-ocr': () => docRunOcr(App.doc.id),
   'acc-select': async (el) => { App.accDocId = el.dataset.id; const d = (App.docs||[]).find(x=>x.id===el.dataset.id); if (d) { const full = await Repo.doc(d.id); if (full) { const i = App.docs.findIndex(x=>x.id===d.id); App.docs[i]=full; } } await render(); },
   'acc-analyze': () => accAnalyze(App.accDocId),
+  'acc-reanalyze-confirm': () => accAnalyze(App.accDocId, { confirmed: true }),
+  'acc-entries-confirm': () => { window.__accEntriesConfirmed = true; accExport(App.accDocId, 'entries'); },
   'acc-save': () => accSave(App.accDocId),
   'acc-export': (el) => accExport(App.accDocId, el.dataset.fmt),
   'acc-zone': (el) => accShowZone(el),
@@ -2574,8 +2592,22 @@ async function accLoadPagesWords(doc) {
   } catch (e) {}
   return doc.ocrWordBoxes || null;
 }
-async function accAnalyze(docId) {
+function accSnapshot(doc) { return String(doc.text || '').slice(0, 400); }
+function accMergeCorrections(oldData, newData) {
+  if (!oldData || !newData) return newData;
+  for (const [k, f] of Object.entries(oldData.fields || {})) {
+    if (f && f.status === 'corrige' && newData.fields && newData.fields[k]) newData.fields[k] = { ...newData.fields[k], value: f.value, status: 'corrige', confidence: f.confidence };
+  }
+  return newData;
+}
+async function accAnalyze(docId, opts = {}) {
   const doc = await Repo.doc(docId);
+  if (doc && doc.acc && !opts.confirmed && !opts.batch) {
+    const sh = openSheet({ title: 'Réanalyser ce document ?', sub: 'La reconnaissance sera relancée. Les champs que vous avez corrigés manuellement seront conservés ; les autres seront recalculés.',
+      body: '<p class="small muted">Dernière analyse : ' + (doc.acc.at ? new Date(doc.acc.at).toLocaleString('fr-FR') : 'Non reconnu') + (doc.acc.edited ? ' · contient des corrections manuelles' : '') + '</p>',
+      actions: [{ label: 'Annuler', cls: 'ghost' }, { label: 'Réanalyser', cls: 'go', act: 'acc-reanalyze-confirm', close: true }] });
+    return;
+  }
   if (!doc) return;
   if (!doc.text || !doc.text.trim()) { toast("Lancez d'abord l'OCR depuis le document (onglet Texte OCR), puis revenez dans Comptabilité.", 'err', 5000); App.accDocId = docId; await render(); return; }
   const pagesWords = await accLoadPagesWords(doc);
@@ -2597,7 +2629,8 @@ async function accAnalyze(docId) {
     data.docType = forced;
     data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === forced) || [])[1] || forced, confidence: 100, page: 0, zone: null, status: 'corrige' };
   }
-  doc.acc = { version: 2, at: Date.now(), edited: false, data };
+  const merged = doc.acc ? accMergeCorrections(doc.acc.data, data) : data;
+  doc.acc = { version: 2, firstAt: doc.acc ? (doc.acc.firstAt || doc.acc.at) : Date.now(), at: Date.now(), edited: !!(doc.acc && doc.acc.edited), textSnapshot: accSnapshot(doc), data: merged };
   doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Analyse comptable (' + ((Acc.TYPES.find(x => x[0] === data.docType) || [])[1] || data.docType) + ')' });
   await Repo.update(doc);
   App.docs = await Repo.list();
@@ -2648,7 +2681,9 @@ async function accReadForm(doc) {
 async function accSave(docId) {
   const doc = await Repo.doc(docId);
   if (!doc || !doc.acc) return;
+  const prevType = doc.acc.data.docType;
   doc.acc.data = await accReadForm(doc);
+  if (prevType && doc.acc.data.docType !== prevType) toast('Type modifié : pensez à « Réanalyser » pour recalculer les champs compatibles avec le nouveau type.', 'err', 6000);
   doc.acc.edited = true;
   doc.acc.savedAt = Date.now();
   doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Correction comptable enregistrée' });
@@ -2665,7 +2700,12 @@ async function accExport(docId, fmt) {
   try {
     if (fmt === 'entries') {
       const j = Acc.journalEntries(data, doc);
-      if (!j) { toast("Totaux HT/TTC insuffisants pour générer des écritures équilibrées", 'err', 5000); return; }
+      if (!j) { toast("Écritures impossibles : TVA non reconnue ou totaux HT/TTC insuffisants (aucune TVA n'est inventée)", 'err', 6000); return; }
+      if (!window.__accEntriesConfirmed) {
+        openSheet({ title: 'Exporter des écritures proposées ?', sub: j.warning, body: '<p class="small">Cette écriture est <b>équilibrée</b> (débits = crédits : ' + j.totalDebit + '), mais <b>non validée par un comptable</b>. Elle ne doit pas être importée comme écriture définitive sans votre validation explicite.</p>', actions: [{ label: 'Annuler', cls: 'ghost' }, { label: 'Je valide cet export proposé', cls: 'go', act: 'acc-entries-confirm', close: true }] });
+        return;
+      }
+      window.__accEntriesConfirmed = false;
       const csvE = ['Date;Journal;Compte;Libellé;Débit;Crédit', ...j.rows.map(r => [r.date, r.journal, r.account, '"' + String(r.label).replace(/"/g, '""') + '"', String(r.debit).replace('.', ','), String(r.credit).replace('.', ',')].join(';'))].join('\n');
       downloadBlob(new Blob(['\ufeff' + csvE], { type: 'text/csv;charset=utf-8' }), base + '-ecritures.csv');
       toast('Écritures proposées exportées (à vérifier) — équilibrées : ' + (j.balanced ? 'oui' : 'NON'), j.balanced ? 'ok' : 'err', 5000); return;
@@ -2732,7 +2772,7 @@ async function accAnalyzeAll() {
   for (const meta of (App.docs || [])) {
     const doc = await Repo.doc(meta.id);
     if (!doc || !doc.text || !doc.text.trim()) { skipped++; continue; }
-    if (doc.acc) { skipped++; continue; }
+
     const pagesWords = await accLoadPagesWords(doc);
     const type = Acc.classifyType(doc.text).type;
     let data;
@@ -2745,13 +2785,14 @@ async function accAnalyzeAll() {
     else data = Acc.extractInvoice(doc.text, pagesWords);
     if (!data.fields) data.fields = {};
     if (!data.fields.docType) data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === data.docType) || [])[1] || data.docType, confidence: 60, page: 0, zone: null, status: 'reconnu' };
-    doc.acc = { version: 2, at: Date.now(), edited: false, data };
+    const merged = doc.acc ? accMergeCorrections(doc.acc.data, data) : data;
+  doc.acc = { version: 2, firstAt: doc.acc ? (doc.acc.firstAt || doc.acc.at) : Date.now(), at: Date.now(), edited: !!(doc.acc && doc.acc.edited), textSnapshot: accSnapshot(doc), data: merged };
     doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Analyse comptable en lot' });
     await Repo.update(doc); done++;
   }
   App.docs = await Repo.list();
   await render();
-  toast(done + ' document(s) analysé(s), ' + skipped + ' ignoré(s) (déjà analysés ou sans OCR)', 'ok', 5000);
+  toast(done + ' document(s) analysé(s)/réanalysé(s) (corrections conservées), ' + skipped + ' ignoré(s) (sans OCR)', 'ok', 5000);
 }
 async function accShowZone(el) {
   const doc = await Repo.doc(App.accDocId);

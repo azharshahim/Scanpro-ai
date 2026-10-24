@@ -296,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.12.1 (Web)<br>
+      <b>ScanPro AI</b> — version 2.13.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -555,6 +555,7 @@ function viewAcc() {
   const docs = App.docs || [];
   const sel = docs.find(d => d.id === App.accDocId) || null;
   const acc = sel && sel.acc ? sel.acc : null;
+  const accStale = !!(sel && acc && acc.textSnapshot != null && String(sel.text || '').slice(0, 400) !== acc.textSnapshot);
   const confChip = (c, st) => st === 'corrige' ? '<span class="chip ok">corrigé</span>'
     : c >= 80 ? `<span class="chip ok">${c} %</span>` : c >= 50 ? `<span class="chip warn">${c} %</span>`
     : c > 0 ? `<span class="chip err">${c} %</span>` : '<span class="chip err">Non reconnu</span>';
@@ -565,6 +566,8 @@ function viewAcc() {
     detail = `
     <div class="card">
       <div class="row"><b class="grow">${escapeHtml(sel.name)}</b><span class="chip ${acc.edited ? 'warn' : 'ok'}">${acc.edited ? 'Corrigé manuellement' : 'Extraction automatique'}</span></div>
+      ${accStale ? '<div class="banner warn"><span>⚠ Le texte OCR a été modifié depuis la dernière analyse : les résultats ci-dessous peuvent être <b>obsolètes</b>. Utilisez « Réanalyser » (vos corrections manuelles signalées seront conservées).</span></div>' : ''}
+      <p class="tiny muted">Dernière analyse : ${acc.at ? new Date(acc.at).toLocaleString('fr-FR') : 'Non reconnu'}${acc.firstAt && acc.firstAt !== acc.at ? ' · Première analyse : ' + new Date(acc.firstAt).toLocaleString('fr-FR') : ''}</p>
       <label class="small muted">Type de document (proposé : ${escapeHtml((Acc.TYPES.find(x => x[0] === d.docType) || [])[1] || d.docType)} — modifiable)
       <select id="accTypeSel">${Acc.TYPES.map(([v, l]) => `<option value="${v}" ${d.docType === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <div class="invoice-grid">
@@ -592,7 +595,7 @@ function viewAcc() {
       <h4>TVA par taux</h4>
       ${(d.vat || []).length ? d.vat.map(v => `<div class="row"><span class="grow">TVA ${v.rate} %</span><b>${v.amount}</b></div>`).join('') : '<p class="small muted">Aucun taux de TVA reconnu.</p>'}
       <h4>Contrôles de cohérence</h4>
-      ${(d.controls || []).length ? d.controls.map(c => `<div class="banner ${c.ok ? 'ok' : 'warn'}"><span>${c.ok ? '✓' : '⚠'} <b>${escapeHtml(c.label)}</b> — ${escapeHtml(c.detail)}</span></div>`).join('') : '<p class="small muted">Données insuffisantes pour un contrôle (il faut HT, TVA et TTC reconnus).</p>'}
+      ${(d.controls || []).length ? d.controls.map(c => { const st = c.status || (c.ok ? 'conforme' : 'ecart'); const lbl = { conforme: '✓ Conforme', ecart: '✗ Écart détecté', impossible: '— Vérification impossible', 'a-controler': '⚠ À contrôler' }[st] || '⚠ À contrôler'; return `<div class="banner ${st === 'conforme' ? 'ok' : st === 'ecart' ? 'err' : 'warn'}"><span><b>${lbl} · ${escapeHtml(c.label)}</b> — ${escapeHtml(c.detail)}</span></div>`; }).join('') : '<p class="small muted">Aucun contrôle possible : données indispensables non reconnues.</p>'}
       <p class="tiny muted">${escapeHtml(d.disclaimer || '')} Traitement 100 % local : aucun document comptable n'est envoyé à un service externe.</p>
       <div class="btn-row">
         <button class="btn go" data-act="acc-save">Enregistrer les corrections</button>
