@@ -490,7 +490,7 @@ svg{display:block}
 .hr{height:1px;background:var(--line);margin:14px 0;border:0}
 .row{display:flex;gap:10px;align-items:center}
 .row.wrap{flex-wrap:wrap}
-.grow{flex:1}
+.grow{flex:1;min-width:0;overflow-wrap:anywhere}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .hidden{display:none !important}
 .text-center{text-align:center}
@@ -2260,7 +2260,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Acc() { return Acc; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.14.0'
+  version: '2.14.1'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */
@@ -2639,7 +2639,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.14.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.14.1 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -2968,7 +2968,7 @@ function viewAcc() {
     <h3 class="sect">Documents</h3>
     ${docs.length ? docs.map(d => `<div class="card row"><div class="grow"><b>${escapeHtml(d.name)}</b><br><span class="tiny muted">${d.acc ? 'Type : ' + escapeHtml((Acc.TYPES.find(x => x[0] === d.acc.data.docType) || [])[1] || d.acc.data.docType) + (d.acc.edited ? ' · corrigé' : '') : (d.text ? 'OCR présent, non analysé' : 'Sans OCR')}</span></div>
       <button class="btn xs ${sel && sel.id === d.id ? 'go' : 'soft'}" data-act="acc-select" data-id="${d.id}">${sel && sel.id === d.id ? 'Sélectionné' : 'Choisir'}</button></div>`).join('') : '<p class="muted">Aucun document. Scannez ou importez d\'abord un document comptable.</p>'}
-    ${detail}
+    <div id="accDetail">${detail}</div>
   </div>`;
 }
 
@@ -5444,7 +5444,7 @@ Object.assign(Actions, {
   'doc-print': () => docPrint(App.doc.id),
   'doc-export-images': () => docExportImages(App.doc.id),
   'doc-ocr': () => docRunOcr(App.doc.id),
-  'acc-select': async (el) => { App.accDocId = el.dataset.id; const d = (App.docs||[]).find(x=>x.id===el.dataset.id); if (d) { const full = await Repo.doc(d.id); if (full) { const i = App.docs.findIndex(x=>x.id===d.id); App.docs[i]=full; } } await render(); },
+  'acc-select': async (el) => { App.accDocId = el.dataset.id; const d = (App.docs||[]).find(x=>x.id===el.dataset.id); if (d) { const full = await Repo.doc(d.id); if (full) { const i = App.docs.findIndex(x=>x.id===d.id); App.docs[i]=full; } } await render(); const anchor = document.querySelector('#accDetail'); if (anchor && anchor.textContent.trim()) { anchor.scrollIntoView({ behavior: 'smooth', block: 'start' }); anchor.style.transition = 'box-shadow .3s'; anchor.style.boxShadow = '0 0 0 2px var(--go, #2563eb)'; setTimeout(() => { anchor.style.boxShadow = ''; }, 1600); } },
   'acc-analyze': () => accAnalyze(App.accDocId),
   'acc-reanalyze-confirm': () => accAnalyze(App.accDocId, { confirmed: true }),
   'acc-entries-confirm': () => { window.__accEntriesConfirmed = true; accExport(App.accDocId, 'entries'); },
@@ -6105,16 +6105,30 @@ async function init() {
           if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) toast('Nouvelle version de ScanPro AI disponible : rechargez la page pour l\'appliquer.', 'ok', 7000); });
         });
       }
-      // Complétude du cache hors-ligne : informer clairement si incomplet
+      // Complétude du cache hors-ligne : inspecter le VRAI cache de version
+      // (jamais 'scanpro-ai-meta', qui ne contient que l'état), puis réparer
+      // automatiquement en ligne ce qui manque avant d'alerter.
       if ('caches' in window) {
         const keys = await caches.keys();
-        const ours = keys.filter(k => k.startsWith('scanpro-ai-'));
-        if (ours.length) {
-          const cache = await caches.open(ours[ours.length - 1]);
+        const versionCaches = keys.filter(k => /^scanpro-ai-v/.test(k));
+        if (versionCaches.length) {
+          let cache = null, cacheName = null;
+          for (const name of versionCaches.slice().reverse()) {
+            const c = await caches.open(name);
+            if (await c.match('./', { ignoreSearch: true })) { cache = c; cacheName = name; break; }
+          }
+          if (!cache) { cacheName = versionCaches[versionCaches.length - 1]; cache = await caches.open(cacheName); }
           const needed = ['./', './vendor/tesseract.min.js', './vendor/jspdf.umd.min.js', './vendor/lang/fra.traineddata.gz'];
-          const missing = [];
-          for (const n of needed) { const hit = await cache.match(n, { ignoreSearch: true }); if (!hit) missing.push(n); }
-          if (missing.length) toast('Mode hors-ligne incomplet (' + missing.length + ' ressource(s) manquante(s)) : restez en ligne puis rechargez la page pour compléter le cache.', 'err', 8000);
+          const findMissing = async () => { const m = []; for (const n of needed) { if (!(await cache.match(n, { ignoreSearch: true }))) m.push(n); } return m; };
+          let missing = await findMissing();
+          if (missing.length && navigator.onLine) {
+            for (const n of missing) {
+              try { const res = await fetch(n, { cache: 'reload' }); if (res && res.ok) await cache.put(n, res.clone()); } catch (e) {}
+            }
+            missing = await findMissing();
+            if (!missing.length) toast('Mode hors-ligne complété automatiquement : toutes les ressources essentielles sont en cache.', 'ok', 5000);
+          }
+          if (missing.length) toast('Mode hors-ligne incomplet (' + missing.length + ' ressource(s) essentielle(s) manquante(s)) : vérifiez votre connexion puis rechargez la page.', 'err', 8000);
         }
       }
     } catch (e) {}

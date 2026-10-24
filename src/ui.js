@@ -2389,7 +2389,7 @@ Object.assign(Actions, {
   'doc-print': () => docPrint(App.doc.id),
   'doc-export-images': () => docExportImages(App.doc.id),
   'doc-ocr': () => docRunOcr(App.doc.id),
-  'acc-select': async (el) => { App.accDocId = el.dataset.id; const d = (App.docs||[]).find(x=>x.id===el.dataset.id); if (d) { const full = await Repo.doc(d.id); if (full) { const i = App.docs.findIndex(x=>x.id===d.id); App.docs[i]=full; } } await render(); },
+  'acc-select': async (el) => { App.accDocId = el.dataset.id; const d = (App.docs||[]).find(x=>x.id===el.dataset.id); if (d) { const full = await Repo.doc(d.id); if (full) { const i = App.docs.findIndex(x=>x.id===d.id); App.docs[i]=full; } } await render(); const anchor = document.querySelector('#accDetail'); if (anchor && anchor.textContent.trim()) { anchor.scrollIntoView({ behavior: 'smooth', block: 'start' }); anchor.style.transition = 'box-shadow .3s'; anchor.style.boxShadow = '0 0 0 2px var(--go, #2563eb)'; setTimeout(() => { anchor.style.boxShadow = ''; }, 1600); } },
   'acc-analyze': () => accAnalyze(App.accDocId),
   'acc-reanalyze-confirm': () => accAnalyze(App.accDocId, { confirmed: true }),
   'acc-entries-confirm': () => { window.__accEntriesConfirmed = true; accExport(App.accDocId, 'entries'); },
@@ -3050,16 +3050,30 @@ async function init() {
           if (w) w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) toast('Nouvelle version de ScanPro AI disponible : rechargez la page pour l\'appliquer.', 'ok', 7000); });
         });
       }
-      // Complétude du cache hors-ligne : informer clairement si incomplet
+      // Complétude du cache hors-ligne : inspecter le VRAI cache de version
+      // (jamais 'scanpro-ai-meta', qui ne contient que l'état), puis réparer
+      // automatiquement en ligne ce qui manque avant d'alerter.
       if ('caches' in window) {
         const keys = await caches.keys();
-        const ours = keys.filter(k => k.startsWith('scanpro-ai-'));
-        if (ours.length) {
-          const cache = await caches.open(ours[ours.length - 1]);
+        const versionCaches = keys.filter(k => /^scanpro-ai-v/.test(k));
+        if (versionCaches.length) {
+          let cache = null, cacheName = null;
+          for (const name of versionCaches.slice().reverse()) {
+            const c = await caches.open(name);
+            if (await c.match('./', { ignoreSearch: true })) { cache = c; cacheName = name; break; }
+          }
+          if (!cache) { cacheName = versionCaches[versionCaches.length - 1]; cache = await caches.open(cacheName); }
           const needed = ['./', './vendor/tesseract.min.js', './vendor/jspdf.umd.min.js', './vendor/lang/fra.traineddata.gz'];
-          const missing = [];
-          for (const n of needed) { const hit = await cache.match(n, { ignoreSearch: true }); if (!hit) missing.push(n); }
-          if (missing.length) toast('Mode hors-ligne incomplet (' + missing.length + ' ressource(s) manquante(s)) : restez en ligne puis rechargez la page pour compléter le cache.', 'err', 8000);
+          const findMissing = async () => { const m = []; for (const n of needed) { if (!(await cache.match(n, { ignoreSearch: true }))) m.push(n); } return m; };
+          let missing = await findMissing();
+          if (missing.length && navigator.onLine) {
+            for (const n of missing) {
+              try { const res = await fetch(n, { cache: 'reload' }); if (res && res.ok) await cache.put(n, res.clone()); } catch (e) {}
+            }
+            missing = await findMissing();
+            if (!missing.length) toast('Mode hors-ligne complété automatiquement : toutes les ressources essentielles sont en cache.', 'ok', 5000);
+          }
+          if (missing.length) toast('Mode hors-ligne incomplet (' + missing.length + ' ressource(s) essentielle(s) manquante(s)) : vérifiez votre connexion puis rechargez la page.', 'err', 8000);
         }
       }
     } catch (e) {}
