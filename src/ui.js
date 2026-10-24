@@ -1339,6 +1339,7 @@ async function docRunOcr(docId) {
     doc.text = text;
     doc.ocr = { status: text ? 'done' : 'empty', at: Date.now(), confidence: avg };
     doc.ocrUncertain = results.flatMap(r => r.uncertain || []);
+    doc.ocrWordBoxes = results.map(r => r.wordBoxes || []);
     await Repo.update(doc);
     App.doc = doc; App.detailTab = 'text';
     await render();
@@ -1361,7 +1362,7 @@ async function docRunOcr(docId) {
   doc.ocrUncertain = results.flatMap(r => r.uncertain || []);
   await Repo.update(doc);
   for (let i = 0; i < pages.length; i++) {
-    pages[i].text = results[i].text; pages[i].ocrConf = results[i].confidence;
+    pages[i].text = results[i].text; pages[i].ocrConf = results[i].confidence; pages[i].ocrWords = results[i].wordBoxes || [];
     await Store.put('pages', pages[i]);
   }
   App.doc = doc; App.docPages = pages; App.detailTab = 'text';
@@ -1492,6 +1493,165 @@ async function mergePdfs() {
     }
   });
 }
+
+/* --------------------------------------- comptabilité : extraction structurée -- */
+/* Règles (audit Phase A) : ne jamais inventer une information absente (« Non reconnu »),
+   confiance par champ, TVA multiples, lignes d'articles, lien champ -> zone de la page. */
+const Acc = {
+  TYPES: [
+    ['facture_achat', "Facture d'achat"], ['facture_vente', 'Facture de vente'], ['avoir', 'Avoir'],
+    ['releve_bancaire', 'Relevé bancaire'], ['bulletin_salaire', 'Bulletin de salaire'],
+    ['bilan', 'Bilan comptable'], ['compte_resultat', 'Compte de résultat'], ['devis', 'Devis'],
+    ['bon_commande', 'Bon de commande'], ['pret_echeancier', 'Plan de remboursement de prêt'],
+    ['amort_emprunt', "Tableau d'amortissement d'emprunt"], ['amort_immobilisation', 'Amortissement des immobilisations'],
+    ['note_frais', 'Note de frais / justificatif'], ['autre_comptable', 'Autre état comptable']
+  ],
+  NR: 'Non reconnu',
+  parseAmount(v) {
+    if (v == null) return null;
+    let s = String(v).trim().replace(/\s|€|EUR/gi, '').replace(/\(([^)]+)\)/, '-$1');
+    if (!s) return null;
+    if (/,/.test(s) && /\./.test(s)) s = s.replace(/\./g, '').replace(',', '.'); else s = s.replace(',', '.');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  },
+  fmt(n) { return n == null || n === '' ? Acc.NR : String(n); },
+  classifyType(text) {
+    const t = String(text || '').toLowerCase();
+    const rules = [
+      ['avoir', ['avoir', 'note de crédit', 'credit note']],
+      ['releve_bancaire', ['relevé bancaire', 'releve bancaire', 'solde précédent', 'extrait de compte', 'iban']],
+      ['bulletin_salaire', ['bulletin de paie', 'bulletin de salaire', 'salaire brut', 'net à payer', 'cotisations salariales']],
+      ['bilan', ['bilan', 'actif immobilisé', 'capitaux propres', 'total actif', 'total passif']],
+      ['compte_resultat', ['compte de résultat', 'charges d\'exploitation', 'produits d\'exploitation', 'résultat net']],
+      ['amort_immobilisation', ['amortissements cumulés', 'valeur nette comptable', 'dotation aux amortissements']],
+      ['pret_echeancier', ['capital restant dû', 'échéancier', 'mensualité', 'taux nominal']],
+      ['amort_emprunt', ['tableau d\'amortissement', 'capital amorti', 'intérêts cumulés']],
+      ['devis', ['devis', 'validité de l\'offre', 'bon pour accord']],
+      ['bon_commande', ['bon de commande', 'purchase order', 'commande n°']],
+      ['note_frais', ['note de frais', 'frais de déplacement', 'justificatif']],
+      ['facture_achat', ['facture d\'achat', 'fournisseur :', 'émetteur']],
+      ['facture_vente', ['facture de vente', 'client :', 'facturé à']]
+    ];
+    let best = { type: 'autre_comptable', score: 0 };
+    for (const [type, words] of rules) {
+      let s = 0; for (const w of words) if (t.includes(w)) s += w.length > 8 ? 2 : 1;
+      if (s > best.score) best = { type, score: s };
+    }
+    if (/facture/.test(t) && best.score === 0) best = { type: 'facture_achat', score: 1 };
+    const label = (Acc.TYPES.find(x => x[0] === best.type) || [])[1] || 'Autre état comptable';
+    return { type: best.type, label, confidence: best.score >= 3 ? 85 : best.score >= 1 ? 55 : 25, proposed: true };
+  },
+  _norm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]/gi, ''); },
+  findZone(pagesWords, needle) {
+    if (!pagesWords || !needle) return null;
+    const target = Acc._norm(needle).slice(0, 18);
+    if (target.length < 2) return null;
+    for (let p = 0; p < pagesWords.length; p++) {
+      const words = pagesWords[p] || [];
+      for (const w of words) {
+        const wt = Acc._norm(w.t);
+        if (wt && (wt === target || (target.includes(wt) && wt.length >= 3) || (wt.includes(target) && target.length >= 3))) {
+          return { page: p, x: w.x, y: w.y, w: Math.max(w.w, 0.03), h: Math.max(w.h, 0.015) };
+        }
+      }
+    }
+    return null;
+  },
+  extractInvoice(text, pagesWords) {
+    const t = String(text || '');
+    const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
+    const F = (value, confidence, needle) => {
+      const v = value == null || value === '' ? Acc.NR : value;
+      const zone = v !== Acc.NR ? Acc.findZone(pagesWords, needle != null ? needle : v) : null;
+      return { value: v, confidence: v === Acc.NR ? 0 : confidence, page: zone ? zone.page : 0, zone, status: v === Acc.NR ? 'non-reconnu' : 'reconnu' };
+    };
+    const labeled = (re) => { for (const l of lines) { const m = l.match(re); if (m && m[1] && m[1].trim()) return m[1].trim().slice(0, 120); } return ''; };
+    const money = (re) => { const m = t.match(re); return m ? Acc.parseAmount(m[1]) : null; };
+    const cls = Acc.classifyType(t);
+    const isAvoir = cls.type === 'avoir' || /\bavoir\b/i.test(t);
+    // émetteur : uniquement si libellé explicite (correction C-03 : jamais la 1re/dernière ligne)
+    const supplier = labeled(/(?:fournisseur|émetteur|emetteur|émettrice|de la part de)\s*[:\-]\s*(.+)$/i)
+      || labeled(/(?:société|entreprise)\s+émettrice\s*[:\-]\s*(.+)$/i);
+    const address = supplier ? (lines[lines.findIndex(l => l.includes(supplier.slice(0, 12))) + 1] || '') : '';
+    const sirenM = t.match(/\bsiren\s*:?\s*(\d[\d ]{8,12})/i);
+    const siretM = t.match(/\bsiret\s*:?\s*(\d[\d ]{12,17})/i);
+    const cleanId = (s) => s ? s.replace(/\s/g, '') : '';
+    const numLabeled = labeled(/(?:facture|avoir|devis|commande)\s*(?:n[°o]?|numéro|numero|réf\.?|ref\.?)\s*[:#\-]?\s*([A-Z0-9][A-Z0-9\-\/]{2,24})/i)
+      || labeled(/n[°o]\s*(?:de\s*)?(?:facture|avoir|document)\s*[:#\-]?\s*([A-Z0-9][A-Z0-9\-\/]{2,24})/i);
+    const numPattern = (t.match(/\b(?:FAC|FACT|AV|F|INV)[-\/]?\d{2,4}[-\/][A-Z0-9][A-Z0-9\-\/]{1,20}\b/i) || [''])[0];
+    const issueDate = labeled(/(?:date\s*d['’]?(?:émission|emission|facturation)|date\s*de\s*facture|date)\s*[:\-]\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/i);
+    // échéance : libellé explicite uniquement (correction C-04)
+    const dueDate = labeled(/(?:échéance|echeance|à régler avant|payable avant|date\s*d['’]?échéance)\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/i);
+    const orderRef = labeled(/(?:référence\s*(?:de\s*)?commande|bon de commande|commande\s*n[°o]?|référence client|votre référence)\s*[:#\-]?\s*([A-Z0-9\-\/]{3,30})/i);
+    const paymentTerms = labeled(/(?:conditions\s*de\s*(?:règlement|paiement)|règlement\s*[:\-]|paiement\s*(?:à|a)\s*(\d+\s*jours?.*))$/i)
+      || labeled(/(paiement\s*à\s*\d+\s*jours?.*)$/i);
+    const totalHT = money(/total\s*(?:ht|hors\s*taxe)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    const totalTTC = money(/total\s*(?:ttc|à\s*payer|a\s*payer)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i)
+      ?? money(/net\s*à\s*payer[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    const deposit = money(/(?:acompte|arrhes)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    // TVA : tous les taux et montants (correction C-01)
+    const vatMap = new Map();
+    const vatRes = [/(?:tva|TVA)\s*(?:à|a)?\s*(\d{1,2}(?:[.,]\d{1,2})?)\s*%\s*[:\-]?\s*(-?[\d ]+(?:[.,]\d{2})?)/g,
+                    /(\d{1,2}(?:[.,]\d{1,2})?)\s*%\s*[:\-]?\s*(-?[\d ]+(?:[.,]\d{2})?)\s*(?:€|EUR)?\s*(?:de\s*)?tva/gi];
+    for (const re of vatRes) { let m; while ((m = re.exec(t))) { const rate = Acc.parseAmount(m[1]); const amt = Acc.parseAmount(m[2]); if (rate != null && amt != null && rate > 0 && rate <= 30 && !vatMap.has(rate)) vatMap.set(rate, amt); } }
+    const vat = [...vatMap.entries()].map(([rate, amount]) => ({ rate, amount }));
+    const vatTotal = vat.length ? vat.reduce((s, v) => s + v.amount, 0) : money(/(?:montant\s*)?tva\s*(?:\d+[.,]?\d*\s*%)?[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    // lignes d'articles : « description  qté x PU  [=] total » (correction C-01)
+    const items = [];
+    for (const l of lines) {
+      const m = l.match(/^(.{2,60}?)\s+(\d+(?:[.,]\d+)?)\s*[x×]\s*(-?[\d ]+(?:[.,]\d{2})?)\s*(?:€|EUR)?\s*(?:=|\s)\s*(-?[\d ]+(?:[.,]\d{2})?)\s*(?:€|EUR)?\s*(?:\((\d{1,2}(?:[.,]\d{1,2})?)\s*%\))?/);
+      if (m && !/total|tva|facture/i.test(m[1])) {
+        const qty = Acc.parseAmount(m[2]), pu = Acc.parseAmount(m[3]), amt = Acc.parseAmount(m[4]);
+        if (qty != null && pu != null && amt != null) items.push({ description: m[1].trim(), qty, unitPrice: pu, discount: null, vatRate: m[5] ? Acc.parseAmount(m[5]) : null, amount: amt, confidence: 70 });
+      }
+    }
+    const currency = /€|EUR/.test(t) ? 'EUR' : (/\$|USD/.test(t) ? 'USD' : '');
+    const fields = {
+      docType: F(isAvoir ? 'Avoir' : cls.label, cls.confidence),
+      supplier: F(supplier, supplier ? 90 : 0),
+      address: F(address && /\d/.test(address) ? address : '', address ? 45 : 0),
+      siren: F(cleanId(sirenM && sirenM[1]) || (cleanId(siretM && siretM[1]).length === 14 ? cleanId(siretM[1]).slice(0, 9) : ''), 88),
+      siret: F(cleanId(siretM && siretM[1]), 88),
+      invoiceNumber: F(numLabeled || numPattern, numLabeled ? 90 : 72),
+      issueDate: F(issueDate, issueDate ? 88 : 0),
+      dueDate: F(dueDate, dueDate ? 85 : 0),
+      orderRef: F(orderRef, orderRef ? 85 : 0),
+      paymentTerms: F(paymentTerms, paymentTerms ? 70 : 0),
+      deposit: F(deposit != null ? String(deposit) : '', 75),
+      totalHT: F(totalHT != null ? String(totalHT) : '', 85),
+      vatAmount: F(vatTotal != null ? String(Math.round(vatTotal * 100) / 100) : '', 80),
+      totalTTC: F(totalTTC != null ? String(totalTTC) : '', 85),
+      currency: F(currency, currency ? 80 : 0)
+    };
+    // contrôles de cohérence (valeurs reconnues uniquement, jamais recalculées à la place)
+    const controls = [];
+    if (totalHT != null && totalTTC != null && vatTotal != null) {
+      const calc = Math.round((totalHT + vatTotal) * 100) / 100;
+      const okCtl = Math.abs(calc - totalTTC) <= Math.max(0.05, Math.abs(totalTTC) * 0.005);
+      controls.push({ label: 'HT + TVA = TTC', ok: okCtl, detail: `Reconnu : ${totalHT} + ${Math.round(vatTotal * 100) / 100} = ${calc} · TTC reconnu : ${totalTTC}`, recalculated: calc });
+    }
+    if (items.length && totalHT != null) {
+      const sum = Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100;
+      controls.push({ label: 'Somme des lignes = Total HT', ok: Math.abs(sum - totalHT) <= Math.max(0.05, Math.abs(totalHT) * 0.01), detail: `Lignes : ${sum} · HT reconnu : ${totalHT}`, recalculated: sum });
+    }
+    if (isAvoir && totalTTC != null && totalTTC > 0) controls.push({ label: 'Avoir à montants positifs', ok: false, detail: 'Un avoir comporte habituellement des montants négatifs : à vérifier, aucune correction automatique appliquée.', recalculated: null });
+    return { docType: isAvoir ? 'avoir' : cls.type, proposedType: cls, fields, lines: items, vat, controls,
+      disclaimer: 'Extraction locale à vérifier champ par champ. Les valeurs recalculées (contrôles) ne remplacent jamais les montants reconnus.' };
+  },
+  toCsv(data) {
+    const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const rows = [['Type', data.docType || ''], ['Champ', 'Valeur', 'Confiance %', 'Page']];
+    for (const [k, f] of Object.entries(data.fields || {})) rows.push([k, f.value, f.confidence, (f.page || 0) + 1]);
+    rows.push([]);
+    rows.push(['Description', 'Quantité', 'Prix unitaire HT', 'Remise', 'TVA %', 'Montant HT']);
+    for (const l of data.lines || []) rows.push([l.description, l.qty, l.unitPrice, l.discount ?? '', l.vatRate ?? '', l.amount]);
+    rows.push([]);
+    rows.push(['Taux TVA %', 'Montant TVA']);
+    for (const v of data.vat || []) rows.push([v.rate, v.amount]);
+    return rows.map(r => r.map(esc).join(';')).join('\n');
+  }
+};
 
 /* --------------------------------------------------------- assistant local -- */
 const AI = {
@@ -1826,6 +1986,12 @@ Object.assign(Actions, {
   'doc-print': () => docPrint(App.doc.id),
   'doc-export-images': () => docExportImages(App.doc.id),
   'doc-ocr': () => docRunOcr(App.doc.id),
+  'acc-select': async (el) => { App.accDocId = el.dataset.id; const d = (App.docs||[]).find(x=>x.id===el.dataset.id); if (d) { const full = await Repo.doc(d.id); if (full) { const i = App.docs.findIndex(x=>x.id===d.id); App.docs[i]=full; } } await render(); },
+  'acc-analyze': () => accAnalyze(App.accDocId),
+  'acc-save': () => accSave(App.accDocId),
+  'acc-export': (el) => accExport(App.accDocId, el.dataset.fmt),
+  'acc-zone': (el) => accShowZone(el),
+  'acc-open-doc': async () => { if (App.accDocId) { App.detailTab = 'preview'; go('detail', App.accDocId); } },
   'doc-rename': () => docRename(App.doc.id),
   'doc-delete': () => docDelete(App.doc.id),
   'doc-edit': () => docEdit(App.doc.id),
@@ -2106,6 +2272,107 @@ function renderInvoicePanel() {
   const read = () => Object.fromEntries($$('[data-inv]', out).map(i => [i.dataset.inv, i.value]));
   $('#invCsv', out).addEventListener('click', () => downloadBlob(new Blob([AI.invoiceCsv(read())], { type: 'text/csv;charset=utf-8' }), slugify(App.doc.name) + '-facture.csv'));
   $('#invJson', out).addEventListener('click', () => downloadBlob(new Blob([JSON.stringify(read(), null, 2)], { type: 'application/json' }), slugify(App.doc.name) + '-facture.json'));
+}
+
+async function accLoadPagesWords(doc) {
+  try {
+    const pages = await Repo.pages(doc.id);
+    if (pages && pages.length && pages.some(p => p.ocrWords)) return pages.map(p => p.ocrWords || []);
+  } catch (e) {}
+  return doc.ocrWordBoxes || null;
+}
+async function accAnalyze(docId) {
+  const doc = await Repo.doc(docId);
+  if (!doc) return;
+  if (!doc.text || !doc.text.trim()) { toast("Lancez d'abord l'OCR depuis le document (onglet Texte OCR), puis revenez dans Comptabilité.", 'err', 5000); App.accDocId = docId; await render(); return; }
+  const pagesWords = await accLoadPagesWords(doc);
+  const typeSel = $('#accTypeSel'); const forced = (typeSel && typeSel.value !== 'auto') ? typeSel.value : (App.accType && App.accType !== 'auto' ? App.accType : null);
+  const data = Acc.extractInvoice(doc.text, pagesWords);
+  if (forced) {
+    data.docType = forced;
+    data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === forced) || [])[1] || forced, confidence: 100, page: 0, zone: null, status: 'corrige' };
+  }
+  doc.acc = { version: 2, at: Date.now(), edited: false, data };
+  await Repo.update(doc);
+  App.docs = await Repo.list();
+  App.accDocId = docId;
+  await render();
+  toast('Reconnaissance structurée terminée — vérifiez les champs avant export', 'ok', 4000);
+}
+async function accReadForm(doc) {
+  const data = JSON.parse(JSON.stringify(doc.acc.data));
+  $$('[data-acc-field]').forEach(i => {
+    const k = i.dataset.accField;
+    const prev = data.fields[k] || {};
+    const v = i.value.trim();
+    data.fields[k] = { ...prev, value: v ? v : Acc.NR, status: v ? 'corrige' : 'non-reconnu', confidence: v ? Math.max(prev.confidence || 0, 0) : 0 };
+    if (k !== 'docType' && prev.zone) data.fields[k].zone = prev.zone;
+  });
+  const sel = $('#accTypeSel'); if (sel) { data.docType = sel.value; data.fields.docType.value = (Acc.TYPES.find(x => x[0] === sel.value) || [])[1] || sel.value; }
+  $$('[data-acc-line]').forEach(i => {
+    const [idx, field] = i.dataset.accLine.split(':');
+    const l = data.lines[+idx]; if (!l) return;
+    l[field] = field === 'description' ? i.value : Acc.parseAmount(i.value);
+    l.status = 'corrige';
+  });
+  return data;
+}
+async function accSave(docId) {
+  const doc = await Repo.doc(docId);
+  if (!doc || !doc.acc) return;
+  doc.acc.data = await accReadForm(doc);
+  doc.acc.edited = true;
+  doc.acc.savedAt = Date.now();
+  await Repo.update(doc);
+  App.docs = await Repo.list();
+  await render();
+  toast('Corrections comptables enregistrées', 'ok');
+}
+async function accExport(docId, fmt) {
+  const doc = await Repo.doc(docId);
+  if (!doc || !doc.acc) return;
+  const data = await accReadForm(doc);
+  const base = slugify(doc.name) + '-comptabilite';
+  try {
+    if (fmt === 'csv') downloadBlob(new Blob(['\ufeff' + Acc.toCsv(data)], { type: 'text/csv;charset=utf-8' }), base + '.csv');
+    else if (fmt === 'json') downloadBlob(new Blob([JSON.stringify({ document: doc.name, exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: 'application/json' }), base + '.json');
+    else if (fmt === 'xlsx') downloadBlob(await accXlsxBlob(doc, data), base + '.xlsx');
+    toast('Export ' + fmt.toUpperCase() + ' téléchargé', 'ok');
+  } catch (e) { toast('Export impossible : ' + e.message, 'err'); }
+}
+async function accXlsxBlob(doc, data) {
+  if (typeof JSZip === 'undefined') throw new Error('JSZip indisponible');
+  const esc = (x) => String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const cell = (v, r, c) => {
+    const ref = String.fromCharCode(65 + c) + r;
+    return (typeof v === 'number' && Number.isFinite(v)) ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
+  };
+  const rows = [['Document', doc.name], ['Type', data.docType], [], ['Champ', 'Valeur', 'Confiance %', 'Page']];
+  const numKeys = new Set(['totalHT', 'vatAmount', 'totalTTC', 'deposit']);
+  for (const [k, f] of Object.entries(data.fields || {})) rows.push([k, numKeys.has(k) && Acc.parseAmount(f.value) != null ? Acc.parseAmount(f.value) : f.value, f.confidence, (f.page || 0) + 1]);
+  rows.push([]); rows.push(['Description', 'Quantité', 'Prix unitaire HT', 'Remise', 'TVA %', 'Montant HT']);
+  for (const l of data.lines || []) rows.push([l.description, l.qty, l.unitPrice, l.discount, l.vatRate, l.amount]);
+  rows.push([]); rows.push(['Taux TVA %', 'Montant TVA']);
+  for (const v of data.vat || []) rows.push([v.rate, v.amount]);
+  const sheet = rows.map((r, i) => `<row r="${i + 1}">${r.map((c, j) => cell(c, i + 1, j)).join('')}</row>`).join('');
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+  zip.folder('_rels').file('.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  zip.folder('xl').file('workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Comptabilite" sheetId="1" r:id="rId1"/></sheets></workbook>');
+  zip.folder('xl').folder('_rels').file('workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
+  zip.folder('xl').folder('worksheets').file('sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheet}</sheetData></worksheet>`);
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+async function accShowZone(el) {
+  const doc = await Repo.doc(App.accDocId);
+  if (!doc) return;
+  const pages = await Repo.pages(doc.id);
+  const pg = pages[+el.dataset.page || 0];
+  const src = pg ? pg.src : doc.thumb;
+  if (!src) { toast("Page d'origine introuvable pour cette zone", 'err'); return; }
+  openSheet({ title: 'Zone reconnue — page ' + ((+el.dataset.page || 0) + 1), sub: "Le cadre rouge indique la zone de la page d'origine ayant produit la valeur.",
+    body: `<div class="zone-wrap"><img src="${src}" style="width:100%;border-radius:8px"><div class="zone-box" style="left:${(+el.dataset.x * 100).toFixed(1)}%;top:${(+el.dataset.y * 100).toFixed(1)}%;width:${(+el.dataset.w * 100).toFixed(1)}%;height:${(+el.dataset.h * 100).toFixed(1)}%"></div></div>`,
+    actions: [{ label: 'Fermer', cls: 'ghost' }] });
 }
 
 /* ---------------------------------------------------- outils PDF avancés -- */

@@ -551,6 +551,20 @@ html[data-theme="dark"] .switch{background:#22345A}
 .tools-section{font-size:16px;margin:18px 2px 2px}
 @media(max-width:380px){.tools-grid{grid-template-columns:repeat(3,1fr)}}
 
+/* Comptabilité (Livraison 2) */
+.chip.ok{background:#E7F6EC;color:#14632F;border-color:#BEE3C9}
+.chip.warn{background:#FFF3D6;color:#8A5A08;border-color:#F7DFB0}
+.chip.err{background:#FDE8E8;color:#8F1D1D;border-color:#F5C2C2}
+label .chip{float:right;min-height:22px;padding:0 8px;font-size:11px;border-radius:999px}
+.banner.ok{background:#E7F6EC;color:#14632F;border:1px solid #BEE3C9}
+.acc-lines{display:flex;flex-direction:column;gap:8px}
+.acc-line{gap:6px}
+.acc-line input{min-width:0}
+.acc-line input:first-child{flex:1.6}
+.acc-line input:not(:first-child){flex:.6;text-align:right}
+.zone-wrap{position:relative;line-height:0}
+.zone-box{position:absolute;border:3px solid #E11D48;background:rgba(225,29,72,.18);border-radius:4px}
+
 </style>
 </head>
 <body>
@@ -611,6 +625,9 @@ html[data-theme="dark"] .switch{background:#22345A}
     </button>
     <button class="nav-item" data-nav="docs" aria-label="Documents">
       <svg class="ico"><use href="#i-docs"/></svg><span>Documents</span>
+    </button>
+    <button class="nav-item" data-nav="acc" aria-label="Comptabilité">
+      <svg class="ico"><use href="#i-grid"/></svg><span>Compta</span>
     </button>
     <div class="nav-fab">
       <button id="fabScan" aria-label="Nouveau scan">
@@ -1091,7 +1108,16 @@ const OCR = {
     let text = (data.text || '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
     text = text.split('\n').map(line => { const t=line.trim(); return (t.length>=4 && t.length<=70 && t===t.toUpperCase() && /[A-ZÀ-Ý]{3,}/.test(t)) ? t : line; }).join('\n');
     const uncertain = (data.words || []).filter(w => (w.confidence || 100) < 60 && (w.text || '').trim()).slice(0, 40).map(w => ({ text: w.text, confidence: Math.round(w.confidence || 0) }));
-    return { text, confidence: Math.round(data.confidence || 0), words: (data.words || []).length, lines: (data.lines || []).length, uncertain };
+    // Positions des mots (relatives à l'image analysée) pour la traçabilité comptable :
+    // chaque champ extrait pourra être relié à sa zone sur la page d'origine.
+    let imgW = 0, imgH = 0;
+    try { const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = dataUrl; }); imgW = im.naturalWidth; imgH = im.naturalHeight; } catch (e) {}
+    const wordBoxes = (data.words || []).filter(w => (w.text || '').trim() && w.bbox).slice(0, 3000).map(w => ({
+      t: w.text, c: Math.round(w.confidence || 0),
+      x: imgW ? +(w.bbox.x0 / imgW).toFixed(4) : 0, y: imgH ? +(w.bbox.y0 / imgH).toFixed(4) : 0,
+      w: imgW ? +((w.bbox.x1 - w.bbox.x0) / imgW).toFixed(4) : 0, h: imgH ? +((w.bbox.y1 - w.bbox.y0) / imgH).toFixed(4) : 0
+    }));
+    return { text, confidence: Math.round(data.confidence || 0), words: (data.words || []).length, lines: (data.lines || []).length, uncertain, wordBoxes };
   },
   async terminate() { if (this.worker) { try { await this.worker.terminate(); } catch (e) {} this.worker = null; this.langs = null; } }
 };
@@ -2030,7 +2056,7 @@ const Repo = {
         id: p.id || uid('pg'), docId: doc.id, index: i, src: p.src,
         crop: p.crop || { x: 0, y: 0, w: 1, h: 1 }, rotate: p.rotate || 0,
         quad: p.quad || null, deskew: p.deskew || 0,
-        filter: p.filter || 'none', adj: p.adj || { b: 1, c: 1 }, cleanup: p.cleanup || null, eraser: p.eraser || [], thumb: p.thumb || null, text: p.text || '', ocrConf: p.ocrConf || 0
+        filter: p.filter || 'none', adj: p.adj || { b: 1, c: 1 }, cleanup: p.cleanup || null, eraser: p.eraser || [], thumb: p.thumb || null, text: p.text || '', ocrConf: p.ocrConf || 0, ocrWords: p.ocrWords || null
       };
       bytes += (rec.src ? rec.src.length * 0.75 : 0) + (rec.thumb ? rec.thumb.length * 0.75 : 0);
       await Store.put('pages', rec);
@@ -2069,7 +2095,7 @@ const Repo = {
         id: p.id || uid('pg'), docId, index: i, src: p.src, crop: p.crop || { x: 0, y: 0, w: 1, h: 1 },
         rotate: p.rotate || 0, quad: p.quad || null, deskew: p.deskew || 0,
         filter: p.filter || 'none', adj: p.adj || { b: 1, c: 1 }, cleanup: p.cleanup || null, eraser: p.eraser || [], thumb: p.thumb || null,
-        text: p.text || '', ocrConf: p.ocrConf || 0
+        text: p.text || '', ocrConf: p.ocrConf || 0, ocrWords: p.ocrWords || null
       };
       bytes += (rec.src || '').length * 0.75 + (rec.thumb || '').length * 0.75;
       await Store.put('pages', rec);
@@ -2197,8 +2223,8 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 /* Point d'entrée de débogage (console) — n'expose aucune donnée à l'extérieur. */
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
-  get AI() { return AI; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.7.1'
+  get AI() { return AI; }, get Acc() { return Acc; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
+  version: '2.8.0'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */
@@ -2577,7 +2603,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.7.1 (Web)<br>
+      <b>ScanPro AI</b> — version 2.8.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -2831,6 +2857,61 @@ function viewTools() {
   </div>`;
 }
 
+/* ------------------------------------------------------ espace Comptabilité -- */
+function viewAcc() {
+  const docs = App.docs || [];
+  const sel = docs.find(d => d.id === App.accDocId) || null;
+  const acc = sel && sel.acc ? sel.acc : null;
+  const confChip = (c, st) => st === 'corrige' ? '<span class="chip ok">corrigé</span>'
+    : c >= 80 ? `<span class="chip ok">${c} %</span>` : c >= 50 ? `<span class="chip warn">${c} %</span>`
+    : c > 0 ? `<span class="chip err">${c} %</span>` : '<span class="chip err">Non reconnu</span>';
+  let detail = '';
+  if (sel && acc) {
+    const d = acc.data;
+    const labels = { docType: 'Type de document', supplier: 'Fournisseur / Client', address: 'Adresse', siren: 'SIREN', siret: 'SIRET', invoiceNumber: 'Numéro', issueDate: "Date d'émission", dueDate: "Date d'échéance", orderRef: 'Référence commande', paymentTerms: 'Conditions de règlement', deposit: 'Acompte', totalHT: 'Total HT', vatAmount: 'Montant TVA', totalTTC: 'Total TTC', currency: 'Devise' };
+    detail = `
+    <div class="card">
+      <div class="row"><b class="grow">${escapeHtml(sel.name)}</b><span class="chip ${acc.edited ? 'warn' : 'ok'}">${acc.edited ? 'Corrigé manuellement' : 'Extraction automatique'}</span></div>
+      <label class="small muted">Type de document (proposé : ${escapeHtml((Acc.TYPES.find(x => x[0] === d.docType) || [])[1] || d.docType)} — modifiable)
+      <select id="accTypeSel">${Acc.TYPES.map(([v, l]) => `<option value="${v}" ${d.docType === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <div class="invoice-grid">
+      ${Object.keys(labels).map(k => { const f = (d.fields || {})[k] || { value: 'Non reconnu', confidence: 0 }; return `<label>${labels[k]} ${confChip(f.confidence, f.status)}
+        <span class="row"><input data-acc-field="${k}" value="${escapeHtml(f.value === 'Non reconnu' ? '' : f.value)}" placeholder="Non reconnu">
+        ${f.zone ? `<button class="btn xs soft" data-act="acc-zone" data-page="${f.zone.page}" data-x="${f.zone.x}" data-y="${f.zone.y}" data-w="${f.zone.w}" data-h="${f.zone.h}">Voir p.${f.zone.page + 1}</button>` : ''}</span></label>`; }).join('')}
+      </div>
+      <h4>Lignes d'articles</h4>
+      ${(d.lines || []).length ? `<div class="acc-lines">${d.lines.map((l, i) => `<div class="row acc-line"><input data-acc-line="${i}:description" value="${escapeHtml(l.description)}"><input data-acc-line="${i}:qty" value="${l.qty}" size="4"><input data-acc-line="${i}:unitPrice" value="${l.unitPrice}" size="7"><input data-acc-line="${i}:amount" value="${l.amount}" size="8"></div>`).join('')}</div>` : '<p class="small muted">Aucune ligne reconnue — à compléter manuellement si le document en comporte.</p>'}
+      <h4>TVA par taux</h4>
+      ${(d.vat || []).length ? d.vat.map(v => `<div class="row"><span class="grow">TVA ${v.rate} %</span><b>${v.amount}</b></div>`).join('') : '<p class="small muted">Aucun taux de TVA reconnu.</p>'}
+      <h4>Contrôles de cohérence</h4>
+      ${(d.controls || []).length ? d.controls.map(c => `<div class="banner ${c.ok ? 'ok' : 'warn'}"><span>${c.ok ? '✓' : '⚠'} <b>${escapeHtml(c.label)}</b> — ${escapeHtml(c.detail)}</span></div>`).join('') : '<p class="small muted">Données insuffisantes pour un contrôle (il faut HT, TVA et TTC reconnus).</p>'}
+      <p class="tiny muted">${escapeHtml(d.disclaimer || '')} Traitement 100 % local : aucun document comptable n'est envoyé à un service externe.</p>
+      <div class="btn-row">
+        <button class="btn go" data-act="acc-save">Enregistrer les corrections</button>
+        <button class="btn soft" data-act="acc-export" data-fmt="csv">Export CSV</button>
+        <button class="btn soft" data-act="acc-export" data-fmt="xlsx">Export XLSX</button>
+        <button class="btn soft" data-act="acc-export" data-fmt="json">Export JSON</button>
+      </div>
+      <div class="btn-row"><button class="btn ghost" data-act="acc-open-doc">Voir le document (original, OCR, pages)</button>
+      <button class="btn ghost" data-act="acc-analyze">Relancer la reconnaissance</button></div>
+    </div>`;
+  } else if (sel) {
+    detail = `<div class="card"><b>${escapeHtml(sel.name)}</b>
+      <p class="small muted">${sel.text ? 'Texte OCR présent : la reconnaissance structurée peut être lancée.' : "Aucun texte OCR : lancez d'abord l'OCR depuis le document, puis revenez ici."}</p>
+      <label class="small muted">Type de document<select id="accTypeSel"><option value="auto">Automatique (proposé par l'application)</option>${Acc.TYPES.map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}</select></label>
+      <div class="btn-row"><button class="btn go" data-act="acc-analyze">Lancer la reconnaissance</button>
+      <button class="btn ghost" data-act="acc-open-doc">Ouvrir le document</button></div></div>`;
+  }
+  return `<div class="screen">
+    <header class="appbar"><div><h1>Comptabilité</h1><p class="sub">Reconnaissance structurée, contrôle et export — 100 % local</p></div></header>
+    <div class="banner info"><span>Choisissez un document, vérifiez chaque champ (confiance affichée), corrigez si besoin puis exportez. « Non reconnu » signifie que l'information n'a pas été trouvée : elle n'est jamais inventée.</span></div>
+    <h3 class="sect">Documents</h3>
+    ${docs.length ? docs.map(d => `<div class="card row"><div class="grow"><b>${escapeHtml(d.name)}</b><br><span class="tiny muted">${d.acc ? 'Type : ' + escapeHtml((Acc.TYPES.find(x => x[0] === d.acc.data.docType) || [])[1] || d.acc.data.docType) + (d.acc.edited ? ' · corrigé' : '') : (d.text ? 'OCR présent, non analysé' : 'Sans OCR')}</span></div>
+      <button class="btn xs ${sel && sel.id === d.id ? 'go' : 'soft'}" data-act="acc-select" data-id="${d.id}">${sel && sel.id === d.id ? 'Sélectionné' : 'Choisir'}</button></div>`).join('') : '<p class="muted">Aucun document. Scannez ou importez d\'abord un document comptable.</p>'}
+    ${detail}
+  </div>`;
+}
+
 /* -------------------------------------------------- rendu d'une vue (route) -- */
 async function render() {
   const view = $('#view');
@@ -2839,12 +2920,14 @@ async function render() {
     (App.route === 'docs' && b.dataset.nav === 'docs') ||
     (App.route === 'settings' && b.dataset.nav === 'settings') ||
     (App.route === 'tools' && b.dataset.nav === 'tools') ||
+    (App.route === 'acc' && b.dataset.nav === 'acc') ||
     (['home', 'detail'].includes(App.route) && b.dataset.nav === 'home')));
 
   if (App.route === 'home') view.innerHTML = viewHome();
   else if (App.route === 'docs') view.innerHTML = viewDocs();
   else if (App.route === 'settings') { view.innerHTML = await viewSettings(); }
   else if (App.route === 'tools') view.innerHTML = viewTools();
+  else if (App.route === 'acc') view.innerHTML = viewAcc();
   else if (App.route === 'detail') view.innerHTML = viewDocDetail();
 
   if (App.route === 'home' || App.route === 'docs') {
@@ -4251,6 +4334,7 @@ async function docRunOcr(docId) {
     doc.text = text;
     doc.ocr = { status: text ? 'done' : 'empty', at: Date.now(), confidence: avg };
     doc.ocrUncertain = results.flatMap(r => r.uncertain || []);
+    doc.ocrWordBoxes = results.map(r => r.wordBoxes || []);
     await Repo.update(doc);
     App.doc = doc; App.detailTab = 'text';
     await render();
@@ -4273,7 +4357,7 @@ async function docRunOcr(docId) {
   doc.ocrUncertain = results.flatMap(r => r.uncertain || []);
   await Repo.update(doc);
   for (let i = 0; i < pages.length; i++) {
-    pages[i].text = results[i].text; pages[i].ocrConf = results[i].confidence;
+    pages[i].text = results[i].text; pages[i].ocrConf = results[i].confidence; pages[i].ocrWords = results[i].wordBoxes || [];
     await Store.put('pages', pages[i]);
   }
   App.doc = doc; App.docPages = pages; App.detailTab = 'text';
@@ -4404,6 +4488,165 @@ async function mergePdfs() {
     }
   });
 }
+
+/* --------------------------------------- comptabilité : extraction structurée -- */
+/* Règles (audit Phase A) : ne jamais inventer une information absente (« Non reconnu »),
+   confiance par champ, TVA multiples, lignes d'articles, lien champ -> zone de la page. */
+const Acc = {
+  TYPES: [
+    ['facture_achat', "Facture d'achat"], ['facture_vente', 'Facture de vente'], ['avoir', 'Avoir'],
+    ['releve_bancaire', 'Relevé bancaire'], ['bulletin_salaire', 'Bulletin de salaire'],
+    ['bilan', 'Bilan comptable'], ['compte_resultat', 'Compte de résultat'], ['devis', 'Devis'],
+    ['bon_commande', 'Bon de commande'], ['pret_echeancier', 'Plan de remboursement de prêt'],
+    ['amort_emprunt', "Tableau d'amortissement d'emprunt"], ['amort_immobilisation', 'Amortissement des immobilisations'],
+    ['note_frais', 'Note de frais / justificatif'], ['autre_comptable', 'Autre état comptable']
+  ],
+  NR: 'Non reconnu',
+  parseAmount(v) {
+    if (v == null) return null;
+    let s = String(v).trim().replace(/\s|€|EUR/gi, '').replace(/\(([^)]+)\)/, '-$1');
+    if (!s) return null;
+    if (/,/.test(s) && /\./.test(s)) s = s.replace(/\./g, '').replace(',', '.'); else s = s.replace(',', '.');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  },
+  fmt(n) { return n == null || n === '' ? Acc.NR : String(n); },
+  classifyType(text) {
+    const t = String(text || '').toLowerCase();
+    const rules = [
+      ['avoir', ['avoir', 'note de crédit', 'credit note']],
+      ['releve_bancaire', ['relevé bancaire', 'releve bancaire', 'solde précédent', 'extrait de compte', 'iban']],
+      ['bulletin_salaire', ['bulletin de paie', 'bulletin de salaire', 'salaire brut', 'net à payer', 'cotisations salariales']],
+      ['bilan', ['bilan', 'actif immobilisé', 'capitaux propres', 'total actif', 'total passif']],
+      ['compte_resultat', ['compte de résultat', 'charges d\'exploitation', 'produits d\'exploitation', 'résultat net']],
+      ['amort_immobilisation', ['amortissements cumulés', 'valeur nette comptable', 'dotation aux amortissements']],
+      ['pret_echeancier', ['capital restant dû', 'échéancier', 'mensualité', 'taux nominal']],
+      ['amort_emprunt', ['tableau d\'amortissement', 'capital amorti', 'intérêts cumulés']],
+      ['devis', ['devis', 'validité de l\'offre', 'bon pour accord']],
+      ['bon_commande', ['bon de commande', 'purchase order', 'commande n°']],
+      ['note_frais', ['note de frais', 'frais de déplacement', 'justificatif']],
+      ['facture_achat', ['facture d\'achat', 'fournisseur :', 'émetteur']],
+      ['facture_vente', ['facture de vente', 'client :', 'facturé à']]
+    ];
+    let best = { type: 'autre_comptable', score: 0 };
+    for (const [type, words] of rules) {
+      let s = 0; for (const w of words) if (t.includes(w)) s += w.length > 8 ? 2 : 1;
+      if (s > best.score) best = { type, score: s };
+    }
+    if (/facture/.test(t) && best.score === 0) best = { type: 'facture_achat', score: 1 };
+    const label = (Acc.TYPES.find(x => x[0] === best.type) || [])[1] || 'Autre état comptable';
+    return { type: best.type, label, confidence: best.score >= 3 ? 85 : best.score >= 1 ? 55 : 25, proposed: true };
+  },
+  _norm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]/gi, ''); },
+  findZone(pagesWords, needle) {
+    if (!pagesWords || !needle) return null;
+    const target = Acc._norm(needle).slice(0, 18);
+    if (target.length < 2) return null;
+    for (let p = 0; p < pagesWords.length; p++) {
+      const words = pagesWords[p] || [];
+      for (const w of words) {
+        const wt = Acc._norm(w.t);
+        if (wt && (wt === target || (target.includes(wt) && wt.length >= 3) || (wt.includes(target) && target.length >= 3))) {
+          return { page: p, x: w.x, y: w.y, w: Math.max(w.w, 0.03), h: Math.max(w.h, 0.015) };
+        }
+      }
+    }
+    return null;
+  },
+  extractInvoice(text, pagesWords) {
+    const t = String(text || '');
+    const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
+    const F = (value, confidence, needle) => {
+      const v = value == null || value === '' ? Acc.NR : value;
+      const zone = v !== Acc.NR ? Acc.findZone(pagesWords, needle != null ? needle : v) : null;
+      return { value: v, confidence: v === Acc.NR ? 0 : confidence, page: zone ? zone.page : 0, zone, status: v === Acc.NR ? 'non-reconnu' : 'reconnu' };
+    };
+    const labeled = (re) => { for (const l of lines) { const m = l.match(re); if (m && m[1] && m[1].trim()) return m[1].trim().slice(0, 120); } return ''; };
+    const money = (re) => { const m = t.match(re); return m ? Acc.parseAmount(m[1]) : null; };
+    const cls = Acc.classifyType(t);
+    const isAvoir = cls.type === 'avoir' || /\bavoir\b/i.test(t);
+    // émetteur : uniquement si libellé explicite (correction C-03 : jamais la 1re/dernière ligne)
+    const supplier = labeled(/(?:fournisseur|émetteur|emetteur|émettrice|de la part de)\s*[:\-]\s*(.+)$/i)
+      || labeled(/(?:société|entreprise)\s+émettrice\s*[:\-]\s*(.+)$/i);
+    const address = supplier ? (lines[lines.findIndex(l => l.includes(supplier.slice(0, 12))) + 1] || '') : '';
+    const sirenM = t.match(/\bsiren\s*:?\s*(\d[\d ]{8,12})/i);
+    const siretM = t.match(/\bsiret\s*:?\s*(\d[\d ]{12,17})/i);
+    const cleanId = (s) => s ? s.replace(/\s/g, '') : '';
+    const numLabeled = labeled(/(?:facture|avoir|devis|commande)\s*(?:n[°o]?|numéro|numero|réf\.?|ref\.?)\s*[:#\-]?\s*([A-Z0-9][A-Z0-9\-\/]{2,24})/i)
+      || labeled(/n[°o]\s*(?:de\s*)?(?:facture|avoir|document)\s*[:#\-]?\s*([A-Z0-9][A-Z0-9\-\/]{2,24})/i);
+    const numPattern = (t.match(/\b(?:FAC|FACT|AV|F|INV)[-\/]?\d{2,4}[-\/][A-Z0-9][A-Z0-9\-\/]{1,20}\b/i) || [''])[0];
+    const issueDate = labeled(/(?:date\s*d['’]?(?:émission|emission|facturation)|date\s*de\s*facture|date)\s*[:\-]\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/i);
+    // échéance : libellé explicite uniquement (correction C-04)
+    const dueDate = labeled(/(?:échéance|echeance|à régler avant|payable avant|date\s*d['’]?échéance)\s*[:\-]?\s*(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/i);
+    const orderRef = labeled(/(?:référence\s*(?:de\s*)?commande|bon de commande|commande\s*n[°o]?|référence client|votre référence)\s*[:#\-]?\s*([A-Z0-9\-\/]{3,30})/i);
+    const paymentTerms = labeled(/(?:conditions\s*de\s*(?:règlement|paiement)|règlement\s*[:\-]|paiement\s*(?:à|a)\s*(\d+\s*jours?.*))$/i)
+      || labeled(/(paiement\s*à\s*\d+\s*jours?.*)$/i);
+    const totalHT = money(/total\s*(?:ht|hors\s*taxe)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    const totalTTC = money(/total\s*(?:ttc|à\s*payer|a\s*payer)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i)
+      ?? money(/net\s*à\s*payer[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    const deposit = money(/(?:acompte|arrhes)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    // TVA : tous les taux et montants (correction C-01)
+    const vatMap = new Map();
+    const vatRes = [/(?:tva|TVA)\s*(?:à|a)?\s*(\d{1,2}(?:[.,]\d{1,2})?)\s*%\s*[:\-]?\s*(-?[\d ]+(?:[.,]\d{2})?)/g,
+                    /(\d{1,2}(?:[.,]\d{1,2})?)\s*%\s*[:\-]?\s*(-?[\d ]+(?:[.,]\d{2})?)\s*(?:€|EUR)?\s*(?:de\s*)?tva/gi];
+    for (const re of vatRes) { let m; while ((m = re.exec(t))) { const rate = Acc.parseAmount(m[1]); const amt = Acc.parseAmount(m[2]); if (rate != null && amt != null && rate > 0 && rate <= 30 && !vatMap.has(rate)) vatMap.set(rate, amt); } }
+    const vat = [...vatMap.entries()].map(([rate, amount]) => ({ rate, amount }));
+    const vatTotal = vat.length ? vat.reduce((s, v) => s + v.amount, 0) : money(/(?:montant\s*)?tva\s*(?:\d+[.,]?\d*\s*%)?[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i);
+    // lignes d'articles : « description  qté x PU  [=] total » (correction C-01)
+    const items = [];
+    for (const l of lines) {
+      const m = l.match(/^(.{2,60}?)\s+(\d+(?:[.,]\d+)?)\s*[x×]\s*(-?[\d ]+(?:[.,]\d{2})?)\s*(?:€|EUR)?\s*(?:=|\s)\s*(-?[\d ]+(?:[.,]\d{2})?)\s*(?:€|EUR)?\s*(?:\((\d{1,2}(?:[.,]\d{1,2})?)\s*%\))?/);
+      if (m && !/total|tva|facture/i.test(m[1])) {
+        const qty = Acc.parseAmount(m[2]), pu = Acc.parseAmount(m[3]), amt = Acc.parseAmount(m[4]);
+        if (qty != null && pu != null && amt != null) items.push({ description: m[1].trim(), qty, unitPrice: pu, discount: null, vatRate: m[5] ? Acc.parseAmount(m[5]) : null, amount: amt, confidence: 70 });
+      }
+    }
+    const currency = /€|EUR/.test(t) ? 'EUR' : (/\$|USD/.test(t) ? 'USD' : '');
+    const fields = {
+      docType: F(isAvoir ? 'Avoir' : cls.label, cls.confidence),
+      supplier: F(supplier, supplier ? 90 : 0),
+      address: F(address && /\d/.test(address) ? address : '', address ? 45 : 0),
+      siren: F(cleanId(sirenM && sirenM[1]) || (cleanId(siretM && siretM[1]).length === 14 ? cleanId(siretM[1]).slice(0, 9) : ''), 88),
+      siret: F(cleanId(siretM && siretM[1]), 88),
+      invoiceNumber: F(numLabeled || numPattern, numLabeled ? 90 : 72),
+      issueDate: F(issueDate, issueDate ? 88 : 0),
+      dueDate: F(dueDate, dueDate ? 85 : 0),
+      orderRef: F(orderRef, orderRef ? 85 : 0),
+      paymentTerms: F(paymentTerms, paymentTerms ? 70 : 0),
+      deposit: F(deposit != null ? String(deposit) : '', 75),
+      totalHT: F(totalHT != null ? String(totalHT) : '', 85),
+      vatAmount: F(vatTotal != null ? String(Math.round(vatTotal * 100) / 100) : '', 80),
+      totalTTC: F(totalTTC != null ? String(totalTTC) : '', 85),
+      currency: F(currency, currency ? 80 : 0)
+    };
+    // contrôles de cohérence (valeurs reconnues uniquement, jamais recalculées à la place)
+    const controls = [];
+    if (totalHT != null && totalTTC != null && vatTotal != null) {
+      const calc = Math.round((totalHT + vatTotal) * 100) / 100;
+      const okCtl = Math.abs(calc - totalTTC) <= Math.max(0.05, Math.abs(totalTTC) * 0.005);
+      controls.push({ label: 'HT + TVA = TTC', ok: okCtl, detail: `Reconnu : ${totalHT} + ${Math.round(vatTotal * 100) / 100} = ${calc} · TTC reconnu : ${totalTTC}`, recalculated: calc });
+    }
+    if (items.length && totalHT != null) {
+      const sum = Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100;
+      controls.push({ label: 'Somme des lignes = Total HT', ok: Math.abs(sum - totalHT) <= Math.max(0.05, Math.abs(totalHT) * 0.01), detail: `Lignes : ${sum} · HT reconnu : ${totalHT}`, recalculated: sum });
+    }
+    if (isAvoir && totalTTC != null && totalTTC > 0) controls.push({ label: 'Avoir à montants positifs', ok: false, detail: 'Un avoir comporte habituellement des montants négatifs : à vérifier, aucune correction automatique appliquée.', recalculated: null });
+    return { docType: isAvoir ? 'avoir' : cls.type, proposedType: cls, fields, lines: items, vat, controls,
+      disclaimer: 'Extraction locale à vérifier champ par champ. Les valeurs recalculées (contrôles) ne remplacent jamais les montants reconnus.' };
+  },
+  toCsv(data) {
+    const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const rows = [['Type', data.docType || ''], ['Champ', 'Valeur', 'Confiance %', 'Page']];
+    for (const [k, f] of Object.entries(data.fields || {})) rows.push([k, f.value, f.confidence, (f.page || 0) + 1]);
+    rows.push([]);
+    rows.push(['Description', 'Quantité', 'Prix unitaire HT', 'Remise', 'TVA %', 'Montant HT']);
+    for (const l of data.lines || []) rows.push([l.description, l.qty, l.unitPrice, l.discount ?? '', l.vatRate ?? '', l.amount]);
+    rows.push([]);
+    rows.push(['Taux TVA %', 'Montant TVA']);
+    for (const v of data.vat || []) rows.push([v.rate, v.amount]);
+    return rows.map(r => r.map(esc).join(';')).join('\n');
+  }
+};
 
 /* --------------------------------------------------------- assistant local -- */
 const AI = {
@@ -4738,6 +4981,12 @@ Object.assign(Actions, {
   'doc-print': () => docPrint(App.doc.id),
   'doc-export-images': () => docExportImages(App.doc.id),
   'doc-ocr': () => docRunOcr(App.doc.id),
+  'acc-select': async (el) => { App.accDocId = el.dataset.id; const d = (App.docs||[]).find(x=>x.id===el.dataset.id); if (d) { const full = await Repo.doc(d.id); if (full) { const i = App.docs.findIndex(x=>x.id===d.id); App.docs[i]=full; } } await render(); },
+  'acc-analyze': () => accAnalyze(App.accDocId),
+  'acc-save': () => accSave(App.accDocId),
+  'acc-export': (el) => accExport(App.accDocId, el.dataset.fmt),
+  'acc-zone': (el) => accShowZone(el),
+  'acc-open-doc': async () => { if (App.accDocId) { App.detailTab = 'preview'; go('detail', App.accDocId); } },
   'doc-rename': () => docRename(App.doc.id),
   'doc-delete': () => docDelete(App.doc.id),
   'doc-edit': () => docEdit(App.doc.id),
@@ -5018,6 +5267,107 @@ function renderInvoicePanel() {
   const read = () => Object.fromEntries($$('[data-inv]', out).map(i => [i.dataset.inv, i.value]));
   $('#invCsv', out).addEventListener('click', () => downloadBlob(new Blob([AI.invoiceCsv(read())], { type: 'text/csv;charset=utf-8' }), slugify(App.doc.name) + '-facture.csv'));
   $('#invJson', out).addEventListener('click', () => downloadBlob(new Blob([JSON.stringify(read(), null, 2)], { type: 'application/json' }), slugify(App.doc.name) + '-facture.json'));
+}
+
+async function accLoadPagesWords(doc) {
+  try {
+    const pages = await Repo.pages(doc.id);
+    if (pages && pages.length && pages.some(p => p.ocrWords)) return pages.map(p => p.ocrWords || []);
+  } catch (e) {}
+  return doc.ocrWordBoxes || null;
+}
+async function accAnalyze(docId) {
+  const doc = await Repo.doc(docId);
+  if (!doc) return;
+  if (!doc.text || !doc.text.trim()) { toast("Lancez d'abord l'OCR depuis le document (onglet Texte OCR), puis revenez dans Comptabilité.", 'err', 5000); App.accDocId = docId; await render(); return; }
+  const pagesWords = await accLoadPagesWords(doc);
+  const typeSel = $('#accTypeSel'); const forced = (typeSel && typeSel.value !== 'auto') ? typeSel.value : (App.accType && App.accType !== 'auto' ? App.accType : null);
+  const data = Acc.extractInvoice(doc.text, pagesWords);
+  if (forced) {
+    data.docType = forced;
+    data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === forced) || [])[1] || forced, confidence: 100, page: 0, zone: null, status: 'corrige' };
+  }
+  doc.acc = { version: 2, at: Date.now(), edited: false, data };
+  await Repo.update(doc);
+  App.docs = await Repo.list();
+  App.accDocId = docId;
+  await render();
+  toast('Reconnaissance structurée terminée — vérifiez les champs avant export', 'ok', 4000);
+}
+async function accReadForm(doc) {
+  const data = JSON.parse(JSON.stringify(doc.acc.data));
+  $$('[data-acc-field]').forEach(i => {
+    const k = i.dataset.accField;
+    const prev = data.fields[k] || {};
+    const v = i.value.trim();
+    data.fields[k] = { ...prev, value: v ? v : Acc.NR, status: v ? 'corrige' : 'non-reconnu', confidence: v ? Math.max(prev.confidence || 0, 0) : 0 };
+    if (k !== 'docType' && prev.zone) data.fields[k].zone = prev.zone;
+  });
+  const sel = $('#accTypeSel'); if (sel) { data.docType = sel.value; data.fields.docType.value = (Acc.TYPES.find(x => x[0] === sel.value) || [])[1] || sel.value; }
+  $$('[data-acc-line]').forEach(i => {
+    const [idx, field] = i.dataset.accLine.split(':');
+    const l = data.lines[+idx]; if (!l) return;
+    l[field] = field === 'description' ? i.value : Acc.parseAmount(i.value);
+    l.status = 'corrige';
+  });
+  return data;
+}
+async function accSave(docId) {
+  const doc = await Repo.doc(docId);
+  if (!doc || !doc.acc) return;
+  doc.acc.data = await accReadForm(doc);
+  doc.acc.edited = true;
+  doc.acc.savedAt = Date.now();
+  await Repo.update(doc);
+  App.docs = await Repo.list();
+  await render();
+  toast('Corrections comptables enregistrées', 'ok');
+}
+async function accExport(docId, fmt) {
+  const doc = await Repo.doc(docId);
+  if (!doc || !doc.acc) return;
+  const data = await accReadForm(doc);
+  const base = slugify(doc.name) + '-comptabilite';
+  try {
+    if (fmt === 'csv') downloadBlob(new Blob(['\ufeff' + Acc.toCsv(data)], { type: 'text/csv;charset=utf-8' }), base + '.csv');
+    else if (fmt === 'json') downloadBlob(new Blob([JSON.stringify({ document: doc.name, exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: 'application/json' }), base + '.json');
+    else if (fmt === 'xlsx') downloadBlob(await accXlsxBlob(doc, data), base + '.xlsx');
+    toast('Export ' + fmt.toUpperCase() + ' téléchargé', 'ok');
+  } catch (e) { toast('Export impossible : ' + e.message, 'err'); }
+}
+async function accXlsxBlob(doc, data) {
+  if (typeof JSZip === 'undefined') throw new Error('JSZip indisponible');
+  const esc = (x) => String(x ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const cell = (v, r, c) => {
+    const ref = String.fromCharCode(65 + c) + r;
+    return (typeof v === 'number' && Number.isFinite(v)) ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
+  };
+  const rows = [['Document', doc.name], ['Type', data.docType], [], ['Champ', 'Valeur', 'Confiance %', 'Page']];
+  const numKeys = new Set(['totalHT', 'vatAmount', 'totalTTC', 'deposit']);
+  for (const [k, f] of Object.entries(data.fields || {})) rows.push([k, numKeys.has(k) && Acc.parseAmount(f.value) != null ? Acc.parseAmount(f.value) : f.value, f.confidence, (f.page || 0) + 1]);
+  rows.push([]); rows.push(['Description', 'Quantité', 'Prix unitaire HT', 'Remise', 'TVA %', 'Montant HT']);
+  for (const l of data.lines || []) rows.push([l.description, l.qty, l.unitPrice, l.discount, l.vatRate, l.amount]);
+  rows.push([]); rows.push(['Taux TVA %', 'Montant TVA']);
+  for (const v of data.vat || []) rows.push([v.rate, v.amount]);
+  const sheet = rows.map((r, i) => `<row r="${i + 1}">${r.map((c, j) => cell(c, i + 1, j)).join('')}</row>`).join('');
+  const zip = new JSZip();
+  zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+  zip.folder('_rels').file('.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  zip.folder('xl').file('workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Comptabilite" sheetId="1" r:id="rId1"/></sheets></workbook>');
+  zip.folder('xl').folder('_rels').file('workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
+  zip.folder('xl').folder('worksheets').file('sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheet}</sheetData></worksheet>`);
+  return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+async function accShowZone(el) {
+  const doc = await Repo.doc(App.accDocId);
+  if (!doc) return;
+  const pages = await Repo.pages(doc.id);
+  const pg = pages[+el.dataset.page || 0];
+  const src = pg ? pg.src : doc.thumb;
+  if (!src) { toast("Page d'origine introuvable pour cette zone", 'err'); return; }
+  openSheet({ title: 'Zone reconnue — page ' + ((+el.dataset.page || 0) + 1), sub: "Le cadre rouge indique la zone de la page d'origine ayant produit la valeur.",
+    body: `<div class="zone-wrap"><img src="${src}" style="width:100%;border-radius:8px"><div class="zone-box" style="left:${(+el.dataset.x * 100).toFixed(1)}%;top:${(+el.dataset.y * 100).toFixed(1)}%;width:${(+el.dataset.w * 100).toFixed(1)}%;height:${(+el.dataset.h * 100).toFixed(1)}%"></div></div>`,
+    actions: [{ label: 'Fermer', cls: 'ghost' }] });
 }
 
 /* ---------------------------------------------------- outils PDF avancés -- */

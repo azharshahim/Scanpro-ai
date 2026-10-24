@@ -535,3 +535,17 @@ html[data-theme="dark"] .switch{background:#22345A}
 .tool-item:active .tool-ico{transform:scale(.94)}
 .tools-section{font-size:16px;margin:18px 2px 2px}
 @media(max-width:380px){.tools-grid{grid-template-columns:repeat(3,1fr)}}
+
+/* Comptabilité (Livraison 2) */
+.chip.ok{background:#E7F6EC;color:#14632F;border-color:#BEE3C9}
+.chip.warn{background:#FFF3D6;color:#8A5A08;border-color:#F7DFB0}
+.chip.err{background:#FDE8E8;color:#8F1D1D;border-color:#F5C2C2}
+label .chip{float:right;min-height:22px;padding:0 8px;font-size:11px;border-radius:999px}
+.banner.ok{background:#E7F6EC;color:#14632F;border:1px solid #BEE3C9}
+.acc-lines{display:flex;flex-direction:column;gap:8px}
+.acc-line{gap:6px}
+.acc-line input{min-width:0}
+.acc-line input:first-child{flex:1.6}
+.acc-line input:not(:first-child){flex:.6;text-align:right}
+.zone-wrap{position:relative;line-height:0}
+.zone-box{position:absolute;border:3px solid #E11D48;background:rgba(225,29,72,.18);border-radius:4px}

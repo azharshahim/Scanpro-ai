@@ -131,7 +131,7 @@ const Repo = {
         id: p.id || uid('pg'), docId: doc.id, index: i, src: p.src,
         crop: p.crop || { x: 0, y: 0, w: 1, h: 1 }, rotate: p.rotate || 0,
         quad: p.quad || null, deskew: p.deskew || 0,
-        filter: p.filter || 'none', adj: p.adj || { b: 1, c: 1 }, cleanup: p.cleanup || null, eraser: p.eraser || [], thumb: p.thumb || null, text: p.text || '', ocrConf: p.ocrConf || 0
+        filter: p.filter || 'none', adj: p.adj || { b: 1, c: 1 }, cleanup: p.cleanup || null, eraser: p.eraser || [], thumb: p.thumb || null, text: p.text || '', ocrConf: p.ocrConf || 0, ocrWords: p.ocrWords || null
       };
       bytes += (rec.src ? rec.src.length * 0.75 : 0) + (rec.thumb ? rec.thumb.length * 0.75 : 0);
       await Store.put('pages', rec);
@@ -170,7 +170,7 @@ const Repo = {
         id: p.id || uid('pg'), docId, index: i, src: p.src, crop: p.crop || { x: 0, y: 0, w: 1, h: 1 },
         rotate: p.rotate || 0, quad: p.quad || null, deskew: p.deskew || 0,
         filter: p.filter || 'none', adj: p.adj || { b: 1, c: 1 }, cleanup: p.cleanup || null, eraser: p.eraser || [], thumb: p.thumb || null,
-        text: p.text || '', ocrConf: p.ocrConf || 0
+        text: p.text || '', ocrConf: p.ocrConf || 0, ocrWords: p.ocrWords || null
       };
       bytes += (rec.src || '').length * 0.75 + (rec.thumb || '').length * 0.75;
       await Store.put('pages', rec);
@@ -298,8 +298,8 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 /* Point d'entrée de débogage (console) — n'expose aucune donnée à l'extérieur. */
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
-  get AI() { return AI; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.7.1'
+  get AI() { return AI; }, get Acc() { return Acc; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
+  version: '2.8.0'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */

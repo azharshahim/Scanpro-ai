@@ -88,3 +88,24 @@ Conclusion : le socle « scanner » est au niveau des références pour un usage
 | Mesures extraction facture (§2) | Simple ✅ · Multi-TVA ❌ · Avoir ⚠️ · Partielle ❌ |
 
 **Non exécutés** : Android physique, caméra réelle, partage natif, gros volumes, stockage plein — à couvrir en Phase J, jamais déclarés réussis par avance.
+
+---
+
+## Livraison 2 — Espace Comptabilité et extraction facture structurée (24/10/2026)
+
+Branche `feature/comptabilite-livraison2`, version **2.8.0**. `main` fusionnée après tests (voir publication).
+
+### Réalisé et testé (`tests/e2e-compta-l2.mjs` : **30/30**, navigateur émulé)
+- **Onglet « Compta »** ajouté à la navigation (Accueil, Documents, Scan, Outils, Paramètres inchangés) ; vue liste + analyse par document, sans débordement à 360 px.
+- **OCR traçable (C-05)** : `OCR.run` retourne les positions relatives des mots (`wordBoxes`) ; persistées par page (`ocrWords`, y compris à la création/remplacement de pages — bug corrigé pendant les tests) et par document PDF importé (`ocrWordBoxes`).
+- **Extraction refondue `Acc.extractInvoice`** : type parmi 14 types comptables (proposé, modifiable), émetteur uniquement labellisé (**C-03 corrigé** : plus jamais la dernière ligne), échéance uniquement labellisée (**C-04**), numéros élargis `F-2026-88`/`AV-2026-03` (**C-02**, avoir distingué, signes négatifs préservés), SIREN/SIRET séparés en texte, **TVA multiples et lignes d'articles** (**C-01**), confiance par champ, zone d'origine avec bouton « Voir p.N » et surlignage sur la page.
+- **Corrections persistées** dans IndexedDB (`doc.acc`, statut « corrigé », vérifié après rechargement).
+- **Contrôles** : HT+TVA=TTC, somme des lignes=HT, avoir positif signalé ; les valeurs recalculées sont affichées à part et ne remplacent jamais les montants reconnus.
+- **Exports** : CSV tabulaire (champs + lignes + TVA), XLSX avec montants en cellules numériques, JSON structuré. Originaux, OCR et pages restent accessibles depuis le document.
+- Non-régressions : V2.7 10/10, audit 16/16 + 8/8, V2.6 12/12, V2 16/16, V2.2 18/18.
+
+### Reste partiel / limites
+- Sens achat/vente proposé par heuristique et toujours modifiable ; pas de validation comptable officielle.
+- Lignes reconnues sur le motif « description quantité × prix = total » ; d'autres présentations (tableaux à colonnes séparées par l'OCR) seront couvertes avec les tableaux des Livraisons 3-4.
+- Relevés, paie, bilans, amortissements : **non implémentés** (Livraisons 3→5), l'onglet les annoncera comme types sans extraction dédiée tant qu'ils ne sont pas livrés.
+- Aucun test sur Android physique.
