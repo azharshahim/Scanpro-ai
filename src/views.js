@@ -296,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.5.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.6.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -503,6 +503,53 @@ function aiTab(doc) {
   </div>`;
 }
 
+/* ================================= OUTILS V2.6 ============================ */
+function toolItem(act, icon, label, tone='') { return `<button class="tool-item" data-act="${act}"><span class="tool-ico ${tone}">${ICON(icon)}</span><span>${label}</span></button>`; }
+function viewTools() {
+  return `
+  <header class="appbar tools-head"><div class="appbar-row">
+    <h1>Outils</h1>
+    <button class="icon-btn" data-act="toggle-theme" aria-label="Basculer mode nuit / jour">${ICON(Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon')}</button>
+    <button class="icon-btn" data-act="go-settings" aria-label="Paramètres">${ICON('i-settings')}</button>
+  </div><p class="tiny" style="color:#A9BFDF;margin:6px 2px 0">Toutes les fonctions disponibles, sans bouton décoratif.</p></header>
+  <div class="content">
+    <h2 class="tools-section">Scanner</h2><div class="tools-grid">
+      ${toolItem('scan-camera','i-camera','Scanner')}
+      ${toolItem('tool-burst','i-burst','Rafale','green')}
+      ${toolItem('import-image','i-image','Importer images')}
+      ${toolItem('import-pdf','i-pdf','Importer PDF','orange')}
+      ${toolItem('merge-pdfs','i-merge','Fusionner PDF','green')}
+      ${toolItem('tool-modes','i-folder','Modes de scan')}
+    </div>
+    <h2 class="tools-section">Convertir</h2><div class="tools-grid">
+      ${toolItem('tool-doc-pdf','i-pdf','Document en PDF','orange')}
+      ${toolItem('tool-doc-images','i-image','PDF en images')}
+      ${toolItem('tool-doc-docx','i-file','Au Word (DOCX)')}
+      ${toolItem('tool-doc-txt','i-text','Texte TXT','green')}
+      ${toolItem('tool-pdf-pages','i-docs','Extraire pages PDF','orange')}
+    </div>
+    <h2 class="tools-section">Modifier</h2><div class="tools-grid">
+      ${toolItem('tool-doc-clean','i-sparkles','Nettoyage magique','green')}
+      ${toolItem('tool-doc-clean','i-wand','Gomme / retouche','green')}
+      ${toolItem('tool-pdf-signature','i-edit','Signature / filigrane')}
+      ${toolItem('tool-doc-edit','i-crop','Réorganiser / modifier')}
+      ${toolItem('tool-doc-zone','i-zone','OCR de zone')}
+      ${toolItem('tool-doc-ocr','i-text','Extraire texte OCR','green')}
+    </div>
+    <h2 class="tools-section">Utilitaires</h2><div class="tools-grid">
+      ${toolItem('backup-export','i-download','Sauvegarder')}
+      ${toolItem('backup-import','i-folder','Restaurer')}
+      ${toolItem('docs-duplicates','i-copy','Doublons documents')}
+      ${toolItem('tool-doc-print','i-printer','Imprimer')}
+      ${toolItem('set-langs','i-text','Langues OCR')}
+      ${toolItem('toggle-theme', Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon','Nuit / Jour','orange')}
+      ${toolItem('go-settings','i-settings','Paramètres')}
+      ${toolItem('tool-assistant','i-sparkles','Assistant local','green')}
+    </div>
+    <div class="banner info">${ICON('i-info','ico sm')}<span>Assistant IA génératif distant : prévu plus tard, lorsqu’une clé API et un backend sécurisé seront disponibles. Aucun outil ci-dessus n’envoie vos documents.</span></div>
+  </div>`;
+}
+
 /* -------------------------------------------------- rendu d'une vue (route) -- */
 async function render() {
   const view = $('#view');
@@ -510,11 +557,13 @@ async function render() {
   $$('.nav-item').forEach(b => b.classList.toggle('active',
     (App.route === 'docs' && b.dataset.nav === 'docs') ||
     (App.route === 'settings' && b.dataset.nav === 'settings') ||
+    (App.route === 'tools' && b.dataset.nav === 'tools') ||
     (['home', 'detail'].includes(App.route) && b.dataset.nav === 'home')));
 
   if (App.route === 'home') view.innerHTML = viewHome();
   else if (App.route === 'docs') view.innerHTML = viewDocs();
   else if (App.route === 'settings') { view.innerHTML = await viewSettings(); }
+  else if (App.route === 'tools') view.innerHTML = viewTools();
   else if (App.route === 'detail') view.innerHTML = viewDocDetail();
 
   if (App.route === 'home' || App.route === 'docs') {
