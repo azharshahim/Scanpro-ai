@@ -1639,6 +1639,102 @@ const Acc = {
     return { docType: isAvoir ? 'avoir' : cls.type, proposedType: cls, fields, lines: items, vat, controls,
       disclaimer: 'Extraction locale à vérifier champ par champ. Les valeurs recalculées (contrôles) ne remplacent jamais les montants reconnus.' };
   },
+  extractPayroll(text, pagesWords) {
+    const t = String(text || '');
+    const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
+    const F = (value, confidence, needle) => {
+      const v = value == null || value === '' ? Acc.NR : value;
+      return { value: v, confidence: v === Acc.NR ? 0 : confidence, page: 0, zone: v !== Acc.NR ? Acc.findZone(pagesWords, needle || v) : null, status: v === Acc.NR ? 'non-reconnu' : 'reconnu' };
+    };
+    const money = (res) => { for (const re of res) { const m = t.match(re); if (m) return Acc.parseAmount(m[1] || m[2]); } return null; };
+    const labeled = (re) => { for (const l of lines) { const m = l.match(re); if (m && m[1]) return m[1].trim().slice(0, 90); } return ''; };
+    // Chaque notion de net a son propre motif : ne jamais les confondre.
+    const gross = money([/salaire\s*brut[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i, /total\s*brut[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i]);
+    const netTaxable = money([/net\s*(?:fiscal\s*)?imposable[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i, /cumul\s*imposable[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i]);
+    const netSocial = money([/net\s*social[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i]);
+    const netPayable = money([/net\s*(?:à|a)\s*payer[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i]);
+    const paid = money([/(?:montant\s*(?:versé|verse)|virement\s*(?:de|du))[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i]);
+    const empContrib = money([/(?:total\s*)?cotisations?\s*(?:et\s*contributions?\s*)?salariales?[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i, /charges\s*salariales[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i]);
+    const erContrib = money([/(?:total\s*)?cotisations?\s*(?:et\s*contributions?\s*)?patronales?[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i, /charges\s*patronales[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i]);
+    const base = money([/salaire\s*de\s*base[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i]);
+    const bonuses = money([/(?:prime[s]?\s*(?:exceptionnelle|d['’]ancienneté|diverses)?|primes?)[^-\d\n]*(-?[\d ]+(?:[.,]\d{2})?)/i]);
+    const hoursM = t.match(/(\d{2,3}[.,]?\d{0,2})\s*(?:h|heures?)\s*(?:travaillées|mensuelles|payées)?/i);
+    const absM = t.match(/absence[s]?\s*[:\-]?\s*(\d+[.,]?\d{0,2})\s*(?:h|heures?|jour)/i);
+    const period = labeled(/(?:période\s*de\s*paie|période|mois\s*de)\s*[:\-]?\s*([A-Za-zÀ-ÿ]+\s*\d{4}|\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}\s*(?:au|-|à)\s*\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/i);
+    const employee = labeled(/(?:salarié|salariée|employé|employée|nom\s*et\s*prénom)\s*[:\-]\s*(.+)$/i);
+    const employer = labeled(/(?:employeur|raison\s*sociale|entreprise)\s*[:\-]\s*(.+)$/i);
+    const fields = {
+      employee: F(employee, 80), employer: F(employer, 80), period: F(period, 80),
+      baseSalary: F(base != null ? String(base) : '', 80), hours: F(hoursM ? hoursM[1].replace(',', '.') : '', 60),
+      bonuses: F(bonuses != null ? String(bonuses) : '', 65), absences: F(absM ? absM[1].replace(',', '.') : '', 60),
+      gross: F(gross != null ? String(gross) : '', 85),
+      employeeContributions: F(empContrib != null ? String(empContrib) : '', 80),
+      employerContributions: F(erContrib != null ? String(erContrib) : '', 80),
+      netTaxable: F(netTaxable != null ? String(netTaxable) : '', 85),
+      netSocial: F(netSocial != null ? String(netSocial) : '', 85),
+      netPayable: F(netPayable != null ? String(netPayable) : '', 90),
+      amountPaid: F(paid != null ? String(paid) : '', 70)
+    };
+    const controls = [];
+    if (gross != null && empContrib != null && netSocial != null) {
+      const calc = Math.round((gross - Math.abs(empContrib)) * 100) / 100;
+      controls.push({ label: 'Brut − cotisations salariales ≈ Net social', ok: Math.abs(calc - netSocial) <= Math.max(0.05, gross * 0.01), detail: `Reconnu : ${gross} − ${Math.abs(empContrib)} = ${calc} · Net social reconnu : ${netSocial}`, recalculated: calc });
+    }
+    if (netPayable != null && gross != null && netPayable > gross) controls.push({ label: 'Net à payer supérieur au brut', ok: false, detail: 'Le net à payer reconnu dépasse le salaire brut reconnu : confusion possible entre les nets, à vérifier sur le bulletin.', recalculated: null });
+    if (netTaxable != null && netPayable != null && Math.abs(netTaxable - netPayable) < 0.005) controls.push({ label: 'Net imposable = net à payer', ok: false, detail: 'Valeurs identiques reconnues : ces deux notions sont distinctes, vérifier qu\'il ne s\'agit pas d\'une confusion de lignes.', recalculated: null });
+    return { docType: 'bulletin_salaire', kind: 'payroll', fields, controls, sensitive: true,
+      disclaimer: "Document de paie sensible : traitement 100 % local, aucune télémétrie, aucun envoi externe. Brut, net imposable, net social et net à payer sont des notions distinctes, extraites séparément et jamais confondues." };
+  },
+  extractFinancial(text, kind, pagesWords) {
+    const t = String(text || '');
+    const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
+    const isBilan = kind !== 'compte_resultat';
+    let section = isBilan ? 'actif' : 'charges';
+    const rows = [];
+    const amountRe = /-?\(?[\d]{1,3}(?:[ ][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
+    for (const l of lines) {
+      const low = l.toLowerCase();
+      if (/^actif\b|total\s*actif/.test(low)) section = 'actif';
+      else if (/^passif\b|capitaux propres|total\s*passif/.test(low)) section = 'passif';
+      else if (/charges/.test(low) && !/sociales|salariales/.test(low)) section = 'charges';
+      else if (/produits/.test(low)) section = 'produits';
+      const amounts = [...l.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null);
+      if (!amounts.length) continue;
+      if (/^(actif|passif|charges|produits)\s*$/.test(low)) continue;
+      const acctM = l.match(/\b(\d{3,6})\b/);
+      let label = l.replace(amountRe, ' ').replace(/\b\d{3,6}\b/, ' ').replace(/\s{2,}/g, ' ').replace(/[-–—|:]+$/, '').trim();
+      if (!label || label.length < 2) continue;
+      if (/^(total|résultat|resultat)/i.test(label) || amounts.length) {
+        const isResult = /^(résultat|resultat)/i.test(label);
+        rows.push({ section: isResult ? 'resultat' : section, account: acctM ? acctM[1] : '', label, amountN: amounts.length >= 2 ? amounts[amounts.length - 2] : amounts[0], amountN1: amounts.length >= 2 ? amounts[amounts.length - 1] : null, isTotal: /^total/i.test(label) || isResult, confidence: 65 });
+      }
+    }
+    const totalOf = (sec) => { const r = [...rows].reverse().find(x => x.section === sec && x.isTotal); return r ? r.amountN : null; };
+    const controls = [];
+    if (isBilan) {
+      const ta = totalOf('actif'), tp = totalOf('passif');
+      if (ta != null && tp != null) controls.push({ label: 'Total actif = Total passif', ok: Math.abs(ta - tp) <= 0.05, detail: `Actif reconnu : ${ta} · Passif reconnu : ${tp}`, recalculated: null });
+    } else {
+      const tc = totalOf('charges'), tp = totalOf('produits');
+      if (tc != null && tp != null) controls.push({ label: 'Résultat = Produits − Charges', ok: true, detail: `Produits reconnus : ${tp} − Charges reconnues : ${tc} = ${Math.round((tp - tc) * 100) / 100} (valeur recalculée, à comparer au résultat imprimé)`, recalculated: Math.round((tp - tc) * 100) / 100 });
+    }
+    for (const sec of (isBilan ? ['actif', 'passif'] : ['charges', 'produits'])) {
+      const tot = totalOf(sec); if (tot == null) continue;
+      const details = rows.filter(x => x.section === sec && !x.isTotal);
+      if (details.length >= 2) {
+        const sum = Math.round(details.reduce((s, x) => s + (x.amountN || 0), 0) * 100) / 100;
+        controls.push({ label: 'Somme des lignes ' + sec + ' vs total ' + sec, ok: Math.abs(sum - tot) <= Math.max(0.05, Math.abs(tot) * 0.01), detail: `Lignes reconnues : ${sum} · Total ${sec} reconnu : ${tot} (écart possible si des lignes n'ont pas été reconnues)`, recalculated: sum });
+      }
+    }
+    return { docType: kind, kind: 'financial', fields: {}, statementRows: rows, controls,
+      disclaimer: "Aperçu tabulaire reconnu par OCR : vérifiez lignes, signes et colonnes N / N-1 avant export. Les contrôles arithmétiques n'ont de valeur que si toutes les lignes ont été reconnues." };
+  },
+  toFinancialCsv(data) {
+    const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+    const rows = [['Section', 'Compte', 'Libellé', 'Exercice N', 'Exercice N-1', 'Total']];
+    for (const r of data.statementRows || []) rows.push([r.section, r.account, r.label, r.amountN ?? '', r.amountN1 ?? '', r.isTotal ? 'oui' : '']);
+    return rows.map(r => r.map(esc).join(';')).join('\n');
+  },
   extractBank(text, pagesWords) {
     const t = String(text || '');
     const lines = t.split(/\n/).map(x => x.trim()).filter(Boolean);
@@ -2359,7 +2455,15 @@ async function accAnalyze(docId) {
   const pagesWords = await accLoadPagesWords(doc);
   const typeSel = $('#accTypeSel'); const forced = (typeSel && typeSel.value !== 'auto') ? typeSel.value : (App.accType && App.accType !== 'auto' ? App.accType : null);
   const autoType = Acc.classifyType(doc.text).type;
-  const data = (forced === 'releve_bancaire' || (!forced && autoType === 'releve_bancaire')) ? Acc.extractBank(doc.text, pagesWords) : Acc.extractInvoice(doc.text, pagesWords);
+  const effType = forced || autoType;
+  let data;
+  if (effType === 'releve_bancaire') data = Acc.extractBank(doc.text, pagesWords);
+  else if (effType === 'bulletin_salaire') data = Acc.extractPayroll(doc.text, pagesWords);
+  else if (effType === 'bilan' || effType === 'compte_resultat') data = Acc.extractFinancial(doc.text, effType, pagesWords);
+  else data = Acc.extractInvoice(doc.text, pagesWords);
+  data.requestedType = effType;
+  if (!data.fields) data.fields = {};
+  if (!data.fields.docType && data.docType) data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === data.docType) || [])[1] || data.docType, confidence: data.proposedType ? data.proposedType.confidence : 70, page: 0, zone: null, status: 'reconnu' };
   if (forced) {
     data.docType = forced;
     data.fields.docType = { value: (Acc.TYPES.find(x => x[0] === forced) || [])[1] || forced, confidence: 100, page: 0, zone: null, status: 'corrige' };
@@ -2381,6 +2485,12 @@ async function accReadForm(doc) {
     if (k !== 'docType' && prev.zone) data.fields[k].zone = prev.zone;
   });
   const sel = $('#accTypeSel'); if (sel) { data.docType = sel.value; data.fields.docType.value = (Acc.TYPES.find(x => x[0] === sel.value) || [])[1] || sel.value; }
+  $$('[data-acc-fin]').forEach(i => {
+    const [idx, field] = i.dataset.accFin.split(':');
+    const r = (data.statementRows || [])[+idx]; if (!r) return;
+    r[field] = (field === 'label' || field === 'account' || field === 'section') ? i.value : Acc.parseAmount(i.value);
+    r.status = 'corrige';
+  });
   $$('[data-acc-tx]').forEach(i => {
     const [idx, field] = i.dataset.accTx.split(':');
     const x = (data.transactions || [])[+idx]; if (!x) return;
@@ -2412,7 +2522,7 @@ async function accExport(docId, fmt) {
   const data = await accReadForm(doc);
   const base = slugify(doc.name) + '-comptabilite';
   try {
-    if (fmt === 'csv') downloadBlob(new Blob(['\ufeff' + ((data.transactions && data.transactions.length) ? Acc.toBankCsv(data) : Acc.toCsv(data))], { type: 'text/csv;charset=utf-8' }), base + '.csv');
+    if (fmt === 'csv') downloadBlob(new Blob(['\ufeff' + ((data.transactions && data.transactions.length) ? Acc.toBankCsv(data) : (data.statementRows && data.statementRows.length) ? Acc.toFinancialCsv(data) : Acc.toCsv(data))], { type: 'text/csv;charset=utf-8' }), base + '.csv');
     else if (fmt === 'json') downloadBlob(new Blob([JSON.stringify({ document: doc.name, exportedAt: new Date().toISOString(), ...data }, null, 2)], { type: 'application/json' }), base + '.json');
     else if (fmt === 'xlsx') downloadBlob(await accXlsxBlob(doc, data), base + '.xlsx');
     toast('Export ' + fmt.toUpperCase() + ' téléchargé', 'ok');
@@ -2439,6 +2549,11 @@ async function accXlsxBlob(doc, data) {
     const ref = String.fromCharCode(65 + c) + r;
     return (typeof v === 'number' && Number.isFinite(v)) ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(v)}</t></is></c>`;
   };
+  if (data.statementRows && data.statementRows.length) {
+    const rowsF = [['Document', doc.name], ['Type', data.docType], [], ['Section', 'Compte', 'Libellé', 'Exercice N', 'Exercice N-1']];
+    for (const r of data.statementRows) rowsF.push([r.section, r.account, r.label, r.amountN, r.amountN1]);
+    return accBuildXlsx(rowsF, esc);
+  }
   if (data.transactions && data.transactions.length) {
     const rowsB = [['Document', doc.name], ['Type', 'Relevé bancaire'], ['IBAN', data.fields.iban ? data.fields.iban.value : ''], [],
       ['Date', 'Date de valeur', 'Libellé', 'Référence', 'Débit', 'Crédit', 'Solde', 'Confiance %']];

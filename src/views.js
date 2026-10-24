@@ -296,7 +296,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.9.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.10.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       100 % hors-ligne après le premier chargement<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -561,7 +561,7 @@ function viewAcc() {
   let detail = '';
   if (sel && acc) {
     const d = acc.data;
-    const labels = { docType: 'Type de document', bank: 'Banque', holder: 'Titulaire du compte', iban: 'IBAN', bic: 'BIC', openingBalance: "Solde d'ouverture", closingBalance: 'Solde de clôture', supplier: 'Fournisseur / Client', address: 'Adresse', siren: 'SIREN', siret: 'SIRET', invoiceNumber: 'Numéro', issueDate: "Date d'émission", dueDate: "Date d'échéance", orderRef: 'Référence commande', paymentTerms: 'Conditions de règlement', deposit: 'Acompte', totalHT: 'Total HT', vatAmount: 'Montant TVA', totalTTC: 'Total TTC', currency: 'Devise' };
+    const labels = { docType: 'Type de document', employee: 'Salarié', employer: 'Employeur', period: 'Période de paie', baseSalary: 'Salaire de base', hours: 'Heures', bonuses: 'Primes', absences: 'Absences (h/j)', gross: 'Salaire brut', employeeContributions: 'Cotisations salariales', employerContributions: 'Cotisations patronales', netTaxable: 'Net imposable', netSocial: 'Net social', netPayable: 'Net à payer', amountPaid: 'Montant versé', bank: 'Banque', holder: 'Titulaire du compte', iban: 'IBAN', bic: 'BIC', openingBalance: "Solde d'ouverture", closingBalance: 'Solde de clôture', supplier: 'Fournisseur / Client', address: 'Adresse', siren: 'SIREN', siret: 'SIRET', invoiceNumber: 'Numéro', issueDate: "Date d'émission", dueDate: "Date d'échéance", orderRef: 'Référence commande', paymentTerms: 'Conditions de règlement', deposit: 'Acompte', totalHT: 'Total HT', vatAmount: 'Montant TVA', totalTTC: 'Total TTC', currency: 'Devise' };
     detail = `
     <div class="card">
       <div class="row"><b class="grow">${escapeHtml(sel.name)}</b><span class="chip ${acc.edited ? 'warn' : 'ok'}">${acc.edited ? 'Corrigé manuellement' : 'Extraction automatique'}</span></div>
@@ -575,6 +575,9 @@ function viewAcc() {
       ${(d.transactions && d.transactions.length) ? `<h4>Opérations (${d.transactions.length}) — ordre du relevé préservé</h4>
       <div class="acc-lines">${d.transactions.map((x, i) => `<div class="row acc-line"><input data-acc-tx="${i}:date" value="${escapeHtml(x.date)}" size="9"><input data-acc-tx="${i}:label" value="${escapeHtml(x.label)}"><input data-acc-tx="${i}:debit" value="${x.debit ?? ''}" placeholder="Débit" size="7"><input data-acc-tx="${i}:credit" value="${x.credit ?? ''}" placeholder="Crédit" size="7"><input data-acc-tx="${i}:balance" value="${x.balance ?? ''}" placeholder="Solde" size="7">${x.duplicate ? '<span class="chip warn">doublon ?</span>' : ''}${x.status === 'a-verifier' ? '<span class="chip err">à vérifier</span>' : ''}</div>`).join('')}</div>
       <p class="small muted">Totaux reconnus — débits : ${d.totals ? d.totals.debit : 'Non reconnu'} · crédits : ${d.totals ? d.totals.credit : 'Non reconnu'} (les opérations « à vérifier » ne sont pas totalisées).</p>` : ''}
+      ${d.sensitive ? '<div class="banner warn"><span>🔒 Document sensible (paie) : traitement 100 % local, aucune télémétrie, aucun envoi externe. Vérifiez que brut, net imposable, net social et net à payer ne sont pas confondus.</span></div>' : ''}
+      ${(d.statementRows && d.statementRows.length) ? `<h4>État financier reconnu (${d.statementRows.length} lignes)</h4>
+      <div class="acc-lines">${d.statementRows.map((r, i) => `<div class="row acc-line"><input data-acc-fin="${i}:section" value="${escapeHtml(r.section)}" size="8"><input data-acc-fin="${i}:account" value="${escapeHtml(r.account || '')}" size="7" placeholder="Compte"><input data-acc-fin="${i}:label" value="${escapeHtml(r.label)}"><input data-acc-fin="${i}:amountN" value="${r.amountN ?? ''}" size="9" placeholder="N"><input data-acc-fin="${i}:amountN1" value="${r.amountN1 ?? ''}" size="9" placeholder="N-1">${r.isTotal ? '<span class="chip ok">total</span>' : ''}</div>`).join('')}</div>` : ''}
       <h4>Lignes d'articles</h4>
       ${(d.lines || []).length ? `<div class="acc-lines">${d.lines.map((l, i) => `<div class="row acc-line"><input data-acc-line="${i}:description" value="${escapeHtml(l.description)}"><input data-acc-line="${i}:qty" value="${l.qty}" size="4"><input data-acc-line="${i}:unitPrice" value="${l.unitPrice}" size="7"><input data-acc-line="${i}:amount" value="${l.amount}" size="8"></div>`).join('')}</div>` : '<p class="small muted">Aucune ligne reconnue — à compléter manuellement si le document en comporte.</p>'}
       <h4>TVA par taux</h4>

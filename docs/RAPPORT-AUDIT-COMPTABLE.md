@@ -129,3 +129,20 @@ Branche `feature/comptabilite-livraison3`, version **2.9.0**.
 - Sur un OCR de relevé réel, les colonnes débit/crédit imprimées peuvent être fusionnées par l'OCR texte : le sens repose alors sur le signe et les mots-clés, d'où le statut « à vérifier » plutôt qu'une affectation inventée.
 - Formats de dates sans année conservés tels quels (jj/mm).
 - Aucun test sur Android physique ; aucun rapprochement avec des écritures comptables (non implémenté, non annoncé).
+
+---
+
+## Livraison 4 — Bulletins de salaire et états financiers (24/10/2026)
+
+Branche `feature/comptabilite-livraison4`, version **2.10.0**.
+
+### Réalisé et testé (`tests/e2e-compta-l4.mjs` : **19/19**, navigateur émulé)
+- **Bulletins de salaire `Acc.extractPayroll`** : salarié, employeur, période, base, heures, primes, absences, brut, cotisations salariales **et** patronales, et les trois nets extraits par des motifs **séparés** — net imposable, net social, net à payer, montant versé — jamais confondus (valeurs distinctes vérifiées : 2 410 / 2 350 / 2 280 sur le bulletin fictif). Champs absents = « Non reconnu ». Contrôles : brut − cotisations salariales ≈ net social ; alertes si net à payer > brut ou si net imposable = net à payer. Bannière « document sensible » dans l'UI : 100 % local, aucune télémétrie.
+- **Bilans et comptes de résultat `Acc.extractFinancial`** : lignes structurées (section actif/passif/charges/produits, n° de compte, libellé, colonnes **N et N-1**, zéros et signes conservés), tableau **éditable** dans Comptabilité, exports CSV/XLSX/JSON. Contrôles : total actif = total passif ; somme des lignes vs totaux de section ; **résultat recalculé affiché séparément** (produits − charges) sans remplacer le résultat imprimé. La ligne « Résultat net » est classée à part pour ne pas fausser les sommes (corrigé pendant les tests).
+- Non-régressions : L3 relevés 23/23, L2 factures 30/30, V2.7 10/10.
+
+### Limites honnêtes
+- Extraction par motifs sur texte OCR : un bulletin à la présentation très différente peut laisser des champs « Non reconnu » plutôt que risquer une confusion de nets — comportement voulu.
+- Les contrôles d'états ne valent que si toutes les lignes ont été reconnues ; l'écart est signalé, jamais corrigé automatiquement.
+- Données de paie : aucun journal technique n'en contient ; suppression du document = suppression de ses données (IndexedDB).
+- Aucun test sur Android physique.
