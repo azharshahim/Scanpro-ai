@@ -5,7 +5,7 @@
 // comptage indépendant des lignes d'opérations du texte natif.
 import { chromium, devices } from 'playwright'; import fs from 'fs';
 const APP = process.env.APP_URL || 'http://127.0.0.1:8080/index.html';
-const PDF_PATH = process.env.BANK_PDF_PATH || '/home/user/uploads/Releve-n009-du-09-09-2026_CCOU-65086189881-SAS-RAPID-NET-SER.pdf';
+const PDF_PATH = process.env.BANK_PDF_PATH || '/home/user/uploads/releve-reference.pdf';
 const ok = [], ko = []; const check = (l, c, e = '') => { (c ? ok : ko).push(l); console.log((c ? '✅' : '❌') + ' ' + l + (e ? ' — ' + e : '')); };
 if (!fs.existsSync(PDF_PATH)) { console.log('⏭ TEST IGNORÉ : aucun relevé PDF de référence (' + PDF_PATH + ')'); process.exit(0); }
 const b64 = fs.readFileSync(PDF_PATH).toString('base64');
