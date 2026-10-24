@@ -221,3 +221,20 @@ Deux défauts signalés par captures d'écran Android et corrigés :
 2. **« À vérifier en priorité » inutilisable sur mobile** — doubles causes : (a) `.grow{flex:1}` sans `min-width:0` : les noms de fichiers longs sans espaces poussaient le bouton « Ouvrir » hors écran et tronquaient le texte ; (b) le clic « Ouvrir » sélectionnait bien le document mais son détail s'affichait **sous la liste des documents**, hors écran, sans aucun retour visuel. Correctifs : `min-width:0; overflow-wrap:anywhere` sur `.grow`, ancre `#accDetail`, défilement doux + surbrillance temporaire après sélection.
 
 Tests (`tests/e2e-v2141.mjs`, mobile émulé 360 px) : **8/8** — pas de fausse alerte, cache de version complet, ressource supprimée réparée automatiquement, aucun débordement horizontal, bouton visible, clic « Ouvrir » amenant le détail à l'écran. Non-régressions : fiabilité 13/13, V2.14 15/15, L6 14/14, V2.13 17/17. Aucun test sur appareil Android physique (émulation navigateur uniquement).
+
+---
+
+## V2.15 — Espace de pré-comptabilité française (24/10/2026, PR vers `main`)
+
+### Réalisé et testé (`tests/e2e-v215.mjs` : **20/20**, mobile émulé 360 px)
+- **Plan comptable personnalisable** (module `Precompta`, stockage 100 % local) : référentiel fondé sur le PCG (numéro, libellé, catégorie, actif/inactif), ajout de comptes, activation/désactivation, **règles de proposition configurables** (charge, TVA déductible, fournisseur, produit, TVA collectée, client, banque, caisse, journaux). Aucun compte (607, 706, 401, 445…) n'est figé dans la logique : démontré par test — changer la règle fait passer l'écriture de 607000 à 601000. Réinitialisation aux défauts PCG possible.
+- **Journaux configurables** HA/VT/BQ/CA/OD ; chaque ligne d'écriture porte désormais date, journal, **numéro de pièce**, compte, libellé, **tiers**, débit, crédit, **document source** et **statut de validation**. `validateEntries` contrôle dates, journaux actifs, comptes présents et actifs dans le plan du dossier, montants, pièces et **équilibre** — et rappelle qu'un équilibre ne vaut pas validation.
+- **Tiers locaux** : base construite depuis les documents analysés (+ ajouts manuels), compte associé, historique des documents, **détection de doublons** (même SIRET ou noms très proches). Aucun SIREN/SIRET/TVA inventé (« Non reconnu »).
+- **Factures et TVA** : lignes (quantité, prix unitaire, taux par ligne déjà reconnus) ; **ventilation TVA par taux** contrôlée ; une ligne d'écriture TVA **par taux** quand plusieurs taux ; taux hors liste paramétrée et facture sans TVA ⇒ contrôle « À contrôler » et `needsHuman` — validation humaine exigée, aucune décision fiscale automatique, aucune TVA inventée.
+- **Validation et historique** : proposition **validée ou rejetée explicitement** par le comptable (jamais comptabilisée par défaut), historique des corrections daté avec ancienne → nouvelle valeur (champs et validations). Export écritures enrichi (pièce, tiers, source, statut, points ouverts).
+
+### Non-régressions
+L2 30/30, L3 23/23, L4 19/19, L5 18/18, L6 14/14, V2.13 17/17 (attente journal mise à jour : AC → HA, désormais configurable), V2.14 15/15, V2.14.1 8/8, fiabilité 13/13.
+
+### Limites
+Règles et plan stockés par appareil (localStorage), pas de synchronisation multi-postes ; ventilation du HT par taux non reconnue automatiquement (signalée au comptable) ; écritures toujours **proposées**, aucun import FEC ; aucun test Android physique.

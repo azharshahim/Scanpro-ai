@@ -41,7 +41,7 @@ check('Avoir : écriture équilibrée ≠ validée (avertissement)', !!avoirPos.
 
 // 6) Facture achat vs vente : journaux distincts
 const av = await p.evaluate(() => { const A = window.ScanPro.Acc; const mk = (type) => { const d = A.extractInvoice(`Fournisseur : X\nFacture n° F-1\nDate : 01/10/2026\nTotal HT : 100,00 €\nTVA 20 % : 20,00 €\nTotal TTC : 120,00 €`); d.docType = type; return A.journalEntries(d); }; return { achat: mk('facture_achat'), vente: mk('facture_vente') }; });
-check('Achat (AC/401 crédit) vs Vente (VT/411 débit)', av.achat.rows[0].journal === 'AC' && av.vente.rows[0].journal === 'VT' && av.vente.rows[0].account === '411000');
+check('Achat (HA configurable/401 crédit) vs Vente (VT/411 débit)', av.achat.rows[0].journal === 'HA' && av.vente.rows[0].journal === 'VT' && av.vente.rows[0].account === '411000');
 
 // 7) Réanalyse : confirmation, corrections conservées, changement de type
 await p.evaluate(async () => {

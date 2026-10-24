@@ -1497,6 +1497,102 @@ async function mergePdfs() {
 /* --------------------------------------- comptabilité : extraction structurée -- */
 /* Règles (audit Phase A) : ne jamais inventer une information absente (« Non reconnu »),
    confiance par champ, TVA multiples, lignes d'articles, lien champ -> zone de la page. */
+/* ================= V2.15 : espace de pré-comptabilité française =================
+   Plan comptable personnalisable (base PCG), journaux configurables, tiers locaux,
+   règles de TVA paramétrables. Tout est local (localStorage), modifiable par le
+   comptable, et aucune proposition n'est jamais considérée comme validée sans
+   action humaine explicite. */
+const Precompta = {
+  KEYS: { chart: 'scanproAi.planComptable.v1', journals: 'scanproAi.journaux.v1', rules: 'scanproAi.reglesCompta.v1', vat: 'scanproAi.tauxTva.v1', tiers: 'scanproAi.tiers.v1' },
+  DEFAULT_CHART: [
+    ['101000', 'Capital', 'Capitaux'], ['401000', 'Fournisseurs', 'Tiers'], ['411000', 'Clients', 'Tiers'],
+    ['445660', 'TVA déductible sur biens et services', 'TVA'], ['445710', 'TVA collectée', 'TVA'],
+    ['512000', 'Banque', 'Trésorerie'], ['531000', 'Caisse', 'Trésorerie'],
+    ['601000', 'Achats de matières premières', 'Charge'], ['604000', "Achats d'études et prestations", 'Charge'],
+    ['606300', 'Fournitures et petit équipement', 'Charge'], ['607000', 'Achats de marchandises', 'Charge'],
+    ['613000', 'Locations', 'Charge'], ['622600', 'Honoraires', 'Charge'], ['625100', 'Voyages et déplacements', 'Charge'],
+    ['626000', 'Frais postaux et télécommunications', 'Charge'],
+    ['701000', 'Ventes de produits finis', 'Produit'], ['706000', 'Prestations de services', 'Produit'],
+    ['707000', 'Ventes de marchandises', 'Produit']
+  ].map(([num, label, cat]) => ({ num, label, cat, active: true })),
+  DEFAULT_JOURNALS: [
+    { code: 'HA', label: 'Achats', active: true }, { code: 'VT', label: 'Ventes', active: true },
+    { code: 'BQ', label: 'Banque', active: true }, { code: 'CA', label: 'Caisse', active: true },
+    { code: 'OD', label: 'Opérations diverses', active: true }
+  ],
+  DEFAULT_RULES: { achatCharge: '607000', achatTva: '445660', fournisseur: '401000', venteProduit: '706000', venteTva: '445710', client: '411000', banque: '512000', caisse: '531000', journalAchat: 'HA', journalVente: 'VT' },
+  RULE_LABELS: { achatCharge: 'Compte de charge (achats)', achatTva: 'TVA déductible (achats)', fournisseur: 'Compte fournisseur', venteProduit: 'Compte de produit (ventes)', venteTva: 'TVA collectée (ventes)', client: 'Compte client', banque: 'Compte banque', caisse: 'Compte caisse', journalAchat: "Journal d'achat", journalVente: 'Journal de vente' },
+  DEFAULT_VAT_RATES: [20, 10, 5.5, 2.1, 0],
+  _load(key, fallback) { try { const v = JSON.parse(localStorage.getItem(key)); return v == null ? JSON.parse(JSON.stringify(fallback)) : v; } catch (e) { return JSON.parse(JSON.stringify(fallback)); } },
+  _save(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} },
+  chart() { return Precompta._load(Precompta.KEYS.chart, Precompta.DEFAULT_CHART); },
+  saveChart(c) { Precompta._save(Precompta.KEYS.chart, c); },
+  account(num) { return Precompta.chart().find(a => a.num === String(num)) || null; },
+  accountLabel(num) { const a = Precompta.account(num); return a ? a.label : 'Compte non référencé (à créer ou corriger)'; },
+  journals() { return Precompta._load(Precompta.KEYS.journals, Precompta.DEFAULT_JOURNALS); },
+  saveJournals(j) { Precompta._save(Precompta.KEYS.journals, j); },
+  rules() { return Object.assign({}, Precompta.DEFAULT_RULES, Precompta._load(Precompta.KEYS.rules, {})); },
+  saveRules(r) { Precompta._save(Precompta.KEYS.rules, r); },
+  vatRates() { const v = Precompta._load(Precompta.KEYS.vat, Precompta.DEFAULT_VAT_RATES); return Array.isArray(v) && v.length ? v : Precompta.DEFAULT_VAT_RATES.slice(); },
+  saveVatRates(r) { Precompta._save(Precompta.KEYS.vat, r); },
+  manualTiers() { return Precompta._load(Precompta.KEYS.tiers, []); },
+  saveManualTiers(t) { Precompta._save(Precompta.KEYS.tiers, t); },
+  normName(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim(); },
+  /* Tiers construits depuis les documents analysés (+ tiers manuels).
+     Aucun identifiant n'est inventé : absent = « Non reconnu ». */
+  buildTiers(docs) {
+    const map = new Map();
+    const push = (name, kind, siret, docName) => {
+      const key = Precompta.normName(name); if (!key) return;
+      if (!map.has(key)) map.set(key, { name, kind, siret: siret || null, account: kind === 'client' ? Precompta.rules().client : Precompta.rules().fournisseur, docs: [] });
+      const t = map.get(key);
+      if (siret && !t.siret) t.siret = siret;
+      if (docName && !t.docs.includes(docName)) t.docs.push(docName);
+    };
+    for (const d of docs || []) {
+      if (!d.acc || !d.acc.data) continue;
+      const f = d.acc.data.fields || {};
+      const party = f.supplier && f.supplier.value !== Acc.NR ? f.supplier.value : null;
+      if (!party) continue;
+      const kind = d.acc.data.docType === 'facture_vente' ? 'client' : 'fournisseur';
+      push(party, kind, f.siret && f.siret.value !== Acc.NR ? f.siret.value : null, d.name);
+    }
+    for (const t of Precompta.manualTiers()) push(t.name, t.kind || 'fournisseur', t.siret || null, null);
+    const tiers = [...map.values()];
+    // Doublons potentiels : même SIRET sous des noms différents, ou noms quasi identiques.
+    const dups = [];
+    for (let i = 0; i < tiers.length; i++) for (let j = i + 1; j < tiers.length; j++) {
+      const a = tiers[i], b = tiers[j];
+      if (a.siret && b.siret && a.siret === b.siret) dups.push([a.name, b.name, 'même SIRET ' + a.siret]);
+      else {
+        const ta = new Set(Precompta.normName(a.name).split(' ')), tb = new Set(Precompta.normName(b.name).split(' '));
+        const inter = [...ta].filter(x => tb.has(x)).length, union = new Set([...ta, ...tb]).size;
+        if (union && inter / union >= 0.6) dups.push([a.name, b.name, 'noms très proches']);
+      }
+    }
+    return { tiers, duplicates: dups };
+  },
+  validateEntries(j, data) {
+    const issues = [];
+    if (!j || !j.rows || !j.rows.length) return ['Aucune ligne d\u2019écriture proposée'];
+    const chart = Precompta.chart(), journals = Precompta.journals();
+    for (const [i, r] of j.rows.entries()) {
+      const n = i + 1;
+      if (!r.date || !/^\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}$/.test(r.date) || isNaN(Date.parse(r.date.replace(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/, '$3-$2-$1')))) issues.push('Ligne ' + n + ' : date absente ou invalide');
+      if (!r.journal || !journals.some(x => x.code === r.journal && x.active)) issues.push('Ligne ' + n + ' : journal inconnu ou inactif (' + (r.journal || 'absent') + ')');
+      const acc = chart.find(a => a.num === r.account);
+      if (!acc) issues.push('Ligne ' + n + ' : compte ' + r.account + ' absent du plan comptable du dossier');
+      else if (!acc.active) issues.push('Ligne ' + n + ' : compte ' + r.account + ' inactif dans le plan du dossier');
+      if (!(r.debit >= 0) || !(r.credit >= 0)) issues.push('Ligne ' + n + ' : montant négatif ou invalide');
+      if (r.debit > 0 && r.credit > 0) issues.push('Ligne ' + n + ' : débit et crédit simultanés');
+      if (!r.piece) issues.push('Ligne ' + n + ' : numéro de pièce manquant (à compléter, jamais inventé)');
+    }
+    if (!j.balanced) issues.push('Écriture déséquilibrée : débits ' + j.totalDebit + ' ≠ crédits ' + j.totalCredit);
+    if (j.needsHuman) issues.push('Validation humaine requise : ' + j.needsHuman);
+    return issues;
+  }
+};
+
 const Acc = {
   TYPES: [
     ['facture_achat', "Facture d'achat"], ['facture_vente', 'Facture de vente'], ['avoir', 'Avoir'],
@@ -1641,6 +1737,15 @@ const Acc = {
       controls.push({ label: 'Somme des lignes = Total HT', ok: Math.abs(sum - totalHT) <= Math.max(0.05, Math.abs(totalHT) * 0.01), detail: `Lignes : ${sum} · HT reconnu : ${totalHT}`, recalculated: sum });
     }
     if (isAvoir && totalTTC != null && totalTTC > 0) controls.push({ label: 'Avoir à montants positifs', ok: false, detail: 'Un avoir comporte habituellement des montants négatifs : à vérifier, aucune correction automatique appliquée.', recalculated: null });
+    // V2.15 : règles de TVA paramétrables — en cas de doute, validation humaine, jamais de décision fiscale automatique.
+    const allowedRates = (typeof Precompta !== 'undefined') ? Precompta.vatRates() : [20, 10, 5.5, 2.1, 0];
+    if (vat.length) {
+      const odd = vat.filter(v => !allowedRates.includes(v.rate));
+      if (odd.length) controls.push(Acc.ctl('Taux de TVA hors liste paramétrée', 'a-controler', 'Taux reconnu(s) : ' + odd.map(v => v.rate + ' %').join(', ') + ' — liste admise du dossier : ' + allowedRates.join(', ') + '. Régime et déductibilité à valider par le comptable ; aucune correction automatique.'));
+      const sumRates = Math.round(vat.reduce((s, v) => s + v.amount, 0) * 100) / 100;
+      if (totalHT != null && vatTotal != null) controls.push(Acc.ctl('Ventilation TVA par taux', Math.abs(sumRates - Math.round(vatTotal * 100) / 100) <= 0.05 ? 'conforme' : 'ecart', 'Somme des TVA par taux : ' + sumRates + ' · TVA totale reconnue : ' + Math.round(vatTotal * 100) / 100 + ' (' + vat.map(v => v.rate + ' %').join(' + ') + ')'));
+    }
+    if (!vat.length && totalHT != null && totalTTC != null && Math.abs(totalHT - totalTTC) <= 0.01) controls.push(Acc.ctl('Facture sans TVA', 'a-controler', 'HT = TTC et aucune TVA reconnue : facture possiblement sans TVA (franchise, exonération, autoliquidation). Traitement fiscal à valider par le comptable — aucune TVA inventée.'));
     Acc._finishControls(controls);
     return { docType: isAvoir ? 'avoir' : cls.type, proposedType: cls, fields, lines: items, vat, controls,
       disclaimer: 'Extraction locale à vérifier champ par champ. Les valeurs recalculées (contrôles) ne remplacent jamais les montants reconnus.' };
@@ -1942,7 +2047,10 @@ const Acc = {
     return { docType: 'note_frais', kind: 'expenses', fields, expenseRows: rows, controls, disclaimer: "Note de frais reconnue localement : catégories proposées par mots-clés, à vérifier avant remboursement." };
   },
   journalEntries(data, docMeta = {}) {
-    // Écritures proposées (comptes PCG usuels, À VÉRIFIER par le comptable).
+    // Écritures PROPOSÉES depuis le plan comptable et les règles du dossier (PCG par
+    // défaut, entièrement configurables dans l'espace Pré-comptabilité). Aucun compte
+    // n'est figé dans la logique : seuls les défauts le sont, et ils sont modifiables.
+    const R = Precompta.rules();
     const num = (k) => { const f = (data.fields || {})[k]; const n = f ? Acc.parseAmount(f.value) : null; return n; };
     const ht = num('totalHT'), vat = num('vatAmount'), ttc = num('totalTTC');
     if (ht == null || ttc == null) return null;
@@ -1950,22 +2058,36 @@ const Acc = {
     const vatAmt = vat != null ? vat : 0;
     const date = (data.fields.issueDate && data.fields.issueDate.value !== Acc.NR) ? data.fields.issueDate.value : '';
     const party = (data.fields.supplier && data.fields.supplier.value !== Acc.NR) ? data.fields.supplier.value : 'Non reconnu';
+    const piece = (data.fields.invoiceNumber && data.fields.invoiceNumber.value !== Acc.NR) ? data.fields.invoiceNumber.value : '';
+    const source = docMeta && docMeta.name ? docMeta.name : 'Document source non identifié';
     const isSale = data.docType === 'facture_vente';
     const isAvoir = data.docType === 'avoir';
     const sign = ttc < 0 ? -1 : 1;
     const A = (n) => Math.round(Math.abs(n) * sign * 100) / 100;
+    const base = { date, piece, tiers: party, source, status: 'proposée (non validée)' };
+    const vatLines = (acct, isDebit) => {
+      if (Array.isArray(data.vat) && data.vat.length > 1) return data.vat.map(v => ({ ...base, journal: isSale ? R.journalVente : R.journalAchat, account: acct, label: Precompta.accountLabel(acct) + ' ' + v.rate + ' %', debit: isDebit ? A(v.amount) : 0, credit: isDebit ? 0 : A(v.amount) }));
+      return vatAmt ? [{ ...base, journal: isSale ? R.journalVente : R.journalAchat, account: acct, label: Precompta.accountLabel(acct), debit: isDebit ? A(vatAmt) : 0, credit: isDebit ? 0 : A(vatAmt) }] : [];
+    };
     const rows = isSale ? [
-      { date, journal: 'VT', account: '411000', label: 'Client ' + party, debit: A(ttc), credit: 0 },
-      { date, journal: 'VT', account: '706000', label: 'Ventes / prestations', debit: 0, credit: A(ht) },
-      { date, journal: 'VT', account: '445710', label: 'TVA collectée', debit: 0, credit: A(vatAmt) }
+      { ...base, journal: R.journalVente, account: R.client, label: Precompta.accountLabel(R.client) + ' — ' + party, debit: A(ttc), credit: 0 },
+      { ...base, journal: R.journalVente, account: R.venteProduit, label: Precompta.accountLabel(R.venteProduit), debit: 0, credit: A(ht) },
+      ...vatLines(R.venteTva, false)
     ] : [
-      { date, journal: 'AC', account: '607000', label: 'Achats / charges', debit: A(ht), credit: 0 },
-      { date, journal: 'AC', account: '445660', label: 'TVA déductible', debit: A(vatAmt), credit: 0 },
-      { date, journal: 'AC', account: '401000', label: 'Fournisseur ' + party, debit: 0, credit: A(ttc) }
+      { ...base, journal: R.journalAchat, account: R.achatCharge, label: Precompta.accountLabel(R.achatCharge), debit: A(ht), credit: 0 },
+      ...vatLines(R.achatTva, true),
+      { ...base, journal: R.journalAchat, account: R.fournisseur, label: Precompta.accountLabel(R.fournisseur) + ' — ' + party, debit: 0, credit: A(ttc) }
     ];
     if (isAvoir) for (const r of rows) { const d = r.debit; r.debit = r.credit; r.credit = d; r.label = 'Avoir — ' + r.label; }
     const sd = Math.round(rows.reduce((s, r) => s + r.debit, 0) * 100) / 100, sc = Math.round(rows.reduce((s, r) => s + r.credit, 0) * 100) / 100;
-    return { rows, balanced: Math.abs(sd - sc) <= 0.01, totalDebit: sd, totalCredit: sc, warning: 'Écriture PROPOSÉE et équilibrée — cela ne signifie pas validée par un comptable. Comptes (607/44566/401 ou 411/706/44571) à adapter au plan comptable du dossier avant tout import.' };
+    const allowed = Precompta.vatRates();
+    let needsHuman = null;
+    if (Array.isArray(data.vat) && data.vat.some(v => !allowed.includes(v.rate))) needsHuman = 'taux de TVA hors liste paramétrée (' + data.vat.map(v => v.rate).join(', ') + ' %) — régime et déductibilité à valider par le comptable';
+    else if (!vatAmt && ht === ttc) needsHuman = 'facture sans TVA reconnue — vérifier le régime (franchise, exonération, autoliquidation) avant validation';
+    else if (Array.isArray(data.vat) && data.vat.length > 1) needsHuman = 'plusieurs taux de TVA : la ventilation du HT par taux n’est pas reconnue — à compléter par le comptable';
+    const accList = [...new Set(rows.map(r => r.account))].join('/');
+    return { rows, balanced: Math.abs(sd - sc) <= 0.01, totalDebit: sd, totalCredit: sc, needsHuman,
+      warning: 'Écriture PROPOSÉE et ' + (Math.abs(sd - sc) <= 0.01 ? 'équilibrée' : 'DÉSÉQUILIBRÉE') + ' — un équilibre arithmétique ne signifie pas validée par un comptable. Comptes (' + accList + ') issus du plan comptable configurable, à adapter au plan comptable du dossier et à valider explicitement avant tout import.' };
   },
   extractBank(text, pagesWords) {
     const t = String(text || '');
@@ -2398,6 +2520,14 @@ Object.assign(Actions, {
   'acc-zone': (el) => accShowZone(el),
   'acc-analyze-all': () => accAnalyzeAll(),
   'acc-verify': () => accVerify(App.accDocId),
+  'acc-validate': () => accSetValidation(App.accDocId, 'validée'),
+  'acc-reject': () => accSetValidation(App.accDocId, 'rejetée'),
+  'pc-toggle': (el) => { const c = Precompta.chart(); const a = c.find(x => x.num === el.dataset.num); if (a) { a.active = !a.active; Precompta.saveChart(c); render(); } },
+  'pc-rules': () => pcEditRules(),
+  'pc-add': () => pcAddAccount(),
+  'pc-reset': () => { localStorage.removeItem(Precompta.KEYS.chart); localStorage.removeItem(Precompta.KEYS.rules); localStorage.removeItem(Precompta.KEYS.journals); localStorage.removeItem(Precompta.KEYS.vat); render(); toast('Plan comptable, journaux et règles réinitialisés aux propositions PCG par défaut', 'ok'); },
+  'pc-rules-save': () => pcSaveRules(),
+  'pc-add-save': () => pcSaveAccount(),
   'acc-open-doc': async () => { if (App.accDocId) { App.detailTab = 'preview'; go('detail', App.accDocId); } },
   'doc-rename': () => docRename(App.doc.id),
   'doc-delete': () => docDelete(App.doc.id),
@@ -2779,7 +2909,15 @@ async function accSave(docId) {
   const doc = await Repo.doc(docId);
   if (!doc || !doc.acc) return;
   const prevType = doc.acc.data.docType;
+  const prevFields = JSON.parse(JSON.stringify((doc.acc.data && doc.acc.data.fields) || {}));
   doc.acc.data = await accReadForm(doc);
+  // Historique des corrections (V2.15) : ancienne -> nouvelle valeur, daté, par champ.
+  doc.acc.history = doc.acc.history || [];
+  for (const [k, f] of Object.entries(doc.acc.data.fields || {})) {
+    const before = prevFields[k] ? prevFields[k].value : undefined;
+    if (before !== undefined && String(before) !== String(f.value)) doc.acc.history.push({ at: Date.now(), field: k, old: before, new: f.value });
+  }
+  if (doc.acc.history.length > 200) doc.acc.history = doc.acc.history.slice(-200);
   if (prevType && doc.acc.data.docType !== prevType) toast('Type modifié : pensez à « Réanalyser » pour recalculer les champs compatibles avec le nouveau type.', 'err', 6000);
   doc.acc.edited = true;
   doc.acc.savedAt = Date.now();
@@ -2788,6 +2926,49 @@ async function accSave(docId) {
   App.docs = await Repo.list();
   await render();
   toast('Corrections comptables enregistrées', 'ok');
+}
+
+async function accSetValidation(docId, status) {
+  const doc = await Repo.doc(docId);
+  if (!doc || !doc.acc) return;
+  const j = Acc.journalEntries(doc.acc.data, doc);
+  const issues = j ? Precompta.validateEntries(j, doc.acc.data) : ['Écritures impossibles à générer'];
+  doc.acc.validation = { status, at: Date.now(), issues };
+  doc.acc.history = doc.acc.history || [];
+  doc.acc.history.push({ at: Date.now(), field: 'validation', old: 'proposée (non validée)', new: status });
+  doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Proposition comptable ' + status + ' par le comptable' });
+  await Repo.update(doc); App.docs = await Repo.list(); await render();
+  toast(status === 'validée' ? 'Proposition marquée VALIDÉE par vous' + (issues.length ? ' — points ouverts : ' + issues[0] : '') : 'Proposition rejetée', status === 'validée' ? (issues.length ? 'err' : 'ok') : 'err', 6000);
+}
+function pcEditRules() {
+  const R = Precompta.rules(), chart = Precompta.chart(), journals = Precompta.journals();
+  const opts = (sel, list, val, lab) => '<option value="">—</option>' + list.map(a => '<option value="' + val(a) + '"' + (val(a) === sel ? ' selected' : '') + '>' + lab(a) + '</option>').join('');
+  openSheet({ title: 'Règles de proposition du dossier', sub: 'Comptes et journaux proposés automatiquement (modifiables, jamais imposés).',
+    body: Object.keys(Precompta.RULE_LABELS).map(k => '<label class="small muted">' + Precompta.RULE_LABELS[k] + '<select id="pcr-' + k + '">' + (/journal/.test(k) ? opts(R[k], journals, j => j.code, j => j.code + ' — ' + j.label) : opts(R[k], chart, a => a.num, a => a.num + ' — ' + a.label)) + '</select></label>').join('') +
+      '<label class="small muted">Taux de TVA admis (%, séparés par des virgules)<input id="pcr-vat" value="' + Precompta.vatRates().join(', ') + '"></label>' +
+      '<p class="tiny muted">Un taux reconnu hors de cette liste déclenche une demande de validation humaine, jamais une correction automatique.</p>',
+    actions: [{ label: 'Annuler', cls: 'ghost' }, { label: 'Enregistrer les règles', cls: 'go', act: 'pc-rules-save', close: false }] });
+}
+function pcSaveRules() {
+  const R = Precompta.rules();
+  for (const k of Object.keys(Precompta.RULE_LABELS)) { const el = document.querySelector('#pcr-' + k); if (el && el.value) R[k] = el.value; }
+  Precompta.saveRules(R); closeSheet();
+  const vatEl = document.querySelector('#pcr-vat');
+  if (vatEl) { const rates = vatEl.value.split(',').map(x => parseFloat(x.replace('%', '').trim().replace(',', '.'))).filter(x => !isNaN(x) && x >= 0 && x <= 40); if (rates.length) Precompta.saveVatRates(rates); }
+  render(); toast('Règles du dossier enregistrées', 'ok');
+}
+function pcAddAccount() {
+  openSheet({ title: 'Ajouter un compte au plan du dossier', sub: 'Base PCG proposée, adaptable à chaque dossier client.',
+    body: '<label class="small muted">Numéro de compte<input id="pca-num" placeholder="ex : 615000"></label><label class="small muted">Libellé<input id="pca-label" placeholder="ex : Entretien et réparations"></label><label class="small muted">Catégorie<input id="pca-cat" placeholder="Charge, Produit, Tiers, TVA, Trésorerie…"></label>',
+    actions: [{ label: 'Annuler', cls: 'ghost' }, { label: 'Ajouter le compte', cls: 'go', act: 'pc-add-save', close: false }] });
+}
+function pcSaveAccount() {
+  const num = (document.querySelector('#pca-num') || {}).value, label = (document.querySelector('#pca-label') || {}).value, cat = (document.querySelector('#pca-cat') || {}).value;
+  if (!num || !/^\d{3,}$/.test(num.trim())) { toast('Numéro de compte invalide (chiffres uniquement)', 'err'); return; }
+  const c = Precompta.chart();
+  if (c.some(a => a.num === num.trim())) { toast('Ce compte existe déjà dans le plan du dossier', 'err'); return; }
+  c.push({ num: num.trim(), label: (label || '').trim() || 'Compte sans libellé (à compléter)', cat: (cat || '').trim() || 'À classer', active: true });
+  Precompta.saveChart(c); closeSheet(); render(); toast('Compte ' + num.trim() + ' ajouté au plan du dossier', 'ok');
 }
 async function accExport(docId, fmt) {
   const doc = await Repo.doc(docId);
@@ -2803,7 +2984,9 @@ async function accExport(docId, fmt) {
         return;
       }
       window.__accEntriesConfirmed = false;
-      const csvE = ['Date;Journal;Compte;Libellé;Débit;Crédit', ...j.rows.map(r => [r.date, r.journal, r.account, '"' + String(r.label).replace(/"/g, '""') + '"', String(r.debit).replace('.', ','), String(r.credit).replace('.', ',')].join(';'))].join('\n');
+      const issuesE = Precompta.validateEntries(j, data);
+      const statutExp = (doc.acc && doc.acc.validation && doc.acc.validation.status) || 'proposée (non validée)';
+      const csvE = ['Date;Journal;Pièce;Compte;Libellé;Tiers;Débit;Crédit;Document source;Statut validation;Points à vérifier', ...j.rows.map(r => [r.date, r.journal, r.piece || '', r.account, '"' + String(r.label).replace(/"/g, '""') + '"', '"' + String(r.tiers || '').replace(/"/g, '""') + '"', String(r.debit).replace('.', ','), String(r.credit).replace('.', ','), '"' + String(r.source || '').replace(/"/g, '""') + '"', statutExp, '"' + issuesE.join(' · ').replace(/"/g, '""') + '"'].join(';'))].join('\n');
       downloadBlob(new Blob(['\ufeff' + csvE], { type: 'text/csv;charset=utf-8' }), base + '-ecritures.csv');
       toast('Écritures proposées exportées (à vérifier) — équilibrées : ' + (j.balanced ? 'oui' : 'NON'), j.balanced ? 'ok' : 'err', 5000); return;
     }
