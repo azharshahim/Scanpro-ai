@@ -39,7 +39,7 @@
   --radius-sm:12px;
   --shadow:0 1px 2px rgba(11,27,52,.04), 0 8px 24px -12px rgba(11,27,52,.18);
   --shadow-lg:0 24px 60px -20px rgba(11,27,52,.35);
-  --nav-h:74px;
+  --nav-h:70px;
   --safe-b:env(safe-area-inset-bottom,0px);
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
 }
@@ -227,23 +227,28 @@ svg{display:block}
 .bottom-nav{
   position:fixed;left:0;right:0;bottom:0;z-index:40;max-width:600px;margin:0 auto;
   background:rgba(255,255,255,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-  border-top:1px solid var(--line);display:flex;align-items:stretch;
-  padding:8px 10px calc(8px + var(--safe-b));gap:4px;
+  border-top:1px solid var(--line);display:flex;align-items:center;
+  padding:8px 6px calc(8px + var(--safe-b));gap:2px;
   box-shadow:0 -8px 24px -18px rgba(11,27,52,.4);
 }
 .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-  color:var(--muted-2);font-size:11.5px;font-weight:650;padding:7px 0 5px;border-radius:13px;
+  color:var(--muted-2);font-size:10.5px;font-weight:650;padding:7px 0 5px;border-radius:13px;letter-spacing:0;
   transition:color .18s, background .18s;letter-spacing:.15px;position:relative}
 .nav-item .ico{width:23px;height:23px}
 .nav-item.active{color:var(--blue-2);background:var(--blue-soft)}
 .nav-item.active .ico{stroke:var(--blue-2)}
-.nav-fab{flex:none;width:64px;display:grid;place-items:center;margin-top:-26px}
-.nav-fab button{width:58px;height:58px;border-radius:20px;display:grid;place-items:center;color:#fff;
-  background:#0B1B34;
-  box-shadow:0 14px 26px -12px rgba(11,27,52,.75), 0 0 0 6px var(--bg); border:1px solid rgba(255,255,255,.22);
+/* V2.19 — Scan intégré DANS la barre : aucun débordement, aucune marge négative.
+   Le bouton reste mis en avant (pastille bleu nuit) mais aligné sur les rubriques,
+   zone tactile 48 px, largeur de rubrique identique aux autres (flex:1). */
+.nav-item{min-height:56px;min-width:0}
+.nav-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.nav-scan{color:var(--navy);font-weight:750}
+.nav-scan .scan-ico{width:48px;height:34px;border-radius:12px;display:grid;place-items:center;color:#fff;
+  background:linear-gradient(135deg,var(--navy-2),var(--blue));box-shadow:0 6px 14px -8px rgba(11,27,52,.8);
   transition:transform .12s}
-.nav-fab button:active{transform:scale(.93)}
-.nav-fab .ico{width:27px;height:27px;stroke-width:1.9}
+.nav-scan:active .scan-ico{transform:scale(.92)}
+.nav-scan .scan-ico .ico{width:21px;height:21px;stroke:#fff}
+[data-theme="dark"] .nav-scan{color:#E6EEF9}
 
 /* ---------- Écran capture ---------- */
 .capture{position:fixed;inset:0;z-index:60;background:#05080F;display:flex;flex-direction:column;
@@ -564,6 +569,9 @@ label .chip{float:right;min-height:22px;padding:0 8px;font-size:11px;border-radi
 .acc-line input:not(:first-child){flex:.6;text-align:right}
 .zone-wrap{position:relative;line-height:0}
 .zone-box{position:absolute;border:3px solid #E11D48;background:rgba(225,29,72,.18);border-radius:4px}
+/* V2.19 : la rubrique « Documents » (libellé le plus long) reçoit un peu plus
+   de largeur relative pour ne jamais être tronquée, même à 320 px. */
+#bottomNav .nav-item[data-nav="docs"]{flex:1.3}
 
 </style>
 </head>
@@ -606,6 +614,7 @@ label .chip{float:right;min-height:22px;padding:0 8px;font-size:11px;border-radi
     <symbol id="i-printer" viewBox="0 0 24 24"><path d="M7 8V4h10v4"/><rect x="4" y="8" width="16" height="7" rx="2"/><path d="M7 14h10v6H7z"/></symbol>
     <symbol id="i-merge" viewBox="0 0 24 24"><path d="M7 3v5a3 3 0 0 0 3 3h4"/><path d="M7 21v-5a3 3 0 0 1 3-3h4"/><path d="m12 8 3 3-3 3"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+    <symbol id="i-calc" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8.5 7h7M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 15.5h.01M12 15.5h.01M15.5 15.5h.01"/></symbol>
     <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
     <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7.5 18.5A4 4 0 0 1 7 10.6a5 5 0 0 1 9.6-1.4A3.7 3.7 0 0 1 17 18.5z"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3.5 19 6v6c0 4-3 7.2-7 8.5-4-1.3-7-4.5-7-8.5V6z"/><path d="m9 12 2 2 4-4"/></symbol>
@@ -627,18 +636,13 @@ label .chip{float:right;min-height:22px;padding:0 8px;font-size:11px;border-radi
       <svg class="ico"><use href="#i-docs"/></svg><span>Documents</span>
     </button>
     <button class="nav-item" data-nav="acc" aria-label="Comptabilité">
-      <svg class="ico"><use href="#i-grid"/></svg><span>Compta</span>
+      <svg class="ico"><use href="#i-calc"/></svg><span>Compta</span>
     </button>
-    <div class="nav-fab">
-      <button id="fabScan" aria-label="Nouveau scan">
-        <svg class="ico"><use href="#i-scan"/></svg>
-      </button>
-    </div>
+    <button class="nav-item nav-scan" id="fabScan" aria-label="Nouveau scan">
+      <span class="scan-ico"><svg class="ico"><use href="#i-scan"/></svg></span><span>Scan</span>
+    </button>
     <button class="nav-item" data-nav="tools" aria-label="Outils">
       <svg class="ico"><use href="#i-grid"/></svg><span>Outils</span>
-    </button>
-    <button class="nav-item" data-nav="settings" aria-label="Paramètres">
-      <svg class="ico"><use href="#i-settings"/></svg><span>Paramètres</span>
     </button>
   </nav>
 </div>
@@ -2297,7 +2301,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Acc() { return Acc; }, get Precompta() { return Precompta; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.18.0'
+  version: '2.19.0'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */
@@ -2432,19 +2436,12 @@ function viewHome() {
           <div class="brand-sub">Scanner & OCR</div>
         </div>
       </div>
-      <button class="icon-btn" data-act="toggle-theme" aria-label="Basculer mode nuit / jour">${ICON(Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon')}</button>
       <button class="icon-btn" data-act="go-settings" aria-label="Paramètres">${ICON('i-settings')}</button>
     </div>
     <div class="hello">
       <h2>${firstName ? 'Bonjour ' + escapeHtml(firstName) : 'Prêt à numériser'}</h2>
-      <p>Scannez, reconnaissez le texte et exportez en PDF.</p>
+      <p>Scannez, reconnaissez le texte et exportez en PDF. ${ICON('i-shield', 'ico sm')} Tout reste sur l'appareil · ${docs.length} document(s), ${totalPages} page(s).</p>
     </div>
-    <div class="stat-row">
-      <div class="stat"><b>${docs.length}</b><span>${docs.length > 1 ? 'documents' : 'document'}</span></div>
-      <div class="stat"><b>${totalPages}</b><span>${totalPages > 1 ? 'pages scannées' : 'page scannée'}</span></div>
-      <div class="stat"><b>100 %</b><span>local & privé</span></div>
-    </div>
-    <div class="local-chip">${ICON('i-shield', 'ico sm')} Traitement sur l'appareil</div>
   </header>
 
   <div class="content">
@@ -2470,9 +2467,9 @@ function viewHome() {
         <span class="q-ico">${ICON('i-merge', 'ico sm')}</span>
         <span><b>Fusionner des PDF</b><span>2 fichiers ou plus</span></span>
       </button>
-      <button class="quick" data-act="go-docs">
-        <span class="q-ico">${ICON('i-folder', 'ico sm')}</span>
-        <span><b>Mes documents</b><span>${plural(docs.length, 'fichier', 'fichiers')}</span></span>
+      <button class="quick" data-act="go-tools">
+        <span class="q-ico">${ICON('i-grid', 'ico sm')}</span>
+        <span><b>Outils</b><span>Convertir, modifier, utilitaires</span></span>
       </button>
     </div>
 
@@ -2600,7 +2597,22 @@ async function viewSettings() {
       Seules les bibliothèques et modèles OCR publics peuvent être téléchargés depuis le CDN jsDelivr si les fichiers locaux sont bloqués par l'hébergeur — aucun document n'est transmis dans ce cas.</span></div>
 
     <div class="set-group">
-      <h3>Reconnaissance de texte</h3>
+      <h3>1 · Apparence</h3>
+      <div class="set-row"><span class="s-ico">${ICON('i-sun', 'ico sm')}</span><span class="s-body"><b>Mode sombre</b><span>Interface adaptée aux environnements peu éclairés</span></span><button class="switch ${Settings.get('theme')==='dark'?'on':''}" data-act="toggle-theme" role="switch" aria-checked="${Settings.get('theme')==='dark'}"><i></i></button></div>
+    </div>
+
+    <div class="set-group">
+      <h3>2 · Scan et caméra</h3>
+      <div class="set-row">
+        <span class="s-ico">${ICON('i-corners', 'ico sm')}</span>
+        <span class="s-body"><b>Détection automatique des contours</b><span>Redresser la perspective à la capture</span></span>
+        <button class="switch ${Settings.get('autoDetect') !== false ? 'on' : ''}" data-act="toggle-autodetect"
+          role="switch" aria-checked="${Settings.get('autoDetect') !== false}" aria-label="Détection des contours"></button>
+      </div>
+    </div>
+
+    <div class="set-group">
+      <h3>3 · OCR et langues</h3>
       <button class="set-row" data-act="set-langs">
         <span class="s-ico">${ICON('i-text', 'ico sm')}</span>
         <span class="s-body"><b>Langues OCR</b><span>${langLabel}</span></span>
@@ -2617,27 +2629,13 @@ async function viewSettings() {
         <button class="switch ${Settings.get('autoOcr') ? 'on' : ''}" data-act="toggle-autoocr"
           role="switch" aria-checked="${Settings.get('autoOcr')}" aria-label="OCR automatique"></button>
       </div>
-      <div class="set-row">
-        <span class="s-ico">${ICON('i-corners', 'ico sm')}</span>
-        <span class="s-body"><b>Détection automatique des contours</b><span>Redresser la perspective à la capture</span></span>
-        <button class="switch ${Settings.get('autoDetect') !== false ? 'on' : ''}" data-act="toggle-autodetect"
-          role="switch" aria-checked="${Settings.get('autoDetect') !== false}" aria-label="Détection des contours"></button>
-      </div>
     </div>
 
     <div class="set-group">
-      <h3>Apparence</h3>
-      <div class="set-row"><span class="s-ico">${ICON('i-sun', 'ico sm')}</span><span class="s-body"><b>Mode sombre</b><span>Interface adaptée aux environnements peu éclairés</span></span><button class="switch ${Settings.get('theme')==='dark'?'on':''}" data-act="toggle-theme" role="switch" aria-checked="${Settings.get('theme')==='dark'}"><i></i></button></div>
-    </div>
-
-    <div class="set-group">
-      <h3>Sauvegarde et restauration</h3>
+      <h3>4 · Stockage local et sauvegardes</h3>
       <button class="set-row" data-act="backup-export"><span class="s-ico">${ICON('i-download', 'ico sm')}</span><span class="s-body"><b>Exporter la bibliothèque</b><span>Archive ZIP : documents, pages, OCR et PDF importés</span></span><span class="chev">${ICON('i-chevron', 'ico sm')}</span></button>
       <button class="set-row" data-act="backup-import"><span class="s-ico">${ICON('i-folder', 'ico sm')}</span><span class="s-body"><b>Importer une sauvegarde</b><span>Ajoute les documents sans écraser la bibliothèque actuelle</span></span><span class="chev">${ICON('i-chevron', 'ico sm')}</span></button>
-    </div>
 
-    <div class="set-group">
-      <h3>Stockage local</h3>
       <div class="set-row" style="align-items:flex-start;flex-direction:column;gap:4px">
         <div class="row" style="width:100%">
           <span class="s-ico">${ICON('i-folder', 'ico sm')}</span>
@@ -2658,12 +2656,21 @@ async function viewSettings() {
     </div>
 
     <div class="set-group">
-      <h3>À propos & fonctionnalités à venir</h3>
+      <h3>5 · Confidentialité et permissions</h3>
       <button class="set-row" data-act="show-permissions">
         <span class="s-ico">${ICON('i-lock', 'ico sm')}</span>
         <span class="s-body"><b>Permissions utilisées</b><span>Caméra, fichiers — à la demande</span></span>
         <span class="chev">${ICON('i-chevron', 'ico sm')}</span>
       </button>
+    </div>
+
+    <div class="set-group">
+      <h3>6 · Comptabilité et plan comptable</h3>
+      <button class="set-row" data-act="go-acc"><span class="s-ico">${ICON('i-calc', 'ico sm')}</span><span class="s-body"><b>Plan comptable, journaux et règles</b><span>Configurés dans l'écran Comptabilité (source unique)</span></span><span class="chev">${ICON('i-chevron', 'ico sm')}</span></button>
+    </div>
+
+    <div class="set-group">
+      <h3>7 · Aide et version</h3>
       <button class="set-row" data-act="show-roadmap">
         <span class="s-ico">${ICON('i-sparkles', 'ico sm')}</span>
         <span class="s-body"><b>Feuille de route V2 → V4</b><span>IA, détection de contours, APK Android</span></span>
@@ -2676,7 +2683,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.18.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.19.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -2889,9 +2896,7 @@ function viewTools() {
   return `
   <header class="appbar tools-head"><div class="appbar-row">
     <h1>Outils</h1>
-    <button class="icon-btn" data-act="toggle-theme" aria-label="Basculer mode nuit / jour">${ICON(Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon')}</button>
-    <button class="icon-btn" data-act="go-settings" aria-label="Paramètres">${ICON('i-settings')}</button>
-  </div><p class="tiny" style="color:#A9BFDF;margin:6px 2px 0">Toutes les fonctions disponibles, sans bouton décoratif.</p></header>
+  </div><p class="tiny" style="color:#A9BFDF;margin:6px 2px 0">Fonctions avancées, regroupées par objectif. Les réglages sont dans Paramètres (icône sur l'Accueil).</p></header>
   <div class="content">
     <h2 class="tools-section">Scanner</h2><div class="tools-grid">
       ${toolItem('scan-camera','i-camera','Scanner')}
@@ -2921,9 +2926,6 @@ function viewTools() {
       ${toolItem('backup-import','i-folder','Restaurer')}
       ${toolItem('docs-duplicates','i-copy','Doublons documents')}
       ${toolItem('tool-doc-print','i-printer','Imprimer')}
-      ${toolItem('set-langs','i-text','Langues OCR')}
-      ${toolItem('toggle-theme', Settings.get('theme')==='dark' ? 'i-sun' : 'i-moon','Nuit / Jour','orange')}
-      ${toolItem('go-settings','i-settings','Paramètres')}
       ${toolItem('tool-assistant','i-sparkles','Assistant local','green')}
     </div>
     <div class="banner info">${ICON('i-info','ico sm')}<span>Assistant IA génératif distant : prévu plus tard, lorsqu’une clé API et un backend sécurisé seront disponibles. Aucun outil ci-dessus n’envoie vos documents.</span></div>
@@ -5893,6 +5895,7 @@ Object.assign(Actions, {
   'go-home': () => go('home'),
   'go-docs': () => { App.search = ''; go('docs'); },
   'go-settings': () => go('settings'),
+  'go-acc': () => go('acc'),
   'go-back': () => {
     if (App.route === 'detail') go('docs'); else go('home');
   },

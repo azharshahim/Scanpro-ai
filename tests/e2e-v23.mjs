@@ -29,7 +29,7 @@ check('Assistant local répond facture', await p.evaluate(()=>document.querySele
 await p.locator('[data-act="ai-chip"][data-q="Traduis le texte reconnu"]').click(); await p.waitForTimeout(300);
 check('Traduction honnêtement non locale', await p.evaluate(()=>document.querySelector('#aiAnswer').innerText.includes('non disponible localement')));
 await p.screenshot({path:OUT+'/99-v23-assistant.png'});
-await p.locator('[data-act="go-back"]').click(); await p.waitForTimeout(500); await p.locator('[data-nav="settings"]').click(); await p.waitForTimeout(700);
+await p.locator('[data-act="go-back"]').click(); await p.waitForTimeout(500); await p.locator('[data-nav="home"]').click(); await p.waitForTimeout(500); await p.locator('[data-act="go-settings"]').click(); await p.waitForTimeout(700);
 await p.locator('[data-act="toggle-theme"]').click(); await p.waitForTimeout(300);
 check('Mode sombre activé', await p.evaluate(()=>document.documentElement.dataset.theme==='dark'&&localStorage.getItem('scanpro.settings.v1').includes('dark')));
 await p.screenshot({path:OUT+'/100-v23-sombre.png'});

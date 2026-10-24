@@ -24,7 +24,7 @@
   --radius-sm:12px;
   --shadow:0 1px 2px rgba(11,27,52,.04), 0 8px 24px -12px rgba(11,27,52,.18);
   --shadow-lg:0 24px 60px -20px rgba(11,27,52,.35);
-  --nav-h:74px;
+  --nav-h:70px;
   --safe-b:env(safe-area-inset-bottom,0px);
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
 }
@@ -212,23 +212,28 @@ svg{display:block}
 .bottom-nav{
   position:fixed;left:0;right:0;bottom:0;z-index:40;max-width:600px;margin:0 auto;
   background:rgba(255,255,255,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-  border-top:1px solid var(--line);display:flex;align-items:stretch;
-  padding:8px 10px calc(8px + var(--safe-b));gap:4px;
+  border-top:1px solid var(--line);display:flex;align-items:center;
+  padding:8px 6px calc(8px + var(--safe-b));gap:2px;
   box-shadow:0 -8px 24px -18px rgba(11,27,52,.4);
 }
 .nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-  color:var(--muted-2);font-size:11.5px;font-weight:650;padding:7px 0 5px;border-radius:13px;
+  color:var(--muted-2);font-size:10.5px;font-weight:650;padding:7px 0 5px;border-radius:13px;letter-spacing:0;
   transition:color .18s, background .18s;letter-spacing:.15px;position:relative}
 .nav-item .ico{width:23px;height:23px}
 .nav-item.active{color:var(--blue-2);background:var(--blue-soft)}
 .nav-item.active .ico{stroke:var(--blue-2)}
-.nav-fab{flex:none;width:64px;display:grid;place-items:center;margin-top:-26px}
-.nav-fab button{width:58px;height:58px;border-radius:20px;display:grid;place-items:center;color:#fff;
-  background:#0B1B34;
-  box-shadow:0 14px 26px -12px rgba(11,27,52,.75), 0 0 0 6px var(--bg); border:1px solid rgba(255,255,255,.22);
+/* V2.19 — Scan intégré DANS la barre : aucun débordement, aucune marge négative.
+   Le bouton reste mis en avant (pastille bleu nuit) mais aligné sur les rubriques,
+   zone tactile 48 px, largeur de rubrique identique aux autres (flex:1). */
+.nav-item{min-height:56px;min-width:0}
+.nav-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.nav-scan{color:var(--navy);font-weight:750}
+.nav-scan .scan-ico{width:48px;height:34px;border-radius:12px;display:grid;place-items:center;color:#fff;
+  background:linear-gradient(135deg,var(--navy-2),var(--blue));box-shadow:0 6px 14px -8px rgba(11,27,52,.8);
   transition:transform .12s}
-.nav-fab button:active{transform:scale(.93)}
-.nav-fab .ico{width:27px;height:27px;stroke-width:1.9}
+.nav-scan:active .scan-ico{transform:scale(.92)}
+.nav-scan .scan-ico .ico{width:21px;height:21px;stroke:#fff}
+[data-theme="dark"] .nav-scan{color:#E6EEF9}
 
 /* ---------- Écran capture ---------- */
 .capture{position:fixed;inset:0;z-index:60;background:#05080F;display:flex;flex-direction:column;
@@ -549,3 +554,6 @@ label .chip{float:right;min-height:22px;padding:0 8px;font-size:11px;border-radi
 .acc-line input:not(:first-child){flex:.6;text-align:right}
 .zone-wrap{position:relative;line-height:0}
 .zone-box{position:absolute;border:3px solid #E11D48;background:rgba(225,29,72,.18);border-radius:4px}
+/* V2.19 : la rubrique « Documents » (libellé le plus long) reçoit un peu plus
+   de largeur relative pour ne jamais être tronquée, même à 320 px. */
+#bottomNav .nav-item[data-nav="docs"]{flex:1.3}

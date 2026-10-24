@@ -160,7 +160,7 @@ await p.waitForTimeout(1500);
 check('Persistance après rechargement (IndexedDB)', (await p.locator('.doc-item').count()) >= 1);
 
 // Navigation + paramètres
-await p.locator('[data-nav="settings"]').click();
+await p.locator('[data-nav="home"]').click(); await p.waitForTimeout(500); await p.locator('[data-act="go-settings"]').click();
 await p.waitForTimeout(800);
 check('Écran Paramètres', (await p.locator('.set-group').count()) >= 3);
 await p.screenshot({ path: OUT + '/66-pages-parametres.png', fullPage: true });

@@ -6,11 +6,13 @@ const ctx=await b.newContext({...devices['Pixel 7'],viewport:{width:360,height:7
 const p=await ctx.newPage(); const errs=[], failed=[];
 p.on('pageerror',e=>errs.push(e.message.slice(0,160))); p.on('console',m=>{if(m.type()==='error')errs.push(m.text().slice(0,160))}); p.on('requestfailed',r=>failed.push(r.url().slice(-60)));
 await p.goto(APP,{waitUntil:'load',timeout:60000}); await p.waitForTimeout(1200); await p.locator('.sheet .btn.primary').click().catch(()=>{});
-for(const nav of ['docs','tools','settings','home']){ await p.locator(`[data-nav="${nav}"]`).click(); await p.waitForTimeout(450); check('Navigation '+nav, await p.evaluate(r=>window.ScanPro.App.route===r,nav)); }
+for(const nav of ['docs','tools','home']){ await p.locator(`[data-nav="${nav}"]`).click(); await p.waitForTimeout(450); check('Navigation '+nav, await p.evaluate(r=>window.ScanPro.App.route===r,nav)); }
 check('Petit écran 360px sans débordement horizontal', await p.evaluate(()=>document.documentElement.scrollWidth<=365), await p.evaluate(()=>document.documentElement.scrollWidth+'px'));
+await p.locator('[data-nav="home"]').click(); await p.waitForTimeout(500);
+await p.locator('[data-act="go-settings"]').click(); await p.waitForTimeout(600); check('Accès Paramètres unique (Accueil)', await p.evaluate(()=>window.ScanPro.App.route==='settings'));
 await p.locator('[data-nav="tools"]').click(); await p.waitForTimeout(600);
 check('Outils : tuiles visibles', await p.locator('.tool-item').count()>=15, await p.locator('.tool-item').count()+' tuiles');
-await p.locator('[data-act="set-langs"]').click(); await p.waitForTimeout(400); check('Modale langues ouverte', await p.locator('[data-lang]').count()>=6);
+await p.locator('[data-nav="home"]').click(); await p.waitForTimeout(500); await p.locator('[data-act="go-settings"]').click(); await p.waitForTimeout(600); await p.locator('[data-act="set-langs"]').click(); await p.waitForTimeout(400); check('Modale langues ouverte', await p.locator('[data-lang]').count()>=6);
 await p.mouse.click(8,8); await p.waitForTimeout(400); check('Modale fermable au toucher extérieur', await p.locator('[data-lang]').count()===0);
 // document incliné + filigrane
 await p.evaluate(async()=>{
