@@ -85,7 +85,9 @@ let ui = await p.locator('body').innerText();
 check('UI : section Propositions comptables + « Règles apprises » après première correction (absente avant)', ui.includes('Propositions comptables'));
 await p.locator('[data-acc-tx="0:nature"]').selectOption('salaire');
 await p.locator('[data-acc-tx="0:account"]').fill('421000');
-await p.locator('[data-act="acc-save"]').click(); await p.waitForTimeout(900);
+await p.locator('[data-act="acc-save"]').click(); await p.waitForTimeout(700);
+// V2.23 : la mémorisation est désormais un choix explicite après aperçu de la règle
+await p.locator('.sheet [data-act="acc-save-memo"]').click(); await p.waitForTimeout(900);
 ui = await p.locator('body').innerText();
 const learnedUi = await p.evaluate(() => window.ScanPro.Precompta.learnedRules().map(r => r.account + '|' + r.tokens.join(' ')));
 check('Parcours : correction 421000 enregistrée → 1 règle apprise (bénéficiaire)', learnedUi.length === 1 && learnedUi[0].startsWith('421000|'), JSON.stringify(learnedUi));

@@ -20,6 +20,7 @@ done
 curl -sf "${BASE}" >/dev/null || { echo "Le serveur de test n'a pas démarré sur ${BASE}"; exit 1; }
 
 SUITES=(
+  e2e-v223-assistant
   e2e-v222-releves-fiabilite
   e2e-v222-soldes-bnp
   e2e-v222-dispositions

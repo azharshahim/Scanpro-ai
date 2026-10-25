@@ -2603,25 +2603,53 @@ const Acc = {
   },
   bankEntriesCsv(data, docMeta = {}) {
     // Export d'écritures PROPOSÉES au format CSV générique documenté (une ligne par
-    // mouvement comptable) : Date;Journal;Pièce;Compte;Libellé;Référence;Débit;Crédit;Statut.
+    // mouvement comptable) : Date;Journal;Pièce;Compte;Tiers;Libellé;Référence;Débit;Crédit;Statut.
+    // V2.23 — colonne Tiers (vide si inconnu : jamais inventé) et virgule décimale
+    // pour Excel en locale française (le BOM UTF-8 est ajouté au moment du téléchargement).
     // Aucune compatibilité universelle n'est prétendue : voir le format documenté
     // dans docs/RAPPORT-RELEVE-COMPLET.md (logiciel cible et mapping de colonnes).
     const props = Acc.bankProposals(data);
     const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
-    const rows = [['Date', 'Journal', 'Pièce', 'Compte', 'Libellé', 'Référence', 'Débit', 'Crédit', 'Statut validation']];
+    const nfr = (n) => (n ? String(n).replace('.', ',') : '');
+    const columns = ['Date', 'Journal', 'Pièce', 'Compte', 'Tiers', 'Libellé', 'Référence', 'Débit', 'Crédit', 'Statut validation'];
+    const rows = [columns];
     const problems = [];
     const seen = new Map();
+    let totalDebit = 0, totalCredit = 0;
     for (const pr of props) {
       const key = [pr.date, Acc._norm(pr.label), pr.amount].join('|');
       if (seen.has(key)) problems.push('Doublon potentiel : ' + pr.date + ' ' + pr.label + ' (' + pr.amount + ')');
       seen.set(key, true);
       if (pr.issues.length) problems.push(pr.date + ' ' + pr.label + ' : ' + pr.issues.join(' · '));
       if (!pr.entries.length) { if (pr.counterAccount && (!pr.counterExists || !pr.counterActive)) problems.push(pr.date + ' ' + pr.label + ' : NON exportée (contrepartie absente ou inactive du plan)'); continue; }
-      for (const e of pr.entries) rows.push([pr.date, pr.journal, pr.reference || (docMeta.invoiceNumber || ''), e.account, pr.label, pr.reference || '', e.debit || '', e.credit || '', pr.status]);
+      for (const e of pr.entries) {
+        totalDebit += e.debit || 0; totalCredit += e.credit || 0;
+        rows.push([pr.date, pr.journal, pr.reference || (docMeta.invoiceNumber || ''), e.account, pr.tiers || '', pr.label, pr.reference || '', nfr(e.debit), nfr(e.credit), pr.status]);
+      }
     }
-    const td = rows.slice(1).reduce((s, r) => s + (parseFloat(String(r[6]).replace(',', '.')) || 0), 0);
-    const tc = rows.slice(1).reduce((s, r) => s + (parseFloat(String(r[7]).replace(',', '.')) || 0), 0);
-    return { csv: rows.map(r => r.map(esc).join(';')).join('\n'), problems, balanced: Math.abs(td - tc) <= 0.01, totalDebit: Math.round(td * 100) / 100, totalCredit: Math.round(tc * 100) / 100, proposals: props };
+    totalDebit = Math.round(totalDebit * 100) / 100; totalCredit = Math.round(totalCredit * 100) / 100;
+    const balanced = Math.abs(totalDebit - totalCredit) <= 0.01;
+    // V2.23 — le déséquilibre est une anomalie explicite du fichier, pas seulement une info du dialogue d'export.
+    if (!balanced && rows.length > 1) problems.push('Écritures déséquilibrées : total débit ' + totalDebit + ' ≠ total crédit ' + totalCredit + ' — ne pas importer sans correction');
+    return { csv: rows.map(r => r.map(esc).join(';')).join('\n'), columns, problems, balanced, totalDebit, totalCredit, proposals: props };
+  },
+  /* V2.23 — Tri fiabiliste des opérations d'un relevé, à partir des propositions
+     calculées (aucune nouvelle donnée inventée) :
+       fiables      : contrepartie calculée (règle dossier, apprentissage ou correction)
+       incertaines  : simple suggestion à confirmer, jamais appliquée seule
+       nonReconnues : aucune contrepartie ni suggestion (décision manuelle obligatoire)
+     Les opérations validées par l'utilisateur sont comptées à part et jamais remodélisées. */
+  bankTriage(data) {
+    const props = Acc.bankProposals(data);
+    const cats = { fiables: [], incertaines: [], nonReconnues: [], validees: [] };
+    for (const pr of props) {
+      if (pr.validated) { cats.validees.push(pr.index); continue; }
+      if (pr.counterAccount) cats.fiables.push(pr.index);
+      else if (pr.suggestion) cats.incertaines.push(pr.index);
+      else cats.nonReconnues.push(pr.index);
+    }
+    const counts = { total: props.length, fiables: cats.fiables.length, incertaines: cats.incertaines.length, nonReconnues: cats.nonReconnues.length, validees: cats.validees.length };
+    return { cats, counts, pending: counts.incertaines + counts.nonReconnues };
   },
   toBankCsv(data) {
     const esc = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
@@ -2991,6 +3019,7 @@ Object.assign(Actions, {
   'acc-group-correct': (el) => accGroupConfirm(App.accDocId, el.dataset.idxs, 'correct'),
   'acc-validate-tx': (el) => accValidateTx(App.accDocId, +el.dataset.idx),
   'acc-filter': (el) => { App.accFilter = el.dataset.f; render(); },
+  'acc-triage': (el) => { App.accTriage = el.dataset.f; render(); },
   'acc-automation': () => { Settings.set('accAutomation', Settings.get('accAutomation') === false ? true : false); render(); toast('Automatisation des règles apprises ' + (Settings.get('accAutomation') ? 'activée' : 'désactivée : les règles deviennent des suggestions à confirmer'), 'ok', 5000); },
   'acc-thresholds': () => { const h = document.getElementById('seuilHaut'), m = document.getElementById('seuilMoyen'); if (h && m) { Settings.set('accSeuilHaut', Math.min(99, Math.max(1, +h.value || 85))); Settings.set('accSeuilMoyen', Math.min(98, Math.max(0, +m.value || 55))); render(); toast('Seuils de confiance enregistrés', 'ok'); } },
   'acc-rule-disable': (el) => { Precompta.setLearnedDisabled(el.dataset.key, el.dataset.off !== '1'); render(); toast(el.dataset.off === '1' ? 'Règle réactivée' : 'Règle désactivée (elle reste consultable et peut être réactivée ou supprimée)', 'ok', 5000); },
@@ -3384,13 +3413,64 @@ async function accReadForm(doc) {
   });
   return data;
 }
+/* V2.23 — Apprentissage CONTRÔLÉ. On calcule d'abord, sans rien persister, les règles
+   que les corrections explicites feraient mémoriser (mêmes conditions qu'en V2.17/V2.18 :
+   compte différent de la proposition automatique, ou nature explicitement corrigée).
+   L'utilisateur voit chaque règle avant de choisir de la mémoriser ou non. */
+function accRuleCandidates(prevDataSnapshot, data) {
+  if (!data || data.kind !== 'bank') return { candidates: [], notices: [] };
+  const baseline = Acc.bankProposals(Object.assign({}, prevDataSnapshot, { transactions: (prevDataSnapshot.transactions || []).map(x => Object.assign({}, x, { account: undefined })) }));
+  const candidates = [], notices = [];
+  const learned = Precompta.learned();
+  (data.transactions || []).forEach((tx, i) => {
+    const prevTx0 = (prevDataSnapshot.transactions || [])[i] || {};
+    if (tx.validated && prevTx0.account && tx.account !== prevTx0.account) {
+      tx.validated = false; delete tx.validatedAt;
+      notices.push('Imputation validée modifiée (ligne ' + (i + 1) + ') : elle repasse en proposition');
+    }
+    if (!tx.account) return;
+    const auto = baseline[i] && baseline[i].counterAccount;
+    const prevTx = (prevDataSnapshot.transactions || [])[i] || {};
+    // V2.18 : classer explicitement la nature est aussi un acte de validation
+    // qui fonde une règle bénéficiaire+nature, même si le compte proposé était déjà le bon.
+    const explicitNature = tx.nature && Precompta.canonNature(tx.nature) !== 'inconnue' && tx.nature !== prevTx.nature;
+    if (auto && String(auto) === String(tx.account) && !explicitNature) { delete tx.account; return; } // proposition automatique non modifiée : elle reste une proposition, pas une affectation utilisateur
+    const direction = tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
+    const nature = Precompta.natureOf(tx.label, direction, tx.nature);
+    const key = Precompta.learnKey(tx.label, direction, nature);
+    const acct = Precompta.account(tx.account);
+    const prev = learned[key];
+    const prevAccount = prev ? (typeof prev === 'string' ? prev : prev.account) : null;
+    // Une règle identique (même clé, même compte, active) existe déjà : inutile de la redemander.
+    if (prev && prevAccount === String(tx.account) && !(typeof prev === 'object' && prev.disabled)) return;
+    candidates.push({
+      line: i + 1, label: String(tx.label || '').slice(0, 90), account: String(tx.account),
+      accountLabel: acct ? acct.label : 'absent du plan du dossier',
+      tokens: Precompta.beneficiaryTokens(tx.label).slice().sort(), direction, nature, key,
+      learnable: !!key,
+      conflict: !!(prevAccount && prevAccount !== String(tx.account)),
+      previousAccount: prevAccount
+    });
+  });
+  return { candidates, notices };
+}
+/* Rendu de l'aperçu des règles, utilisé par la fiche de mémorisation (aucun effet de bord). */
+function accRulePreviewHtml(candidates) {
+  const learnable = candidates.filter(c => c.learnable);
+  const blocked = candidates.filter(c => !c.learnable);
+  const item = (c) => '<li class="small" style="margin:4px 0"><b>' + escapeHtml(c.account) + ' — ' + escapeHtml(c.accountLabel) + '</b><br>'
+    + '<span class="tiny muted">Bénéficiaire : ' + escapeHtml(c.tokens.join(' ') || '—') + ' · sens : ' + escapeHtml(c.direction || 'tout sens') + ' · nature : ' + escapeHtml(c.nature || 'inconnue') + '</span><br>'
+    + '<span class="tiny muted">Opération ligne ' + c.line + ' : « ' + escapeHtml(c.label) + ' »</span>'
+    + (c.conflict ? '<br><span class="chip err">conflit avec la règle existante ' + escapeHtml(c.previousAccount) + ' : non résolu automatiquement</span>' : '') + '</li>';
+  return (learnable.length ? '<p class="small muted">Règle(s) qui seraient mémorisées sur cet appareil :</p><ul style="padding-left:18px;margin:6px 0;max-height:220px;overflow:auto">' + learnable.map(item).join('') + '</ul>' : '')
+    + (blocked.length ? '<div class="banner warn"><span>' + blocked.length + ' correction(s) ne peuvent pas fonder de règle (bénéficiaire non identifiable, libellé trop générique) : l’affectation est conservée, aucune règle n’est créée.</span></div>' : '');
+}
 async function accSave(docId) {
   const doc = await Repo.doc(docId);
   if (!doc || !doc.acc) return;
   const prevType = doc.acc.data.docType;
   const prevFields = JSON.parse(JSON.stringify((doc.acc.data && doc.acc.data.fields) || {}));
   const prevDataSnapshot = JSON.parse(JSON.stringify(doc.acc.data || {}));
-  const learnLog = [];
   doc.acc.data = await accReadForm(doc);
   // Historique des corrections (V2.15) : ancienne -> nouvelle valeur, daté, par champ.
   doc.acc.history = doc.acc.history || [];
@@ -3399,40 +3479,60 @@ async function accSave(docId) {
     if (before !== undefined && String(before) !== String(f.value)) doc.acc.history.push({ at: Date.now(), field: k, old: before, new: f.value });
   }
   if (doc.acc.history.length > 200) doc.acc.history = doc.acc.history.slice(-200);
-  // Apprentissage (V2.17) : UNIQUEMENT sur correction explicite de l'utilisateur,
-  // c'est-à-dire un compte différent de la proposition automatique recalculée sans
-  // ses affectations. Une valeur déjà proposée par une règle n'est jamais ré-apprise
-  // aveuglément ; le résultat (appris / refusé / conflit) est historisé.
-  if (doc.acc.data && doc.acc.data.kind === 'bank') {
-    const baseline = Acc.bankProposals(Object.assign({}, prevDataSnapshot, { transactions: (prevDataSnapshot.transactions || []).map(x => Object.assign({}, x, { account: undefined })) }));
-    const results = [];
-    (doc.acc.data.transactions || []).forEach((tx, i) => {
-      const prevTx0 = (prevDataSnapshot.transactions || [])[i] || {};
-      if (tx.validated && prevTx0.account && tx.account !== prevTx0.account) {
-        tx.validated = false; delete tx.validatedAt;
-        learnLog.push({ ok: false, key: 'imputation validée modifiée (ligne ' + (i + 1) + ') : repasse en proposée' });
-      }
-      if (!tx.account) return;
-      const auto = baseline[i] && baseline[i].counterAccount;
-      const prevTx = (prevDataSnapshot.transactions || [])[i] || {};
-      // V2.18 : classer explicitement la nature est aussi un acte de validation
-      // qui fonde une règle bénéficiaire+nature, même si le compte proposé était déjà le bon.
-      const explicitNature = tx.nature && Precompta.canonNature(tx.nature) !== 'inconnue' && tx.nature !== prevTx.nature;
-      if (auto && String(auto) === String(tx.account) && !explicitNature) { delete tx.account; return; } // proposition automatique non modifiée : elle reste une proposition, pas une affectation utilisateur
-      const direction = tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
-      results.push(Precompta.learnFromLabel(tx.label, tx.account, { direction, nature: Precompta.natureOf(tx.label, direction, tx.nature) }));
-    });
-    for (const r of results) if (r && (r.ok || r.conflict)) learnLog.push(r);
+  const { candidates, notices } = accRuleCandidates(prevDataSnapshot, doc.acc.data);
+  // Contexte conservé pour la fiche : les données lues du formulaire et l'historique préparé
+  // sont transportés tels quels (aucun Repo.update avant le choix de l'utilisateur : annuler
+  // ne doit rien persister ; aucune relecture de formulaire ni mutation n'est refaite ensuite).
+  App._pendingSave = { docId, prevType, prevDataSnapshot, candidates, notices, hasRule: candidates.some(c => c.learnable),
+    preparedData: doc.acc.data, preparedHistory: doc.acc.history };
+  if (!candidates.some(c => c.learnable)) { await accSaveFinalize(docId, false); return; }
+  openSheet({
+    title: 'Mémoriser une règle pour ces corrections ?',
+    sub: candidates.filter(c => c.learnable).length + ' règle(s) candidate(s). Aucune n’est mémorisée sans votre choix explicite.',
+    body: accRulePreviewHtml(candidates)
+      + (notices.length ? '<div class="banner info"><span>' + notices.map(escapeHtml).join('<br>') + '</span></div>' : '')
+      + '<p class="tiny muted">Vos corrections de comptes sont enregistrées dans les deux cas. « Sans mémoriser » n’crée aucune règle ; les prochaines opérations similaires redeviendront de simples propositions.</p>',
+    actions: [
+      { label: 'Annuler', cls: 'ghost' },
+      { label: 'Enregistrer sans mémoriser', cls: 'soft', act: 'acc-save-no-memo', close: false },
+      { label: 'Enregistrer et mémoriser', cls: 'go', act: 'acc-save-memo', close: false }
+    ],
+    onMount: (sheet) => {
+      sheet.querySelector('[data-act="acc-save-no-memo"]').addEventListener('click', async () => { closeSheet(); await accSaveFinalize(docId, false); }, { once: true });
+      sheet.querySelector('[data-act="acc-save-memo"]').addEventListener('click', async () => { closeSheet(); await accSaveFinalize(docId, true); }, { once: true });
+    }
+  });
+}
+async function accSaveFinalize(docId, memorize) {
+  const pending = App._pendingSave || {};
+  const doc = await Repo.doc(docId);
+  if (!doc || !doc.acc) { App._pendingSave = null; return; }
+  // Les données lues du formulaire et les candidats ont été préparés par accSave.
+  if (pending.docId !== docId || !pending.preparedData) { App._pendingSave = null; return; }
+  // Application des corrections préparées (identiques quel que soit le choix de mémorisation).
+  doc.acc.data = pending.preparedData;
+  doc.acc.history = pending.preparedHistory || doc.acc.history;
+  const learnLog = [];
+  if (memorize && doc.acc.data && doc.acc.data.kind === 'bank') {
+    for (const c of pending.candidates || []) {
+      if (!c.learnable) continue;
+      const r = Precompta.learnFromLabel(c.label, c.account, { direction: c.direction, nature: c.nature });
+      if (r && (r.ok || r.conflict)) learnLog.push(r);
+    }
   }
-  if (prevType && doc.acc.data.docType !== prevType) toast('Type modifié : pensez à « Réanalyser » pour recalculer les champs compatibles avec le nouveau type.', 'err', 6000);
+  if (pending.prevType && doc.acc.data.docType !== pending.prevType) toast('Type modifié : pensez à « Réanalyser » pour recalculer les champs compatibles avec le nouveau type.', 'err', 6000);
   doc.acc.edited = true;
   doc.acc.savedAt = Date.now();
   if (learnLog.length) { doc.acc.history = doc.acc.history || []; for (const r of learnLog) doc.acc.history.push({ at: Date.now(), field: 'apprentissage', old: '', new: (r.conflict ? 'CONFLIT ' : 'règle apprise ') + r.key }); }
-  doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: 'Correction comptable enregistrée' });
+  if (pending.notices && pending.notices.length) { doc.acc.history = doc.acc.history || []; pending.notices.forEach(n => doc.acc.history.push({ at: Date.now(), field: 'apprentissage', old: '', new: n })); }
+  doc.history = doc.history || []; doc.history.push({ at: Date.now(), action: memorize ? 'Correction comptable enregistrée (avec mémorisation de règle)' : 'Correction comptable enregistrée (sans mémorisation)' });
   await Repo.update(doc);
+  App._pendingSave = null;
   App.docs = await Repo.list();
   await render();
-  toast('Corrections comptables enregistrées' + (learnLog.length ? ' — ' + learnLog.filter(r => r.ok).length + ' règle(s) apprise(s)' + (learnLog.some(r => r.conflict) ? ', conflit signalé à corriger' : '') : ''), 'ok', 5000);
+  toast(memorize
+    ? 'Corrections enregistrées — ' + learnLog.filter(r => r.ok).length + ' règle(s) mémorisée(s)' + (learnLog.some(r => r.conflict) ? ', conflit signalé à corriger' : '')
+    : 'Corrections enregistrées — aucune règle mémorisée (vous pourrez le faire ultérieurement)', memorize && learnLog.some(r => r.conflict) ? 'err' : 'ok', 5500);
 }
 
 
@@ -3443,11 +3543,35 @@ async function accAcceptSuggestion(docId, idx, account) {
   const direction = tx.debit != null ? 'sortie' : (tx.credit != null ? 'entree' : null);
   const prop = Acc.bankProposals(doc.acc.data)[idx];
   if (prop && prop.suggestion && prop.suggestion.nature && Precompta.canonNature(tx.nature || '') === 'inconnue') tx.nature = prop.suggestion.nature;
-  const r = Precompta.learnFromLabel(tx.label, account, { direction, nature: Precompta.natureOf(tx.label, direction, tx.nature) });
+  const nature = Precompta.natureOf(tx.label, direction, tx.nature);
+  const key = Precompta.learnKey(tx.label, direction, nature);
+  const acct = Precompta.account(account);
   doc.acc.edited = true; doc.history = doc.history || [];
-  doc.history.push({ at: Date.now(), action: 'Suggestion comptable acceptée explicitement (' + account + ')' + (r && r.ok ? ' et apprise' : '') });
+  doc.history.push({ at: Date.now(), action: 'Suggestion comptable acceptée explicitement (' + account + ')' });
   await Repo.update(doc); App.docs = await Repo.list(); await render();
-  toast('Suggestion acceptée : ' + account + ' affecté' + (r && r.ok ? ' et règle apprise pour ce bénéficiaire' : ''), 'ok', 5000);
+  // V2.23 — la mémorisation devient un choix explicite avec aperçu de la règle.
+  if (!key) { toast('Suggestion acceptée : ' + account + ' affecté (libellé trop générique : aucune règle mémorisable)', 'ok', 5500); return; }
+  const candidate = { line: idx + 1, label: String(tx.label || '').slice(0, 90), account: String(account), accountLabel: acct ? acct.label : 'absent du plan du dossier', tokens: Precompta.beneficiaryTokens(tx.label).slice().sort(), direction, nature, key, learnable: true, conflict: false };
+  openSheet({
+    title: 'Mémoriser cette règle ?',
+    sub: 'L’affectation est déjà enregistrée. La règle ne sera créée que si vous le confirmez.',
+    body: accRulePreviewHtml([candidate]),
+    actions: [
+      { label: 'Garder l’affectation sans mémoriser', cls: 'ghost', act: 'acc-sugg-no-memo', close: false },
+      { label: 'Mémoriser la règle', cls: 'go', act: 'acc-sugg-memo', close: false }
+    ],
+    onMount: (sheet) => {
+      sheet.querySelector('[data-act="acc-sugg-no-memo"]').addEventListener('click', async () => { closeSheet(); toast('Affectation conservée, aucune règle mémorisée', 'ok', 4500); }, { once: true });
+      sheet.querySelector('[data-act="acc-sugg-memo"]').addEventListener('click', async () => {
+        closeSheet();
+        const fresh = await Repo.doc(docId);
+        const r = Precompta.learnFromLabel(tx.label, account, { direction, nature });
+        if (fresh) { fresh.acc.history = fresh.acc.history || []; fresh.acc.history.push({ at: Date.now(), field: 'apprentissage', old: '', new: (r.conflict ? 'CONFLIT ' : 'règle apprise ') + r.key }); await Repo.update(fresh); }
+        App.docs = await Repo.list(); await render();
+        toast(r.ok ? 'Règle mémorisée pour ce bénéficiaire, ce sens et cette nature' : 'Conflit avec une règle existante : aucune résolution automatique (voir « Règles apprises »)', r.ok ? 'ok' : 'err', 6000);
+      }, { once: true });
+    }
+  });
 }
 async function accApplySimilar(docId, idx) {
   const doc = await Repo.doc(docId); if (!doc || !doc.acc) return;
@@ -3633,7 +3757,7 @@ async function accExport(docId, fmt) {
     if (fmt === 'bankentries') {
       const ex = Acc.bankEntriesCsv(data, doc);
       if (!window.__accBankConfirmed) {
-        openSheet({ title: 'Exporter les écritures bancaires proposées ?', sub: 'Journal BQ du dossier · compte banque ' + Precompta.rules().banque + ' · format CSV générique documenté (voir rapport)', body: '<p class="small">Écritures <b>proposées, non validées</b> : équilibre débit/crédit ' + (ex.balanced ? 'OK (' + ex.totalDebit + ')' : 'NON ATTEINT') + '.<br>' + (ex.problems.length ? '<b>' + ex.problems.length + ' point(s) à traiter avant import :</b><br>' + ex.problems.slice(0, 8).map(escapeHtml).join('<br>') : 'Aucun problème détecté (doublons, comptes, complétude).') + '</p><p class="tiny muted">Export CSV générique (Date;Journal;Pièce;Compte;Libellé;Référence;Débit;Crédit;Statut) : mappez ces colonnes dans l’import de votre logiciel — aucune compatibilité universelle n’est prétendue.</p>', actions: [{ label: 'Annuler', cls: 'ghost' }, { label: 'Exporter ces propositions', cls: 'go', act: 'acc-bankentries-confirm', close: true }] });
+        openSheet({ title: 'Exporter les écritures bancaires proposées ?', sub: 'Journal BQ du dossier · compte banque ' + Precompta.rules().banque + ' · format CSV générique documenté (voir rapport)', body: '<p class="small">Écritures <b>proposées, non validées</b> : équilibre débit/crédit ' + (ex.balanced ? 'OK (' + ex.totalDebit + ')' : 'NON ATTEINT') + '.<br>' + (ex.problems.length ? '<b>' + ex.problems.length + ' point(s) à traiter avant import :</b><br>' + ex.problems.slice(0, 8).map(escapeHtml).join('<br>') : 'Aucun problème détecté (doublons, comptes, complétude).') + '</p><p class="tiny muted">Export CSV générique (Date;Journal;Pièce;Compte;Tiers;Libellé;Référence;Débit;Crédit;Statut validation), séparateur « ; », virgule décimale et BOM UTF-8 pour Excel. La colonne Tiers reste vide quand le tiers n’est pas identifié (jamais inventé). Mappez ces colonnes dans l’import de votre logiciel — aucune compatibilité universelle n’est prétendue.</p>', actions: [{ label: 'Annuler', cls: 'ghost' }, { label: 'Exporter ces propositions', cls: 'go', act: 'acc-bankentries-confirm', close: true }] });
         return;
       }
       window.__accBankConfirmed = false;
