@@ -47,4 +47,11 @@ Adaptations de tests existants (comportement objet de la correction, pas un affa
 
 - `page: null` est émis chaque fois que l'origine ne peut être démontrée (texte sans marqueur et sans géométrie) : l'application n'affiche jamais ce `null` comme une page certaine.
 - Relevé réel non testé (`BANK_PDF_PATH`, interdit par les contraintes) ; les suites OCR Tesseract (v218, v25) et scripts hérités restent hors noyau CI ; échecs préexistants de `main` non liés à R11 (e2e.mjs timeout, e2e-gh tiers cassé, validate-exports.py PyMuPDF absent).
-- Aucune fusion ni déploiement : la PR reste ouverte pour décision explicite.
+- Fusion et déploiement réalisés **après accord explicite** : PR #14 fusionnée par merge commit `6c58651`, déploiement GitHub Pages run `40226815090` *success*.
+
+## 6. Preuves de mise en production (live https://azharshahim.github.io/Scanpro-ai/)
+
+- Version affichée `2.24.0`, `sw.js` live en cache `scanpro-ai-v2.24.0`.
+- SHA-256 de `index.html` live identique à celui du commit fusionné `6c58651` : `dbfac3ea7d510c2959be32d3d4ff7601b00aec827d47c93207d562efa9342bff`.
+- Tests exécutés contre l'URL publique : `e2e-v24-r11-pages` **16/16**, `e2e-v223-assistant` **38/38**, 0 erreur JavaScript.
+- Check distant « Tests Playwright » sur la PR : *success* avant fusion.
