@@ -557,3 +557,15 @@ label .chip{float:right;min-height:22px;padding:0 8px;font-size:11px;border-radi
 /* V2.19 : la rubrique « Documents » (libellé le plus long) reçoit un peu plus
    de largeur relative pour ne jamais être tronquée, même à 320 px. */
 #bottomNav .nav-item[data-nav="docs"]{flex:1.3}
+/* V2.20 — Imputations à valider (validation par lots) */
+.grp-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;margin:10px 0;box-shadow:var(--shadow)}
+.grp-head{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.grp-title{font-weight:750;font-size:14px;flex:1;min-width:140px}
+.grp-meta{font-size:12px;color:var(--muted)}
+.grp-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.grp-actions .btn{flex:1;min-width:120px;min-height:44px}
+.grp-card details{margin-top:8px}
+.grp-card details li{font-size:12.5px;margin:3px 0}
+.progressbar{height:8px;border-radius:99px;background:var(--blue-soft);overflow:hidden;margin:8px 0}
+.progressbar i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--blue-2))}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}

@@ -572,6 +572,18 @@ label .chip{float:right;min-height:22px;padding:0 8px;font-size:11px;border-radi
 /* V2.19 : la rubrique « Documents » (libellé le plus long) reçoit un peu plus
    de largeur relative pour ne jamais être tronquée, même à 320 px. */
 #bottomNav .nav-item[data-nav="docs"]{flex:1.3}
+/* V2.20 — Imputations à valider (validation par lots) */
+.grp-card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;margin:10px 0;box-shadow:var(--shadow)}
+.grp-head{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.grp-title{font-weight:750;font-size:14px;flex:1;min-width:140px}
+.grp-meta{font-size:12px;color:var(--muted)}
+.grp-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.grp-actions .btn{flex:1;min-width:120px;min-height:44px}
+.grp-card details{margin-top:8px}
+.grp-card details li{font-size:12.5px;margin:3px 0}
+.progressbar{height:8px;border-radius:99px;background:var(--blue-soft);overflow:hidden;margin:8px 0}
+.progressbar i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--blue-2))}
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 
 </style>
 </head>
@@ -2008,7 +2020,7 @@ const Vision = {
 /* ------------------------------------------------------------- préférences -- */
 const Settings = {
   k: 'scanpro.settings.v1',
-  defaults: { ocrLangs: 'fra+eng', quality: 'high', defaultFilter: 'doc', autoOcr: false, autoDetect: true, seenOnboarding: false, theme: 'light' },
+  defaults: { ocrLangs: 'fra+eng', quality: 'high', defaultFilter: 'doc', autoOcr: false, autoDetect: true, seenOnboarding: false, theme: 'light', accSeuilHaut: 85, accSeuilMoyen: 55, accAutomation: true },
   data: null,
   load() {
     try { this.data = Object.assign({}, this.defaults, JSON.parse(localStorage.getItem(this.k) || '{}')); }
@@ -2301,7 +2313,7 @@ async function runOcr(pages, langs = Settings.get('ocrLangs')) {
 window.ScanPro = {
   get App() { return App; }, get Repo() { return Repo; }, get Settings() { return Settings; },
   get AI() { return AI; }, get Acc() { return Acc; }, get Precompta() { return Precompta; }, get Actions() { return Actions; }, Store, PDF, ImageOps,
-  version: '2.19.0'
+  version: '2.20.0'
 };
 
 /* ------------------------------------------------------- exécution d'acte -- */
@@ -2683,7 +2695,7 @@ async function viewSettings() {
       </button>
     </div>
     <div class="about">
-      <b>ScanPro AI</b> — version 2.19.0 (Web)<br>
+      <b>ScanPro AI</b> — version 2.20.0 (Web)<br>
       OCR Tesseract.js · PDF jsPDF &amp; pdf-lib · vision locale (contours + perspective)<br>
       Hors-ligne après premier chargement complet (voir l'état du cache dans Stockage local)<br>
       ${st.fallback ? '<br><b style="color:#B45309">Attention :</b> IndexedDB indisponible (navigation privée) — les documents ne survivront pas à la fermeture.' : ''}
@@ -2959,11 +2971,29 @@ function viewAcc() {
       </div>
       ${(d.transactions && d.transactions.length) ? `<h4>Opérations (${d.transactions.length}) — ordre du relevé préservé</h4>
       <div class="acc-lines">${d.transactions.map((x, i) => `<div class="row acc-line"><input data-acc-tx="${i}:date" value="${escapeHtml(x.date)}" size="9"><input data-acc-tx="${i}:label" value="${escapeHtml(x.label)}"><input data-acc-tx="${i}:debit" value="${x.debit ?? ''}" placeholder="Débit" size="7"><input data-acc-tx="${i}:credit" value="${x.credit ?? ''}" placeholder="Crédit" size="7"><input data-acc-tx="${i}:balance" value="${x.balance ?? ''}" placeholder="Solde" size="7">${x.duplicate ? '<span class="chip warn">doublon ?</span>' : ''}${x.status === 'a-verifier' ? '<span class="chip err">à vérifier</span>' : ''}</div>`).join('')}</div>
+      ${(() => { const g = Acc.bankGroups(d); const props = Acc.bankProposals(d); const f = App.accFilter || 'all';
+        const pctVal = g.total ? Math.round(g.validated / g.total * 100) : 0;
+        const groupsHtml = g.groups.filter(gr => f === 'all' || gr.confLevel === f).map(gr => `<div class="grp-card">
+          <div class="grp-head"><span class="grp-title">${escapeHtml(gr.tiers || 'Tiers non identifié')} — ${escapeHtml(gr.nature)}</span>
+          <span class="chip ${gr.confLevel === 'élevé' ? 'ok' : gr.confLevel === 'moyen' ? 'warn' : 'err'}">confiance ${gr.confLevel} (${gr.confidence} %)</span></div>
+          <div class="grp-meta">${gr.indexes.length} opération(s) · ${gr.sens === 'sortie' ? 'sorties' : 'entrées'} · total ${gr.total} · proposition : <b>${escapeHtml(gr.accountLabel)}</b><br>${escapeHtml(gr.explanation)} · origine : ${gr.origin === 'apprentissage' ? 'règle apprise validée' : gr.origin === 'utilisateur' ? 'votre affectation' : 'règle du dossier'}</div>
+          <details><summary class="small">Voir les ${gr.indexes.length} opération(s) concernée(s)</summary><ul>${gr.indexes.map(j => { const x = props[j]; return `<li>${escapeHtml(x.date)} — ${escapeHtml(x.label)} · ${x.amount ?? ''} (${x.sens === 'sortie' ? 'débit' : 'crédit'})</li>`; }).join('')}</ul></details>
+          <div class="row" style="margin-top:8px"><input id="grpacc-${gr.indexes[0]}" value="${escapeHtml(gr.account)}" size="8" placeholder="Compte"><span class="tiny muted">Corrigez si besoin, puis validez : ${gr.indexes.length} opération(s) au compte ci-dessus.</span></div>
+          <div class="grp-actions"><button class="btn go" data-act="acc-group-validate" data-idxs="${gr.indexes.join(',')}">Valider le groupe (${gr.indexes.length})</button>
+          <button class="btn soft" data-act="acc-group-validate-rule" data-idxs="${gr.indexes.join(',')}">Valider + créer une règle</button>
+          <button class="btn ghost" data-act="acc-group-correct" data-idxs="${gr.indexes.join(',')}">Corriger le compte du groupe</button></div></div>`).join('');
+        return `<h4>Imputations à valider</h4>
+        <p class="tiny muted">${g.validated}/${g.total} opération(s) validée(s) · ${g.remaining} restante(s) · ${g.pending.length} sans proposition (décision individuelle ci-dessous). Les lots ne touchent jamais une opération déjà validée.</p>
+        <div class="progressbar"><i style="width:${pctVal}%"></i></div>
+        <div class="filter-row">${[['all', 'Toutes'], ['élevé', 'Confiance élevée'], ['moyen', 'Moyenne'], ['faible', 'Faible / à confirmer']].map(([v, l]) => `<button class="chip ${f === v ? 'on' : ''}" data-act="acc-filter" data-f="${v}">${l}</button>`).join('')}</div>
+        <div class="row" style="flex-wrap:wrap;gap:8px"><span class="tiny muted">Seuils — élevé ≥</span><input id="seuilHaut" type="number" value="${Settings.get('accSeuilHaut') || 85}" size="3" style="width:60px"><span class="tiny muted">% · moyen ≥</span><input id="seuilMoyen" type="number" value="${Settings.get('accSeuilMoyen') || 55}" size="3" style="width:60px"><span class="tiny muted">%</span><button class="btn xs soft" data-act="acc-thresholds">Enregistrer les seuils</button>
+        <button class="btn xs ${Settings.get('accAutomation') === false ? 'ghost' : 'soft'}" data-act="acc-automation">Automatisation des règles apprises : ${Settings.get('accAutomation') === false ? 'désactivée' : 'activée'}</button></div>
+        ${groupsHtml || '<p class="small muted">Aucun groupe pour ce filtre.</p>'}`; })()}
       ${(() => { const props = Acc.bankProposals(d); const withAcct = props.filter(x => x.counterAccount).length;
         return `<h4>Propositions comptables (journal ${escapeHtml(Precompta.rules().journalBanque || 'BQ')} · banque ${escapeHtml(Precompta.rules().banque)})</h4>
         <p class="tiny muted">Comptes proposés selon les règles du dossier et vos corrections apprises : ${withAcct}/${props.length} opération(s) avec contrepartie. Inconnu = en attente, jamais inventé. Affectez ou corrigez un compte dans la colonne « Contrepartie » puis « Enregistrer les corrections » : la règle sera apprise.</p>
-        <div class="acc-lines">${props.map(pr => `<div class="row acc-line"><span class="tiny muted">${escapeHtml(pr.date)}</span><span class="grow">${escapeHtml(pr.label)}<br><span class="tiny muted">${pr.sens === 'sortie' ? 'Sortie' : pr.sens === 'entree' ? 'Entrée' : 'Sens inconnu'} ${pr.amount ?? ''} · nature : ${escapeHtml(pr.nature || 'inconnue')} · <b>${escapeHtml(pr.counterLabel)}</b> · confiance ${pr.confidence} % · origine : ${pr.origin === 'utilisateur' ? 'votre correction' : pr.origin === 'apprentissage' ? 'apprentissage (vos corrections)' : pr.origin ? 'règle du dossier / plan comptable' : '—'} — ${escapeHtml(pr.explanation)}${pr.alternatives.length ? ' · Alternatives : ' + escapeHtml(pr.alternatives.join(' ; ')) : ''}${pr.issues.length ? ' · <b>' + escapeHtml(pr.issues.join(' · ')) + '</b>' : ''}${pr.similarIndexes && pr.similarIndexes.length ? '<br>Opérations similaires dans ce relevé : ' + pr.similarIndexes.length + ' (' + escapeHtml(pr.similarLabels.slice(0, 3).join(' ; ')) + ')' : ''}</span>${pr.suggestion && pr.suggestion.account ? `<button class="btn xs soft" data-act="acc-accept-suggestion" data-idx="${pr.index}" data-account="${escapeHtml(pr.suggestion.account)}" title="${escapeHtml(pr.suggestion.reason)}">Accepter la suggestion ${escapeHtml(pr.suggestion.account)} (à confirmer)</button>` : ''}${pr.suggestion ? `<span class="tiny muted">${escapeHtml(pr.suggestion.reason)}${pr.suggestion.accounts && pr.suggestion.accounts.length ? ' Comptes en conflit : ' + escapeHtml(pr.suggestion.accounts.join(' / ')) + '.' : ''}</span>` : ''}${pr.counterAccount && pr.similarIndexes && pr.similarIndexes.length ? `<button class="btn xs soft" data-act="acc-apply-similar" data-idx="${pr.index}">Appliquer aux ${pr.similarIndexes.length} similaire(s) de ce relevé</button>` : ''}</span><input data-acc-tx="${pr.index}:account" value="${escapeHtml(pr.counterAccount || '')}" placeholder="Compte" size="8"><select data-acc-tx="${pr.index}:nature" title="Nature de l'opération : à confirmer avant apprentissage (salaire, avance, remboursement…)">${['', 'salaire', 'remboursement/avance', 'virement interne', 'encaissement client', 'paiement fournisseur', 'autre virement'].map(nv => `<option value="${nv}" ${((d.transactions[pr.index] || {}).nature || '') === nv ? 'selected' : ''}>${nv || 'Nature : auto (' + pr.nature + ')'}</option>`).join('')}</select></div>`).join('')}</div>
-        ${(() => { const lr = Precompta.learnedRules(); if (!lr.length) return ''; return `<h4>Règles apprises de vos corrections (${lr.length})</h4><p class="tiny muted">Règles stockées uniquement sur ce poste et dans ce navigateur (jamais partagées entre appareils). Une règle ne s'applique qu'au même bénéficiaire (ordre des mots indifférent), au même sens ET à la même nature. « Corriger » remplace uniquement cette règle ; « Annuler » la supprime sans toucher aux autres.</p><div class="acc-lines">${lr.map(r => `<div class="row acc-line"><span class="grow tiny">Bénéficiaire : <b>${escapeHtml((r.tokens || []).join(' '))}</b> · sens : ${escapeHtml(r.direction || 'tout sens')} · nature : ${escapeHtml(r.nature || 'inconnue')}${r.conflictAccounts ? ' · <b>CONFLIT : ' + escapeHtml(r.conflictAccounts.join(' / ')) + '</b>' : ''}<br><span class="muted">${escapeHtml(r.label || '')}</span></span><input id="learnfix-${escapeHtml(r.key.replace(/[^a-z0-9]+/gi, '_'))}" value="${escapeHtml(r.account || '')}" size="8" placeholder="Compte"><button class="btn xs soft" data-act="acc-rule-correct" data-key="${escapeHtml(r.key)}">Corriger cette règle</button><button class="btn xs ghost" data-act="acc-rule-forget" data-key="${escapeHtml(r.key)}">Annuler cette règle</button></div>`).join('')}</div>`; })()}
+        <div class="acc-lines">${props.map(pr => `<div class="row acc-line"><span class="tiny muted">${escapeHtml(pr.date)}</span><span class="grow">${escapeHtml(pr.label)}<br><span class="tiny muted">${pr.sens === 'sortie' ? 'Sortie' : pr.sens === 'entree' ? 'Entrée' : 'Sens inconnu'} ${pr.amount ?? ''} · nature : ${escapeHtml(pr.nature || 'inconnue')} · <b>${escapeHtml(pr.counterLabel)}</b> · confiance ${pr.confidence} % · origine : ${pr.origin === 'utilisateur' ? 'votre correction' : pr.origin === 'apprentissage' ? 'apprentissage (vos corrections)' : pr.origin ? 'règle du dossier / plan comptable' : '—'} — ${escapeHtml(pr.explanation)}${pr.alternatives.length ? ' · Alternatives : ' + escapeHtml(pr.alternatives.join(' ; ')) : ''}${pr.issues.length ? ' · <b>' + escapeHtml(pr.issues.join(' · ')) + '</b>' : ''}${pr.validated ? '<br><span class="chip ok">validée par l\'utilisateur</span>' : ''}${!pr.validated && pr.counterAccount ? `<button class="btn xs go" data-act="acc-validate-tx" data-idx="${pr.index}">Valider</button> ` : ''}${pr.similarIndexes && pr.similarIndexes.length ? '<br>Opérations similaires dans ce relevé : ' + pr.similarIndexes.length + ' (' + escapeHtml(pr.similarLabels.slice(0, 3).join(' ; ')) + ')' : ''}</span>${pr.suggestion && pr.suggestion.account ? `<button class="btn xs soft" data-act="acc-accept-suggestion" data-idx="${pr.index}" data-account="${escapeHtml(pr.suggestion.account)}" title="${escapeHtml(pr.suggestion.reason)}">Accepter la suggestion ${escapeHtml(pr.suggestion.account)} (à confirmer)</button>` : ''}${pr.suggestion ? `<span class="tiny muted">${escapeHtml(pr.suggestion.reason)}${pr.suggestion.accounts && pr.suggestion.accounts.length ? ' Comptes en conflit : ' + escapeHtml(pr.suggestion.accounts.join(' / ')) + '.' : ''}</span>` : ''}${pr.counterAccount && pr.similarIndexes && pr.similarIndexes.length ? `<button class="btn xs soft" data-act="acc-apply-similar" data-idx="${pr.index}">Appliquer aux ${pr.similarIndexes.length} similaire(s) de ce relevé</button>` : ''}</span><input data-acc-tx="${pr.index}:account" value="${escapeHtml(pr.counterAccount || '')}" placeholder="Compte" size="8"><select data-acc-tx="${pr.index}:nature" title="Nature de l'opération : à confirmer avant apprentissage (salaire, avance, remboursement…)">${['', 'salaire', 'remboursement/avance', 'virement interne', 'encaissement client', 'paiement fournisseur', 'autre virement'].map(nv => `<option value="${nv}" ${((d.transactions[pr.index] || {}).nature || '') === nv ? 'selected' : ''}>${nv || 'Nature : auto (' + pr.nature + ')'}</option>`).join('')}</select></div>`).join('')}</div>
+        ${(() => { const lr = Precompta.learnedRules(); if (!lr.length) return ''; return `<h4>Règles apprises de vos corrections (${lr.length})</h4><p class="tiny muted">Règles stockées uniquement sur ce poste et dans ce navigateur (jamais partagées entre appareils). Une règle ne s'applique qu'au même bénéficiaire (ordre des mots indifférent), au même sens ET à la même nature. « Corriger » remplace uniquement cette règle ; « Annuler » la supprime sans toucher aux autres.</p><div class="acc-lines">${lr.map(r => `<div class="row acc-line"><span class="grow tiny">Bénéficiaire : <b>${escapeHtml((r.tokens || []).join(' '))}</b> · sens : ${escapeHtml(r.direction || 'tout sens')} · nature : ${escapeHtml(r.nature || 'inconnue')}${r.disabled ? ' · <b>désactivée</b>' : ''}${r.conflictAccounts ? ' · <b>CONFLIT : ' + escapeHtml(r.conflictAccounts.join(' / ')) + '</b>' : ''}<br><span class="muted">${escapeHtml(r.label || '')}</span></span><input id="learnfix-${escapeHtml(r.key.replace(/[^a-z0-9]+/gi, '_'))}" value="${escapeHtml(r.account || '')}" size="8" placeholder="Compte"><button class="btn xs soft" data-act="acc-rule-correct" data-key="${escapeHtml(r.key)}">Corriger cette règle</button><button class="btn xs soft" data-act="acc-rule-disable" data-key="${escapeHtml(r.key)}" data-off="${r.disabled ? '1' : '0'}">${r.disabled ? 'Réactiver' : 'Désactiver'}</button><button class="btn xs ghost" data-act="acc-rule-forget" data-key="${escapeHtml(r.key)}">Annuler cette règle</button></div>`).join('')}</div>`; })()}
         <div class="btn-row"><button class="btn soft" data-act="acc-export" data-fmt="bankentries">Écritures bancaires (CSV)</button></div>`; })()}
       <p class="small muted">Totaux reconnus — débits : ${d.totals ? d.totals.debit : 'Non reconnu'} · crédits : ${d.totals ? d.totals.credit : 'Non reconnu'} (les opérations « à vérifier » ne sont pas totalisées).</p>` : ''}
       ${d.sensitive ? '<div class="banner warn"><span>🔒 Document sensible (paie) : traitement 100 % local, aucune télémétrie, aucun envoi externe. Vérifiez que brut, net imposable, net social et net à payer ne sont pas confondus.</span></div>' : ''}
@@ -4782,7 +4812,7 @@ const Precompta = {
     // Normalise l'ancien format (chaîne) et le format V2.17 (objet).
     return Object.entries(Precompta.learned()).map(([key, v]) => {
       if (typeof v === 'string') return { key, account: v, direction: null, tokens: key.split('|').slice(1).join(' ').split(' ').filter(Boolean), nature: null, legacy: true };
-      return { key, account: v.account || null, direction: v.direction || null, tokens: v.tokens || [], nature: v.nature || null, label: v.label || '', dossier: v.dossier || null, conflictAccounts: v.conflictAccounts || null };
+      return { key, account: v.account || null, direction: v.direction || null, tokens: v.tokens || [], nature: v.nature || null, label: v.label || '', dossier: v.dossier || null, disabled: !!v.disabled, conflictAccounts: v.conflictAccounts || null };
     });
   },
   _saveLearned(map) { Precompta._save(Precompta.LEARNED_KEY, map); },
@@ -4809,6 +4839,7 @@ const Precompta = {
     return { ok: true, key };
   },
   forgetLearned(key) { const map = Precompta.learned(); if (map[key] !== undefined) { delete map[key]; Precompta._saveLearned(map); return true; } return false; },
+  setLearnedDisabled(key, disabled) { const map = Precompta.learned(); const prev = map[key]; if (prev === undefined) return false; const base = typeof prev === 'object' ? prev : { account: prev, tokens: key.split('|').filter(s => !/^(sortie|entree|tout-sens)$/.test(s)).join(' ').split(' ').filter(Boolean) }; map[key] = Object.assign({}, base, { disabled: !!disabled }); Precompta._saveLearned(map); return true; },
   correctLearned(key, account) {
     const map = Precompta.learned(); const prev = map[key]; if (prev === undefined || !account) return false;
     const base = typeof prev === 'object' ? prev : { tokens: key.split('|').slice(1).join(' ').split(' ').filter(Boolean), direction: null };
@@ -5542,6 +5573,7 @@ const Acc = {
       const toks = benef[i], sens = sensOf(txs[i]), nat = natures[i];
       const auto = [], suggest = [], blocked = [], partial = [];
       for (const r of learnedRules) {
+        if (r.disabled) continue;
         if (r.dossier && r.dossier !== dossierId) continue;
         if (r.direction && sens && r.direction !== sens) continue;
         const rt = new Set(r.tokens || []); if (!rt.size || !toks.length) continue;
@@ -5591,6 +5623,13 @@ const Acc = {
         const accounts = [...new Set(m.partial.map(r => r.account))];
         suggestion = { account: accounts.length === 1 ? accounts[0] : null, accounts, confidence: 40, reason: 'Correspondance incertaine avec une règle apprise (nom partiellement commun : « ' + (m.partial[0].tokens || []).join(' ') + ' ») : proposition à confirmer explicitement, jamais appliquée automatiquement.' };
       }
+      // V2.20 — automatisation désactivable : si l'utilisateur a coupé l'application
+      // automatique des règles apprises, une règle apprise devient une suggestion.
+      if (learnedHit && typeof Settings !== 'undefined' && Settings.get('accAutomation') === false && counter) {
+        suggestion = { account: counter, nature: (exact[0] && exact[0].nature) || null, confidence: conf, reason: 'Automatisation désactivée dans vos réglages : cette règle apprise est proposée mais pas appliquée automatiquement.' };
+        counter = null; learnedHit = false; origin = null; conf = 0;
+        why = 'Règle apprise correspondante (automatisation désactivée).';
+      }
       const acct = counter ? acctOf(counter) : null;
       const issues = [];
       if (!sens || amount == null) issues.push('sens ou montant non reconnu');
@@ -5615,7 +5654,12 @@ const Acc = {
       const entries = (usable && sens && amount != null) ? (sens === 'sortie'
         ? [{ account: counter, debit: amount, credit: 0 }, { account: bankNum, debit: 0, credit: amount }]
         : [{ account: bankNum, debit: amount, credit: 0 }, { account: counter, debit: 0, credit: amount }]) : [];
+      const seuilHaut = (typeof Settings !== 'undefined' && +Settings.get('accSeuilHaut')) || 85;
+      const seuilMoyen = (typeof Settings !== 'undefined' && +Settings.get('accSeuilMoyen')) || 55;
+      const confLevel = !counter && suggestion ? 'faible' : conf >= seuilHaut ? 'élevé' : conf >= seuilMoyen ? 'moyen' : 'faible';
+      const tiersName = benef[i].length ? benef[i].map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : null;
       return { index: i, date: tx.date, valueDate: tx.valueDate || null, label: tx.label, reference: tx.reference || null, sens, amount, nature,
+        tiers: tiersName, confLevel, validated: !!tx.validated,
         journal: R.journalBanque || 'BQ', bankAccount: bankNum, bankAccountLabel: fmtA(bankNum),
         counterAccount: counter, counterLabel: counter ? fmtA(counter) : 'En attente d\u2019affectation',
         counterExists: !!acct, counterActive: acct ? !!acct.active : false,
@@ -5623,8 +5667,28 @@ const Acc = {
         alternatives: alternatives.map(fmtA), learned: learnedHit, origin, suggestion,
         similarIndexes: similar, similarLabels: similar.map(j => txs[j].label + ' [' + natures[j] + ']'),
         issues, entries,
-        status: 'proposée (non validée)' };
+        status: tx.validated ? 'validée par l\u2019utilisateur' : 'proposée (non validée)' };
     });
+  },
+  /* V2.20 — Groupes d'imputations à valider : même tiers (bénéficiaire exact),
+     même sens, même nature et même compte proposé. Une opération de nature
+     différente n'entre JAMAIS dans le groupe d'une autre nature. Les opérations
+     déjà validées sont comptées à part et jamais retouchées par un lot. */
+  bankGroups(data) {
+    const props = Acc.bankProposals(data);
+    const map = new Map(); const pending = []; let validated = 0;
+    for (const pr of props) {
+      if (pr.validated) { validated++; continue; }
+      if (!pr.counterAccount) { pending.push(pr.index); continue; }
+      const key = [pr.tiers || 'tiers-inconnu', pr.sens, pr.nature, pr.counterAccount].join('|');
+      if (!map.has(key)) map.set(key, { key, tiers: pr.tiers, sens: pr.sens, nature: pr.nature, account: pr.counterAccount,
+        accountLabel: pr.counterLabel, confidence: pr.confidence, confLevel: pr.confLevel, origin: pr.origin,
+        explanation: pr.explanation, indexes: [], total: 0 });
+      const g = map.get(key); g.indexes.push(pr.index); g.total = Math.round((g.total + (pr.amount || 0)) * 100) / 100;
+      g.confidence = Math.min(g.confidence, pr.confidence);
+    }
+    const groups = [...map.values()].sort((a, b) => b.indexes.length - a.indexes.length);
+    return { groups, pending, validated, total: props.length, remaining: props.length - validated };
   },
   bankEntriesCsv(data, docMeta = {}) {
     // Export d'écritures PROPOSÉES au format CSV générique documenté (une ligne par
@@ -6011,6 +6075,14 @@ Object.assign(Actions, {
   'acc-apply-similar': (el) => accApplySimilar(App.accDocId, +el.dataset.idx),
   'acc-rule-forget': (el) => { Precompta.forgetLearned(el.dataset.key); render(); toast('Règle apprise annulée (les autres règles sont conservées)', 'ok'); },
   'acc-rule-correct': (el) => { const inp = document.getElementById('learnfix-' + el.dataset.key.replace(/[^a-z0-9]+/gi, '_')); if (inp && inp.value.trim()) { Precompta.correctLearned(el.dataset.key, inp.value.trim()); render(); toast('Règle corrigée : ' + el.dataset.key + ' → ' + inp.value.trim(), 'ok'); } },
+  'acc-group-validate': (el) => accGroupApply(App.accDocId, el.dataset.idxs, 'validate'),
+  'acc-group-validate-rule': (el) => accGroupApply(App.accDocId, el.dataset.idxs, 'validate-rule'),
+  'acc-group-correct': (el) => accGroupApply(App.accDocId, el.dataset.idxs, 'correct'),
+  'acc-validate-tx': (el) => accValidateTx(App.accDocId, +el.dataset.idx),
+  'acc-filter': (el) => { App.accFilter = el.dataset.f; render(); },
+  'acc-automation': () => { Settings.set('accAutomation', Settings.get('accAutomation') === false ? true : false); render(); toast('Automatisation des règles apprises ' + (Settings.get('accAutomation') ? 'activée' : 'désactivée : les règles deviennent des suggestions à confirmer'), 'ok', 5000); },
+  'acc-thresholds': () => { const h = document.getElementById('seuilHaut'), m = document.getElementById('seuilMoyen'); if (h && m) { Settings.set('accSeuilHaut', Math.min(99, Math.max(1, +h.value || 85))); Settings.set('accSeuilMoyen', Math.min(98, Math.max(0, +m.value || 55))); render(); toast('Seuils de confiance enregistrés', 'ok'); } },
+  'acc-rule-disable': (el) => { Precompta.setLearnedDisabled(el.dataset.key, el.dataset.off !== '1'); render(); toast(el.dataset.off === '1' ? 'Règle réactivée' : 'Règle désactivée (elle reste consultable et peut être réactivée ou supprimée)', 'ok', 5000); },
   'acc-save': () => accSave(App.accDocId),
   'acc-export': (el) => accExport(App.accDocId, el.dataset.fmt),
   'acc-zone': (el) => accShowZone(el),
@@ -6424,6 +6496,11 @@ async function accSave(docId) {
     const baseline = Acc.bankProposals(Object.assign({}, prevDataSnapshot, { transactions: (prevDataSnapshot.transactions || []).map(x => Object.assign({}, x, { account: undefined })) }));
     const results = [];
     (doc.acc.data.transactions || []).forEach((tx, i) => {
+      const prevTx0 = (prevDataSnapshot.transactions || [])[i] || {};
+      if (tx.validated && prevTx0.account && tx.account !== prevTx0.account) {
+        tx.validated = false; delete tx.validatedAt;
+        learnLog.push({ ok: false, key: 'imputation validée modifiée (ligne ' + (i + 1) + ') : repasse en proposée' });
+      }
       if (!tx.account) return;
       const auto = baseline[i] && baseline[i].counterAccount;
       const prevTx = (prevDataSnapshot.transactions || [])[i] || {};
@@ -6483,6 +6560,56 @@ async function accApplySimilar(docId, idx) {
   doc.history.push({ at: Date.now(), action: 'Règle appliquée à ' + n + ' opération(s) vérifiée(s) similaire(s) (' + pr.counterAccount + ', nature ' + pr.nature + '), ' + skipped + ' écartée(s)' });
   await Repo.update(doc); App.docs = await Repo.list(); await render();
   toast('Compte ' + pr.counterAccount + ' appliqué à ' + n + ' opération(s) réellement similaire(s) (bénéficiaire + sens + nature ' + pr.nature + ')' + (skipped ? ' — ' + skipped + ' ligne(s) écartée(s) après revérification' : ''), 'ok', 6000);
+}
+
+/* V2.20 — Validation par lots : n'agit que sur les opérations NON validées,
+   trace chaque changement (ancienne -> nouvelle imputation, règle, origine).
+   mode 'validate' : affecte + valide ; 'validate-rule' : idem + apprend la règle ;
+   'correct' : change le compte proposé du groupe sans valider. */
+async function accGroupApply(docId, idxsCsv, mode) {
+  const doc = await Repo.doc(docId); if (!doc || !doc.acc) return;
+  const idxs = String(idxsCsv || '').split(',').map(Number).filter(n => !isNaN(n));
+  if (!idxs.length) return;
+  const props = Acc.bankProposals(doc.acc.data);
+  const inp = document.getElementById('grpacc-' + idxs[0]);
+  const corrected = inp && inp.value.trim() ? inp.value.trim() : null;
+  const account = corrected || (props[idxs[0]] && props[idxs[0]].counterAccount);
+  if (!account) { toast('Aucun compte choisi pour ce groupe', 'err'); return; }
+  let n = 0, skipped = 0, firstTx = null;
+  doc.acc.history = doc.acc.history || [];
+  for (const j of idxs) {
+    const tx = doc.acc.data.transactions[j]; if (!tx) continue;
+    if (tx.validated) { skipped++; continue; } // jamais de modification silencieuse d'une écriture validée
+    const old = tx.account || 'en attente';
+    if (mode !== 'correct' || tx.account !== account) {
+      tx.account = account; firstTx = firstTx || tx;
+      doc.acc.history.push({ at: Date.now(), field: 'imputation', old, new: account, rule: (props[j] && (props[j].origin || 'groupe')) + ' · nature ' + ((props[j] || {}).nature || 'inconnue'), origin: mode === 'correct' ? 'correction de groupe (utilisateur)' : 'validation groupée (utilisateur)' });
+    }
+    if (mode !== 'correct') { tx.validated = true; tx.validatedAt = Date.now(); }
+    n++;
+  }
+  let learnedMsg = '';
+  if (mode === 'validate-rule' && firstTx) {
+    const direction = firstTx.debit != null ? 'sortie' : (firstTx.credit != null ? 'entree' : null);
+    const r = Precompta.learnFromLabel(firstTx.label, account, { direction, nature: Precompta.natureOf(firstTx.label, direction, firstTx.nature) });
+    learnedMsg = r && r.ok ? ' Règle apprise pour les prochaines opérations correspondantes.' : (r && r.conflict ? ' Conflit de règle signalé (voir Règles apprises).' : ' Règle non apprise (libellé trop générique).');
+  }
+  doc.acc.edited = true; doc.history = doc.history || [];
+  doc.history.push({ at: Date.now(), action: 'Validation par lots : ' + n + ' opération(s), compte ' + account + ' (' + mode + ')' });
+  await Repo.update(doc); App.docs = await Repo.list(); await render();
+  toast(n + ' opération(s) ' + (mode === 'correct' ? 'corrigée(s) vers le compte ' : 'validée(s) au compte ') + account + (skipped ? ' — ' + skipped + ' déjà validée(s) non touchée(s)' : '') + learnedMsg, 'ok', 6000);
+}
+async function accValidateTx(docId, idx) {
+  const doc = await Repo.doc(docId); if (!doc || !doc.acc) return;
+  const tx = (doc.acc.data.transactions || [])[idx]; if (!tx) return;
+  const pr = Acc.bankProposals(doc.acc.data)[idx];
+  const account = tx.account || (pr && pr.counterAccount);
+  if (!account) { toast('Aucun compte à valider pour cette opération : corrigez d\u2019abord le compte', 'err'); return; }
+  doc.acc.history = doc.acc.history || [];
+  doc.acc.history.push({ at: Date.now(), field: 'imputation', old: tx.account || 'en attente', new: account, rule: (pr && pr.origin) || 'utilisateur', origin: 'validation individuelle (utilisateur)' });
+  tx.account = account; tx.validated = true; tx.validatedAt = Date.now();
+  doc.acc.edited = true; await Repo.update(doc); App.docs = await Repo.list(); await render();
+  toast('Imputation validée : ' + account, 'ok');
 }
 async function accSetValidation(docId, status) {
   const doc = await Repo.doc(docId);
