@@ -1,5 +1,5 @@
 import { chromium, devices } from 'playwright'; import fs from 'fs';
-const APP=process.env.APP_URL||'http://localhost:8080/index.html'; const OUT='/home/user/scanpro/tests/out';
+const APP=process.env.APP_URL||'http://localhost:8080/index.html'; const OUT=new URL('./out/', import.meta.url).pathname; fs.mkdirSync(OUT,{recursive:true});
 const ok=[],ko=[]; const check=(l,c,e='')=>{(c?ok:ko).push(l);console.log((c?'✅':'❌')+' '+l+(e?' — '+e:''));};
 const b=await chromium.launch(); const ctx=await b.newContext({...devices['Pixel 7'],locale:'fr-FR',acceptDownloads:true}); const p=await ctx.newPage(); const errs=[];
 p.on('pageerror',e=>errs.push(e.message.slice(0,160))); p.on('console',m=>{if(m.type()==='error')errs.push(m.text().slice(0,160))});
@@ -25,9 +25,11 @@ await p.locator('.doc-item').first().click(); await p.waitForTimeout(300); await
 check('Sélection multiple active', await p.evaluate(()=>window.ScanPro.App.selectedDocs.size===2));
 await p.locator('[data-act="docs-batch-fav"]').click(); await p.waitForTimeout(700);
 check('Favoris par lots appliqués', await p.evaluate(()=>[...window.ScanPro.App.selectedDocs].every(id=>window.ScanPro.App.docs.find(d=>d.id===id)?.favorite)));
-// sauvegarde / restauration
+// sauvegarde / restauration — V2.22 : Paramètres centralisés (plus de rubrique settings dans la barre depuis V2.19)
 await p.locator('[data-act="docs-select-mode"]').click(); await p.waitForTimeout(300);
-await p.locator('[data-nav="settings"]').click(); await p.waitForTimeout(800);
+await p.locator('[data-nav="home"]').click(); await p.waitForTimeout(500);
+await p.locator('[data-act="go-settings"]').click(); await p.waitForTimeout(800);
+check('Vue Paramètres centralisés ouverte', await p.locator('[data-act="backup-export"]').count() >= 1);
 const dl=p.waitForEvent('download',{timeout:20000}); await p.locator('[data-act="backup-export"]').click(); const d=await dl; await d.saveAs(OUT+'/v24-backup.zip');
 const zipSize=fs.statSync(OUT+'/v24-backup.zip').size; check('Sauvegarde ZIP exportée', zipSize>10000, zipSize+' octets');
 const before=await p.evaluate(()=>window.ScanPro.App.docs.length);

@@ -58,6 +58,19 @@ const openAcc = async (docId) => {
   await p.locator('[data-nav="acc"]').click(); await p.waitForTimeout(500);
   await p.locator(`[data-act="acc-select"][data-id="${docId}"]`).click(); await p.waitForTimeout(700);
 };
+// V2.22 : toute action groupée passe par un récapitulatif à confirmer
+const confirmGroup = async (expectedCount) => {
+  await p.waitForSelector('.sheet [data-act="acc-group-confirm"]', { timeout: 5000 });
+  const recap = await p.locator('.sheet').innerText();
+  if (expectedCount != null) check('Récapitulatif : ' + expectedCount + ' opération(s) annoncée(s) avant application', new RegExp('\\b' + expectedCount + '\\b').test(recap), recap.slice(0, 120));
+  await p.locator('.sheet [data-act="acc-group-confirm"]').click();
+  await p.waitForTimeout(800);
+};
+const cancelGroup = async () => {
+  await p.waitForSelector('.sheet', { timeout: 5000 });
+  await p.locator('.sheet button.ghost').first().click();
+  await p.waitForTimeout(500);
+};
 
 // ══════════════════════════════ DONNÉES FICTIVES ══════════════════════════════
 const DOC = 'Relevé fictif audit A-E';
@@ -95,7 +108,12 @@ check('Progression initiale affichée : 0/' + TXS.length + ', reste ' + TXS.leng
 // ══════════════════════════════ SCÉNARIO A — validation simple ══════════════════════════════
 const edfCard = p.locator('.grp-card', { hasText: 'Edf Energie' });
 await edfCard.locator('button[data-act="acc-group-validate"]').click();
-await p.waitForTimeout(900);
+await p.waitForTimeout(400);
+check('A0 : le récap s’ouvre et aucune opération n’est encore validée', (await snap(docId)).txs.slice(0, 3).every(t => !t.validated));
+await cancelGroup();
+check('A0b : annuler le récap ne modifie rien', (await snap(docId)).txs.slice(0, 3).every(t => !t.validated) && await p.locator('.sheet').count() === 0);
+await edfCard.locator('button[data-act="acc-group-validate"]').click();
+await confirmGroup(3);
 let s = await snap(docId);
 check('A1 : les 3 prélèvements EDF sont validés', s.txs.slice(0, 3).every(t => t.validated), JSON.stringify(s.txs.slice(0, 3)));
 check('A2 : les 3 sont au compte cohérent 606100', s.txs.slice(0, 3).every(t => t.account === '606100'), JSON.stringify(s.txs.slice(0, 3).map(t => t.account)));
@@ -111,7 +129,7 @@ check('A7 : la carte EDF validée a disparu des lots à traiter', await p.locato
 const sfrCard = p.locator('.grp-card', { hasText: 'Sfr Mobile' });
 await sfrCard.locator('input[id^="grpacc-"]').fill('622600');
 await sfrCard.locator('button[data-act="acc-group-correct"]').click();
-await p.waitForTimeout(800);
+await confirmGroup(2);
 s = await snap(docId);
 check('B1 : le compte corrigé 622600 est appliqué aux 2 seules opérations SFR', s.txs[3].account === '622600' && s.txs[4].account === '622600', JSON.stringify([s.txs[3].account, s.txs[4].account]));
 check('B2 : une correction ne valide PAS les opérations', !s.txs[3].validated && !s.txs[4].validated);
@@ -124,7 +142,7 @@ const sfrCard2 = p.locator('.grp-card', { hasText: 'Sfr Mobile' });
 check('B6 : la carte de groupe s’est recalculée avec le nouveau compte 622600', await sfrCard2.locator('input[id^="grpacc-"]').inputValue() === '622600');
 await sfrCard2.locator('input[id^="grpacc-"]').fill('606300');
 await sfrCard2.locator('button[data-act="acc-group-correct"]').click();
-await p.waitForTimeout(800);
+await confirmGroup(2);
 s = await snap(docId);
 const histoB2 = s.history.filter(h => h.field === 'imputation' && h.origin === 'correction de groupe (utilisateur)');
 check('B7 : seconde correction — l’historique conserve l’ANCIEN compte 622600 → 606300', s.txs[3].account === '606300' && s.txs[4].account === '606300' && histoB2.some(h => h.old === '622600' && h.new === '606300'), JSON.stringify(histoB2.map(h => [h.old, h.new])));
@@ -134,7 +152,7 @@ check('B8 : toujours aucune validation après correction', !s.txs[3].validated &
 const veoCard = p.locator('.grp-card', { hasText: 'Veolia Eau' });
 await veoCard.locator('input[id^="grpacc-"]').fill('606300');
 await veoCard.locator('button[data-act="acc-group-validate-rule"]').click();
-await p.waitForTimeout(900);
+await confirmGroup(2);
 s = await snap(docId);
 check('C1 : Valider + règle → les 2 Veolia sont validées au 606300', s.txs[10].validated && s.txs[11].validated && s.txs[10].account === '606300' && s.txs[11].account === '606300');
 const ruleKey = await p.evaluate(() => { const r = window.ScanPro.Precompta.learnedRules().find(x => (x.tokens || []).includes('veolia')); return r ? r.key : null; });
@@ -189,20 +207,43 @@ await p.evaluate(async (id) => {
   await Repo.update(d3);
   App.accDocId = id;
   await Actions['acc-validate-tx']({ dataset: { idx: '0' } });
-  const before = await Repo.doc(id);
-  const stamp = before.acc.data.transactions[0].validatedAt;
-  await Actions['acc-group-validate']({ dataset: { idxs: '0,1,2' } });
-  const after = await Repo.doc(id);
-  window.__prot = {
+}, doc3Id);
+const stampD4 = await p.evaluate(async (id) => (await window.ScanPro.Repo.doc(id)).acc.data.transactions[0].validatedAt, doc3Id);
+await openAcc(doc3Id);
+// Lot obsolète par index (inclut la ligne déjà validée) alors que tx1/tx2 ne le sont pas encore :
+// le récap doit annoncer 2 lignes à traiter et 1 déjà validée non touchée
+await p.evaluate((id) => { window.ScanPro.App.accDocId = id; window.ScanPro.Actions['acc-group-validate']({ dataset: { idxs: '0,1,2' } }); }, doc3Id);
+await p.waitForTimeout(400);
+const recapSkip = await p.locator('.sheet').innerText().catch(() => '');
+check('D4-récap : lot avec index obsolète → 1 opération déjà validée explicitement signalée', /\b1\b/.test(recapSkip) && /déjà validée/.test(recapSkip), recapSkip.slice(0, 160));
+await p.locator('.sheet button.ghost').first().click().catch(() => {}); // annulation : aucun nouvel effet
+await p.waitForTimeout(400);
+// Parcours carte réel : la carte ne contient que les 2 lignes non validées ; récap puis confirmation
+const d3Card = p.locator('.grp-card', { hasText: 'Edf Energie' });
+await d3Card.locator('button[data-act="acc-group-validate"]').click();
+await p.waitForTimeout(400);
+const recapD4 = await p.locator('.sheet').innerText();
+check('D4-récap : 2 opérations à traiter annoncées, la ligne validée étant exclue du groupe', /\b2\b/.test(recapD4) && !/1 déjà validée/.test(recapD4), recapD4.slice(0, 160));
+await p.locator('.sheet [data-act="acc-group-confirm"]').click();
+await p.waitForTimeout(800);
+// Lot obsolète confirmé après validation complète : toutes les lignes sont validées → refus explicite, sans écriture
+const histBefore = (await snap(doc3Id)).history.filter(h => h.field === 'imputation').length;
+await p.evaluate((id) => { window.ScanPro.App.accDocId = id; window.ScanPro.Actions['acc-group-validate']({ dataset: { idxs: '0,1,2' } }); }, doc3Id);
+await p.waitForTimeout(400);
+const staleToast = await lastToast();
+const prot = await p.evaluate(async ({ id, stamp }) => {
+  const after = await window.ScanPro.Repo.doc(id);
+  return {
     tx0: { account: after.acc.data.transactions[0].account, validated: after.acc.data.transactions[0].validated, stampKept: after.acc.data.transactions[0].validatedAt === stamp },
     others: after.acc.data.transactions.slice(1).map(t => [t.account, t.validated]),
+    histo: (after.acc.history || []).filter(h => h.field === 'imputation').length,
     toast: (document.querySelector('#toasts .toast:last-child span') || {}).textContent || ''
   };
-}, doc3Id);
-const prot = await p.evaluate(() => window.__prot);
+}, { id: doc3Id, stamp: stampD4 });
+check('D6a : le lot entièrement validé est refusé avec un message d’erreur explicite (pas de faux succès)', /déjà validée/.test(staleToast) && /toast err/.test(await p.locator('#toasts .toast:last-child').getAttribute('class')), staleToast);
+check('D6b : aucune écriture d’historique ajoutée par la demande refusée', prot.histo === histBefore, prot.histo + ' vs ' + histBefore);
 check('D4 : l’opération pré-validée (626000) n’est pas modifiée par le lot', prot.tx0.account === '626000' && prot.tx0.validated && prot.tx0.stampKept, JSON.stringify(prot.tx0));
 check('D5 : les 2 opérations non validées du lot reçoivent bien 606100', prot.others.length === 2 && prot.others.every(([a, v]) => a === '606100' && v), JSON.stringify(prot.others));
-check('D6 : le message signale explicitement l’opération validée non touchée', /déjà validée/.test(prot.toast), prot.toast);
 
 // ══════════════════════════════ SCÉNARIO E — persistance après rechargement ══════════════════════════════
 await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(1500);
@@ -253,33 +294,36 @@ const edge = await p.evaluate(async (docId) => {
   // Bénéficiaire non identifiable : aucun plantage, aucune proposition inventée
   const g = Acc.bankGroups({ transactions: [{ date: '01/10', label: 'PRLV SEPA', debit: 10, credit: null }] });
   out.emptyBenef = { pending: g.pending, groups: g.groups.length };
-  // Double clic simultané sur une validation groupée : pas de double comptabilisation
-  const DOC4 = 'Relevé fictif double-clic';
   const c = document.createElement('canvas'); c.width = 100; c.height = 100;
   const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 100, 100);
   const src = c.toDataURL('image/jpeg', .8);
   const pg = { id: 'pg4', src, crop: { x: 0, y: 0, w: 1, h: 1 }, rotate: 0, quad: null, deskew: 0, filter: 'none', adj: { b: 1, c: 1 } };
   pg.thumb = await window.ScanPro.ImageOps.thumb(src);
-  const d4 = await Repo.create({ name: DOC4, pages: [pg], source: 'scan' });
+  const d4 = await Repo.create({ name: 'Relevé fictif double-clic', pages: [pg], source: 'scan' });
   d4.acc = { at: Date.now(), data: { docType: 'releve_bancaire', kind: 'bank', fields: {}, transactions: [
     { date: '01/10', label: 'PRLV SEPA SFR MOBILE', debit: 10, credit: null },
     { date: '02/10', label: 'PRLV SEPA SFR MOBILE', debit: 20, credit: null }
   ], totals: { debit: 30, credit: 0, count: 2 }, controls: [] } };
   await Repo.update(d4);
   App.accDocId = d4.id;
-  const el = { dataset: { idxs: '0,1' } };
-  await Promise.all([Actions['acc-group-validate'](el), Actions['acc-group-validate'](el)]);
-  const after = await Repo.doc(d4.id);
-  out.doubleClick = {
-    validated: after.acc.data.transactions.map(t => !!t.validated),
-    accounts: after.acc.data.transactions.map(t => t.account),
-    imputationEntries: (after.acc.history || []).filter(h => h.field === 'imputation').length
-  };
+  out.doc4Id = d4.id;
   return out;
 }, docId);
 check('L1 : seuils nuls/invalides/null ne font pas planter et replient sur les valeurs par défaut', edge.thresholdOk, JSON.stringify(edge.thresholdErrors));
 check('L2 : libellé sans bénéficiaire identifiable → en attente, sans groupe ni compte inventé', edge.emptyBenef.pending.length === 1 && edge.emptyBenef.groups === 0, JSON.stringify(edge.emptyBenef));
-check('L3 : double clic — une seule validation par opération (pas de double écriture)', edge.doubleClick.imputationEntries === 2 && edge.doubleClick.validated.every(Boolean) && edge.doubleClick.accounts.every(a => a === '626000'), JSON.stringify(edge.doubleClick));
+// V2.22 : le récap fait écran anti-double-clic ; une seconde demande sur un lot déjà validé est refusée sans écriture
+const doc4Id = edge.doc4Id;
+await openAcc(doc4Id);
+const d4Card = p.locator('.grp-card', { hasText: 'Sfr Mobile' });
+await d4Card.locator('button[data-act="acc-group-validate"]').click();
+await confirmGroup(2);
+const once = await snap(doc4Id);
+check('L3a : une seule validation par opération (2 entrées, 2 validations au 626000)', once.history.filter(h => h.field === 'imputation').length === 2 && once.txs.every(t => t.validated && t.account === '626000'), JSON.stringify(once.txs));
+// Redemander le même lot : toutes les lignes sont validées → message d'erreur, zéro nouvelle écriture
+await p.evaluate((id) => { window.ScanPro.App.accDocId = id; window.ScanPro.Actions['acc-group-validate']({ dataset: { idxs: '0,1' } }); }, doc4Id);
+await p.waitForTimeout(500);
+const twice = await snap(doc4Id);
+check('L3b : seconde demande refusée (déjà validées), aucune entrée d’historique supplémentaire, aucun faux succès', twice.history.filter(h => h.field === 'imputation').length === 2 && /déjà validées|Aucun compte/.test(await lastToast()), await lastToast());
 
 // ══════════════════════════════ LARGEURS MOBILES 320/360/390/430 ══════════════════════════════
 await openAcc(docId);
@@ -297,6 +341,43 @@ for (const w of [320, 360, 390, 430]) {
   check(`[${w}px] aucun débordement horizontal (scrollWidth ≤ ${w})`, m.scrollWidth <= w + 1, 'sw=' + m.scrollWidth);
   check(`[${w}px] tous les boutons et champs de groupe restent visibles et cliquables`, m.overflow.length === 0, JSON.stringify(m.overflow));
 }
+await p.setViewportSize({ width: 360, height: 800 });
+
+// ══════════════════════════════ MOBILE 320 px — le récapitulatif V2.22 reste utilisable ══════════════════════════════
+// On crée un lot frais non validé (le document doc4Id est entièrement validé) pour rouvrir le sheet.
+const doc5Id = await makeBankDoc('Relevé fictif récap mobile', TXS.slice(0, 3));
+await p.setViewportSize({ width: 320, height: 800 });
+await openAcc(doc5Id);
+const mobCard = p.locator('.grp-card', { hasText: 'Edf Energie' });
+await mobCard.locator('button[data-act="acc-group-validate"]').click();
+await p.waitForSelector('.sheet [data-act="acc-group-confirm"]', { timeout: 5000 });
+await p.waitForTimeout(300);
+const sheet320 = await p.evaluate(() => {
+  const de = document.documentElement;
+  const sheet = document.querySelector('.sheet');
+  const confirmBtn = document.querySelector('.sheet [data-act="acc-group-confirm"]');
+  const ghostBtn = document.querySelector('.sheet button.ghost');
+  const r = confirmBtn.getBoundingClientRect();
+  const gr = ghostBtn.getBoundingClientRect();
+  const sr = sheet.getBoundingClientRect();
+  const styles = getComputedStyle(confirmBtn);
+  return {
+    scrollWidth: de.scrollWidth, innerWidth: window.innerWidth,
+    sheetWithinViewport: sr.left >= -1 && sr.right <= window.innerWidth + 1,
+    confirm: { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right), visible: r.width > 0 && r.height > 0 },
+    cancel: { w: Math.round(gr.width), h: Math.round(gr.height) },
+    fontSize: styles.fontSize,
+    bodyText: sheet.innerText.length,
+    // aucun texte de montant/compte ne doit déborder : pas de scroll horizontal interne
+    sheetScrollableX: sheet.scrollWidth > sheet.clientWidth + 1
+  };
+});
+check('[320px] le récapitulatif s’ouvre sans débordement horizontal global', sheet320.scrollWidth <= 321, 'sw=' + sheet320.scrollWidth);
+check('[320px] le sheet tient dans la largeur de l’écran et ne scrolle pas horizontalement', sheet320.sheetWithinViewport && !sheet320.sheetScrollableX, JSON.stringify({ within: sheet320.sheetWithinViewport, sx: sheet320.sheetScrollableX }));
+check('[320px] les boutons confirmer/annuler sont des cibles tactiles suffisantes (≥40 px de haut)', sheet320.confirm.h >= 40 && sheet320.cancel.h >= 40 && sheet320.confirm.w >= 120, JSON.stringify({ confirm: sheet320.confirm, cancel: sheet320.cancel }));
+check('[320px] le récap reste lisible (texte ≥12 px, contenu non vide)', Number.parseFloat(sheet320.fontSize) >= 12 && sheet320.bodyText > 80, sheet320.fontSize + 'px / ' + sheet320.bodyText + ' car.');
+await p.locator('.sheet button.ghost').first().click();
+await p.waitForTimeout(300);
 await p.setViewportSize({ width: 360, height: 800 });
 
 check('Aucune erreur JavaScript pendant tout le parcours', errs.length === 0, errs.slice(0, 3).join(' | '));

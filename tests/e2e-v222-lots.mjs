@@ -77,7 +77,10 @@ await p.locator('[data-act="acc-select"]').first().click(); await p.waitForTimeo
 let ui = await p.locator('body').innerText();
 check('Écran « Imputations à valider » visible avec progression et compteurs', ui.includes('Imputations à valider') && ui.includes('restante(s)'));
 check('Carte de groupe EDF : compte proposé, confiance, bouton « Valider le groupe (3) »', ui.includes('Valider le groupe (3)') && ui.includes('606100'));
-await p.locator('[data-act="acc-group-validate"]').first().click(); await p.waitForTimeout(900);
+await p.locator('[data-act="acc-group-validate"]').first().click(); await p.waitForTimeout(500);
+// V2.22 : récapitulatif obligatoire avant application
+check('Récapitulatif de validation groupée affiché avec le compte et le nombre d’opérations', await p.locator('.sheet [data-act="acc-group-confirm"]').count() === 1 && /606100/.test(await p.locator('.sheet').innerText()) && /3/.test(await p.locator('.sheet').innerText()));
+await p.locator('.sheet [data-act="acc-group-confirm"]').click(); await p.waitForTimeout(900);
 const afterGroup = await p.evaluate(async () => {
   const d = window.ScanPro.App.docs.find(x => x.name.includes('lots'));
   return { validated: d.acc.data.transactions.map(t => !!t.validated), accounts: d.acc.data.transactions.map(t => t.account || null),

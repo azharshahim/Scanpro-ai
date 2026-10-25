@@ -1,5 +1,6 @@
 import { chromium, devices } from 'playwright';
-const APP=process.env.APP_URL||'http://localhost:8080/index.html'; const OUT='/home/user/scanpro/tests/out';
+import fs from 'fs';
+const APP=process.env.APP_URL||'http://localhost:8080/index.html'; const OUT=new URL('./out/', import.meta.url).pathname; fs.mkdirSync(OUT,{recursive:true});
 const ok=[],ko=[]; const check=(l,c,e='')=>{(c?ok:ko).push(l);console.log((c?'✅':'❌')+' '+l+(e?' — '+e:''));};
 const b=await chromium.launch({args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']});
 const ctx=await b.newContext({...devices['Pixel 7'],locale:'fr-FR',permissions:['camera'],acceptDownloads:true}); const p=await ctx.newPage(); const errs=[];
@@ -16,15 +17,20 @@ await p.locator('[data-act="tool-doc-pdf"]').click(); await p.waitForTimeout(600
 check('Sélecteur de document des outils', await p.locator('[data-tool-doc]').count()>=1);
 const dl=p.waitForEvent('download',{timeout:30000}); await p.locator('[data-tool-doc]').first().click(); const pdf=await dl; await pdf.saveAs(OUT+'/v26-outil.pdf');
 check('Outil PDF génère un fichier', (await import('fs')).statSync(OUT+'/v26-outil.pdf').size>5000);
-// nuit : couleurs calculées au milieu de page
-await p.locator('[data-nav="tools"]').click(); await p.waitForTimeout(500);
-await p.locator('[data-act="toggle-theme"]').first().click(); await p.waitForTimeout(600);
+// nuit : couleurs calculées au milieu de page — V2.22 : bascule depuis Paramètres (la vue Outils n'héberge plus le bouton)
+await p.locator('[data-nav="home"]').click(); await p.waitForTimeout(500);
+await p.locator('[data-act="go-settings"]').click(); await p.waitForTimeout(600);
+await p.locator('[data-act="toggle-theme"]').click(); await p.waitForTimeout(600);
+check('Mode nuit activé depuis Paramètres', await p.evaluate(()=>document.documentElement.dataset.theme==='dark'));
+await p.locator('[data-nav="tools"]').click(); await p.waitForTimeout(600);
 const colors=await p.evaluate(()=>{const cs=(sel)=>{const e=document.querySelector(sel);return e?getComputedStyle(e).backgroundColor:'absent'};return {theme:document.documentElement.dataset.theme,app:cs('#app'),content:cs('.content'),card:cs('.tool-ico'),nav:cs('.bottom-nav'),body:cs('body')};});
 console.log('couleurs nuit',JSON.stringify(colors));
 check('Mode nuit : fond de page sombre', colors.app.includes('7, 13, 24')||colors.app.includes('7,13,24'), colors.app);
 check('Mode nuit : milieu de page sombre', colors.content.includes('7, 13, 24')||colors.content.includes('7,13,24'), colors.content);
 await p.evaluate(()=>window.scrollTo(0,650)); await p.waitForTimeout(400); await p.screenshot({path:OUT+'/105-v26-nuit-milieu.png'});
-await p.locator('[data-act="toggle-theme"]').first().click(); await p.waitForTimeout(500);
+await p.locator('[data-nav="home"]').click(); await p.waitForTimeout(400);
+await p.locator('[data-act="go-settings"]').click(); await p.waitForTimeout(500);
+await p.locator('[data-act="toggle-theme"]').click(); await p.waitForTimeout(500);
 check('Retour mode jour', await p.evaluate(()=>document.documentElement.dataset.theme==='light'&&getComputedStyle(document.querySelector('#app')).backgroundColor.includes('243')));
 check('Aucune erreur console',errs.length===0,errs.slice(0,2).join('|'));
 console.log(`\n===== V2.6 : ${ok.length} OK / ${ko.length} échec(s) =====`); await b.close(); process.exit(ko.length?1:0);
