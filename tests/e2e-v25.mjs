@@ -1,5 +1,6 @@
 import { chromium, devices } from 'playwright';
-const APP=process.env.APP_URL||'http://localhost:8080/index.html'; const OUT='/home/user/scanpro/tests/out';
+import fs from 'fs';
+const APP=process.env.APP_URL||'http://localhost:8080/index.html'; const OUT=new URL('./out/', import.meta.url).pathname; fs.mkdirSync(OUT,{recursive:true});
 const ok=[],ko=[]; const check=(l,c,e='')=>{(c?ok:ko).push(l);console.log((c?'✅':'❌')+' '+l+(e?' — '+e:''));};
 const b=await chromium.launch(); const ctx=await b.newContext({...devices['Pixel 7'],locale:'fr-FR'}); const p=await ctx.newPage(); const errs=[];
 p.on('pageerror',e=>errs.push(e.message.slice(0,160))); p.on('console',m=>{if(m.type()==='error')errs.push(m.text().slice(0,160))});
@@ -8,12 +9,17 @@ check('En-tête non fixe (ne masque plus la vue)', await p.evaluate(()=>getCompu
 await p.evaluate(()=>window.scrollTo(0,900)); await p.waitForTimeout(500);
 check('En-tête défile avec la page', await p.evaluate(()=>document.querySelector('.appbar').getBoundingClientRect().bottom<80));
 await p.evaluate(()=>window.scrollTo(0,0)); await p.waitForTimeout(300);
+// V2.22 : le basculeur de thème vit dans l'appbar Documents (et dans Paramètres) depuis la refonte V2.19
+await p.locator('[data-nav="docs"]').click(); await p.waitForTimeout(600);
 await p.locator('[data-act="toggle-theme"]').first().click(); await p.waitForTimeout(300);
 check('Bouton nuit en haut active le mode nuit', await p.evaluate(()=>document.documentElement.dataset.theme==='dark'));
 await p.screenshot({path:OUT+'/102-v25-nuit.png'});
 await p.locator('[data-act="toggle-theme"]').first().click(); await p.waitForTimeout(300);
 check('Bouton jour réactive le mode clair', await p.evaluate(()=>document.documentElement.dataset.theme==='light'));
-await p.locator('[data-nav="settings"]').click(); await p.waitForTimeout(700);
+// V2.22 : Paramètres centralisés accessibles depuis l'Accueil
+await p.locator('[data-nav="home"]').click(); await p.waitForTimeout(500);
+await p.locator('[data-act="go-settings"]').click(); await p.waitForTimeout(700);
+check('Écran Paramètres affiché', await p.locator('[data-act="set-langs"]').count()>=1);
 await p.locator('[data-act="set-langs"]').click(); await p.waitForTimeout(500);
 const langs=await p.locator('[data-lang]').evaluateAll(es=>es.map(e=>e.dataset.lang));
 check('Langues OCR FR/EN/ES/DE/IT/PT disponibles', ['fra','eng','spa','deu','ita','por'].every(l=>langs.includes(l)), langs.join(','));

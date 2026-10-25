@@ -1,0 +1,15 @@
+{
+  "name": "scanpro-ai",
+  "version": "2.22.0",
+  "private": true,
+  "description": "Scanner de documents Android 100 % local — tests automatisés Playwright (données fictives uniquement).",
+  "scripts": {
+    "build": "python3 build.py",
+    "serve": "python3 -m http.server 8080 --bind 0.0.0.0",
+    "test:ci": "bash tests/run-ci.sh"
+  },
+  "devDependencies": {
+    "pdf-lib": "1.17.1",
+    "playwright": "1.48.2"
+  }
+}

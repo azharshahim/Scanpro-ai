@@ -1,0 +1,32 @@
+name: Tests Playwright
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: E2E Chromium (données fictives)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installation des dépendances (Playwright, pdf-lib)
+        run: npm install
+
+      - name: Navigateur Chromium et dépendances système
+        run: npx playwright install --with-deps chromium
+
+      - name: Construction du bundle index.html
+        run: python3 build.py
+
+      - name: Noyau de tests E2E (12 suites, sans données réelles)
+        run: bash tests/run-ci.sh

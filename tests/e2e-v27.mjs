@@ -1,5 +1,5 @@
 import { chromium, devices } from 'playwright'; import fs from 'fs';
-const APP=process.env.APP_URL||'http://localhost:8080/index.html'; const OUT='/home/user/scanpro/tests/out';
+const APP=process.env.APP_URL||'http://localhost:8080/index.html'; const OUT=new URL('./out/', import.meta.url).pathname; fs.mkdirSync(OUT,{recursive:true});
 const ok=[],ko=[]; const check=(l,c,e='')=>{(c?ok:ko).push(l);console.log((c?'✅':'❌')+' '+l+(e?' — '+e:''));};
 const b=await chromium.launch({args:['--use-fake-ui-for-media-stream','--use-fake-device-for-media-stream']});
 const ctx=await b.newContext({...devices['Pixel 7'],locale:'fr-FR',permissions:['camera'],acceptDownloads:true}); const p=await ctx.newPage(); const errs=[];
@@ -17,9 +17,10 @@ await p.screenshot({path:OUT+'/106-v27-import-droit.png'});
 // FAB centré et neutre
 await p.locator('[data-act="editor-exit"]').click(); await p.waitForTimeout(400); const cancelBtn=p.locator('.sheet button').filter({hasText:'Abandonner'}); if(await cancelBtn.count()) await cancelBtn.first().click();
 await p.waitForTimeout(800);
-const fab=await p.evaluate(()=>{const nav=document.querySelector('.bottom-nav').getBoundingClientRect();const f=document.querySelector('#fabScan').getBoundingClientRect();const cs=getComputedStyle(document.querySelector('#fabScan'));return {center:f.left+f.width/2, navCenter:nav.left+nav.width/2, bg:cs.backgroundColor, order:[...document.querySelectorAll('.bottom-nav > *')].map(e=>e.className||e.dataset.nav)};});
-check('Bouton Scan au centre de la barre', Math.abs(fab.center-fab.navCenter)<28, `centre ${fab.center.toFixed(0)} vs barre ${fab.navCenter.toFixed(0)}`);
-check('Bouton Scan sans fond bleu vif', fab.bg.includes('11, 27, 52'), fab.bg);
+// V2.22 : depuis V2.19 le Scan n'est plus un FAB flottant mais un item intégré à la barre (5 rubriques)
+const nav=await p.evaluate(()=>{const n=document.querySelector('#bottomNav').getBoundingClientRect();const f=document.querySelector('#fabScan').getBoundingClientRect();const items=[...document.querySelectorAll('#bottomNav .nav-item')];return {items:items.length, contained:f.top>=n.top-1&&f.bottom<=n.bottom+1&&f.left>=n.left-1&&f.right<=n.right+1, touchW:Math.round(f.width), touchH:Math.round(f.height), label:document.querySelector('#fabScan').getAttribute('aria-label')};});
+check('Bouton Scan intégré dans la barre de navigation (pas de FAB flottant)', nav.contained===true, JSON.stringify(nav));
+check('Barre à 5 rubriques, cible tactile Scan ≥44px et libellé accessible', nav.items===5&&nav.touchW>=44&&nav.touchH>=44&&!!nav.label, JSON.stringify(nav));
 await p.screenshot({path:OUT+'/107-v27-barre.png'});
 // partage Excel / Word / Texte
 await p.evaluate(async()=>{const c=document.createElement('canvas');c.width=700;c.height=1000;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,700,1000);x.fillStyle='#111';x.font='bold 40px Arial';x.fillText('FACTURE',70,140);const src=c.toDataURL('image/jpeg',.92);const pg={id:'v27share',src,crop:{x:0,y:0,w:1,h:1},rotate:0,quad:null,deskew:0,filter:'none',adj:{b:1,c:1}};pg.thumb=await window.ScanPro.ImageOps.thumb(src);const d=await window.ScanPro.Repo.create({name:'Partage V27',pages:[pg],source:'scan'});d.text='FACTURE FAC-2026-042\nTotal TTC : 120,00 €\nTVA 20 % : 20,00 €';await window.ScanPro.Repo.update(d);});

@@ -1746,7 +1746,7 @@ const Acc = {
     const t = String(text || '').toLowerCase();
     const rules = [
       ['avoir', ['avoir', 'note de crédit', 'credit note']],
-      ['releve_bancaire', ['relevé bancaire', 'releve bancaire', 'solde précédent', 'extrait de compte', 'iban']],
+      ['releve_bancaire', ['relevé bancaire', 'releve bancaire', 'relevé de compte', 'releve de compte', 'solde précédent', 'solde initial', 'nouveau solde', 'ancien solde', 'solde créditeur', 'solde debiteur', 'solde débiteur', 'extrait de compte', 'prlv sepa', 'iban']],
       ['bulletin_salaire', ['bulletin de paie', 'bulletin de salaire', 'salaire brut', 'net à payer', 'cotisations salariales']],
       ['bilan', ['bilan', 'actif immobilisé', 'capitaux propres', 'total actif', 'total passif']],
       ['compte_resultat', ['compte de résultat', 'charges d\'exploitation', 'produits d\'exploitation', 'résultat net']],
@@ -2148,9 +2148,16 @@ const Acc = {
         if (a.debit != null && a.credit != null) { anchors = a; continue; }
       }
       if (!anchors) continue;
-      const dateIdx = r.cells.findIndex((c, idx) => idx < 3 && dateRe.test(c.t));
+      // V2.22 — la date doit occuper une cellule de GAUCHE (xc < 0,45) : exclut les numéros de page en zone droite.
+      const dateIdx = r.cells.findIndex((c, idx) => idx < 3 && dateRe.test(c.t) && c.xc < 0.45);
       if (dateIdx < 0) {
-        if (/total\s+des\s+opérations|nouveau\s+solde|ancien\s+solde/i.test(r.text)) { cur = null; continue; }
+        // V2.22 — ne jamais transformer en opération : les lignes de solde BNP ('SOLDE C REDITEUR AU',
+        // glyphes parfois espacés) et les pieds de page de pagination ('Page 1/4') à l'allure de date.
+        const compactRow = r.text.toLowerCase().replace(/\s+/g, '');
+        if (/totaldesop[eé]rations|nouveausolde|anciensolde|soldecrediteurau|soldedebiteurau|page\d{1,3}\/\d{1,3}/.test(compactRow)) { cur = null; continue; }
+        // V2.22 — une ligne sans date ne peut pas se rattacher à une opération d'une AUTRE page :
+        // les en-têtes de page (banque, titre, colonnes) ne doivent pas pollir le dernier libellé.
+        if (cur && r.page !== cur.page) { cur = null; continue; }
         // Ligne de continuation : elle appartient à l'opération précédente (libellé multi-ligne).
         if (cur) {
           const labelCells = [];
@@ -2299,9 +2306,51 @@ const Acc = {
     const debitWords = /\bcb\b|carte|prlv|prélèvement|prelevement|vir\s*émis|vir\s*emis|paiement|retrait|chèque|cheque|frais|facture\s*n|loyer/i;
     const amountRe = /-?\(?[\d]{1,3}(?:[ \u00a0\u202f][\d]{3})*(?:[.,]\d{2})\)?|-?\d+(?:[.,]\d{2})/g;
     const lastAmountOfLine = (re) => { for (let li = 0; li < lines.length; li++) { if (!re.test(lines[li])) continue; for (const cand of [lines[li], lines[li + 1] || '']) { const clean = cand.replace(/\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}/g, ' '); const ms = [...clean.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null); if (ms.length) return ms[ms.length - 1]; } } return null; };
-    const opening = lastAmountOfLine(/ancien\s+solde|solde\s*(?:initial|précédent|precedent|d['’]ouverture|de départ)/i) ?? opening0;
-    const closing = lastAmountOfLine(/nouveau\s+solde|solde\s*(?:final|de clôture|de cloture)/i) ?? closing0;
-    const printedTotals = (() => { for (const l of lines) { if (/total\s+des\s+opérations/i.test(l)) { const ms = [...l.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null); if (ms.length >= 2) return { debit: ms[ms.length - 2], credit: ms[ms.length - 1] }; } } return null; })();
+    // V2.22 — BNP et variantes : même libellé 'SOLDE CREDITEUR/DEBITEUR AU <date> <montant>' en
+    // tête et en fin de relevé. Première occurrence = ouverture, dernière = clôture ; un solde
+    // débiteur est négatif. Les dates intercalaires sont neutralisées avant extraction du montant.
+    const bnpBal = (() => {
+      // Texte compacté : certains PDF fragmentent les glyphes ('SOLDE C REDITEUR AU').
+      const isBnp = (l) => { const c = l.toLowerCase().replace(/\s+/g, ''); return /soldecrediteurau|soldedebiteurau/.test(c); };
+      const idxs = lines.map((l, i) => isBnp(l) ? i : -1).filter(i => i >= 0);
+      if (!idxs.length) return { open: null, close: null };
+      const amtAt = (i) => {
+        // Conservateur : le montant doit être sur la MEME ligne que le libellé (jamais récupéré
+        // sur une ligne voisine). On analyse les tokens situés APRÈS le mot-clé 'AU' : ils ne
+        // peuvent contenir qu'une date, des fragments numériques de milliers et, en fin, une devise.
+        // Tout autre texte alphabétique (référence, libellé mêlé aux chiffres) rend la ligne
+        // ambiguë -> null : aucune valeur n'est inventée.
+        const line = lines[i];
+        const isDeb = /soldedebiteurau/.test(line.toLowerCase().replace(/\s+/g, ''));
+        const toksAll = line.split(/\s+/).filter(Boolean);
+        const auIdx = toksAll.findIndex(t => /^au$/i.test(t));
+        if (auIdx < 0) return null;
+        // Dates admises : JJ.MM.AA(AA), JJ/MM/AAAA, ISO AAAA-MM-JJ.
+        const dateTok = /^\d{1,4}[.\/-]\d{1,2}(?:[.\/-]\d{2,4})?$/;
+        let tail = toksAll.slice(auIdx + 1).filter(t => !dateTok.test(t));
+        // Une devise strictement terminale est admise (EUR/USD/E/€/$) ; tout autre mot alpha rend la ligne ambiguë.
+        if (tail.length && /^(EUR|USD|E|\u20AC|\$)$/i.test(tail[tail.length - 1])) tail = tail.slice(0, -1);
+        if (tail.some(t => /[A-Za-zÀ-ÿ]/.test(t))) return null;
+        const decs = tail.filter(t => /[.,]\d{2}$/.test(t));
+        const ints = tail.filter(t => !/[.,]\d{2}$/.test(t) && /^-?\d+$/.test(t));
+        if (decs.length !== 1) return null; // zéro ou plusieurs montants décimaux : non reconnu
+        // Fragments de milliers acceptés uniquement selon deux structures sûres :
+        //  (a) glyphes fragmentés : au plus deux fragments d'un seul chiffre (ex. '3 3 88,42') ;
+        //  (b) groupement français canonique : un premier groupe de 1-3 chiffres puis des
+        //      groupes d'exactement 3 chiffres (ex. '12 345 678,90', '1 234,56').
+        // Tout autre empilement (numéro de référence, groupes de longueurs mélangées) est rejeté.
+        const allSingle = ints.length > 0 && ints.length <= 2 && ints.every(t => /^-?\d$/.test(t));
+        const canonical = ints.length > 0 && ints[0].replace('-', '').length <= 3 && ints.slice(1).every(t => /^\d{3}$/.test(t));
+        if (ints.length && !allSingle && !canonical) return null;
+        const v = Acc.parseAmount(ints.join('') + ' ' + decs[0]);
+        if (v == null) return null;
+        return isDeb ? -Math.abs(v) : Math.abs(v);
+      };
+      return { open: amtAt(idxs[0]), close: amtAt(idxs[idxs.length - 1]) };
+    })();
+    const opening = lastAmountOfLine(/ancien\s+solde|solde\s*(?:initial|précédent|precedent|d['’]ouverture|de départ)/i) ?? opening0 ?? bnpBal.open;
+    const closing = lastAmountOfLine(/nouveau\s+solde|solde\s*(?:final|de clôture|de cloture)/i) ?? closing0 ?? bnpBal.close;
+    const printedTotals = (() => { for (const l of lines) { if (/total\s+des\s+op[eé]rations/i.test(l)) { const ms = [...l.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null); if (ms.length >= 2) return { debit: ms[ms.length - 2], credit: ms[ms.length - 1] }; } } return null; })();
     const transactions = [];
     // Regroupement préalable : une opération peut s'étaler sur plusieurs lignes
     // (libellé multi-ligne). Les lignes sans date qui suivent une opération lui
@@ -2406,6 +2455,7 @@ const Acc = {
       holder2: F(holderLine ? holderLine.split(/\s+-\s+\s*Compte/i)[0].trim() : '', 70),
       period: { value: transactions.length ? transactions[0].date + ' → ' + transactions[transactions.length - 1].date : Acc.NR, confidence: transactions.length ? 60 : 0, page: 0, zone: null, status: transactions.length ? 'calcule' : 'non-reconnu' }
     };
+    Acc._finishControls(controls); // V2.22 : statut explicite sur tous les contrôles (y compris les contrôles bruts)
     return { docType: 'releve_bancaire', kind: 'bank', fields, transactions, duplicates, controls,
       totals: { credit: Math.round(sumC * 100) / 100, debit: Math.round(sumD * 100) / 100, count: transactions.length },
       disclaimer: "Relevé reconnu localement. Contrôles de cohérence uniquement : ceci n'est pas un rapprochement bancaire complet (aucune comparaison avec des écritures comptables)." };
@@ -2936,9 +2986,9 @@ Object.assign(Actions, {
   'acc-apply-similar': (el) => accApplySimilar(App.accDocId, +el.dataset.idx),
   'acc-rule-forget': (el) => { Precompta.forgetLearned(el.dataset.key); render(); toast('Règle apprise annulée (les autres règles sont conservées)', 'ok'); },
   'acc-rule-correct': (el) => { const inp = document.getElementById('learnfix-' + el.dataset.key.replace(/[^a-z0-9]+/gi, '_')); if (inp && inp.value.trim()) { Precompta.correctLearned(el.dataset.key, inp.value.trim()); render(); toast('Règle corrigée : ' + el.dataset.key + ' → ' + inp.value.trim(), 'ok'); } },
-  'acc-group-validate': (el) => accGroupApply(App.accDocId, el.dataset.idxs, 'validate'),
-  'acc-group-validate-rule': (el) => accGroupApply(App.accDocId, el.dataset.idxs, 'validate-rule'),
-  'acc-group-correct': (el) => accGroupApply(App.accDocId, el.dataset.idxs, 'correct'),
+  'acc-group-validate': (el) => accGroupConfirm(App.accDocId, el.dataset.idxs, 'validate'),
+  'acc-group-validate-rule': (el) => accGroupConfirm(App.accDocId, el.dataset.idxs, 'validate-rule'),
+  'acc-group-correct': (el) => accGroupConfirm(App.accDocId, el.dataset.idxs, 'correct'),
   'acc-validate-tx': (el) => accValidateTx(App.accDocId, +el.dataset.idx),
   'acc-filter': (el) => { App.accFilter = el.dataset.f; render(); },
   'acc-automation': () => { Settings.set('accAutomation', Settings.get('accAutomation') === false ? true : false); render(); toast('Automatisation des règles apprises ' + (Settings.get('accAutomation') ? 'activée' : 'désactivée : les règles deviennent des suggestions à confirmer'), 'ok', 5000); },
@@ -3421,6 +3471,54 @@ async function accApplySimilar(docId, idx) {
   doc.history.push({ at: Date.now(), action: 'Règle appliquée à ' + n + ' opération(s) vérifiée(s) similaire(s) (' + pr.counterAccount + ', nature ' + pr.nature + '), ' + skipped + ' écartée(s)' });
   await Repo.update(doc); App.docs = await Repo.list(); await render();
   toast('Compte ' + pr.counterAccount + ' appliqué à ' + n + ' opération(s) réellement similaire(s) (bénéficiaire + sens + nature ' + pr.nature + ')' + (skipped ? ' — ' + skipped + ' ligne(s) écartée(s) après revérification' : ''), 'ok', 6000);
+}
+
+/* V2.22 — Récapitulatif AVANT application d'une action groupée : l'utilisateur voit
+   exactement le compte, le nombre d'opérations traitées, celles déjà validées qui ne
+   seront pas touchées, le motif et le niveau de confiance, puis confirme ou annule. */
+const GROUP_MODE_LABEL = {
+  validate: { title: 'Valider le groupe', ok: 'Confirmer la validation', verb: 'validée(s)' },
+  'validate-rule': { title: 'Valider + créer une règle', ok: 'Valider et mémoriser la règle', verb: 'validée(s)' },
+  correct: { title: 'Corriger le compte du groupe', ok: 'Confirmer la correction', verb: 'corrigée(s) sans validation' }
+};
+async function accGroupConfirm(docId, idxsCsv, mode) {
+  const doc = await Repo.doc(docId); if (!doc || !doc.acc) return;
+  const idxs = String(idxsCsv || '').split(',').map(Number).filter(n => !isNaN(n));
+  if (!idxs.length) return;
+  const props = Acc.bankProposals(doc.acc.data);
+  const applicable = [], skipped = [];
+  for (const j of idxs) { const tx = doc.acc.data.transactions[j]; if (!tx) continue; (tx.validated ? skipped : applicable).push(j); }
+  // V2.22 — cas entièrement validé détecté avant toute recherche de compte : message précis, aucun effet.
+  if (!applicable.length) { toast('Aucun compte à traiter : ' + skipped.length + ' opération(s) de ce lot sont déjà validées et n’ont pas été touchées.', 'err', 5000); return; }
+  const inp = document.getElementById('grpacc-' + idxs[0]);
+  if (inp && !inp.value.trim()) { toast('Aucun compte saisi pour ce groupe : renseignez un compte avant de continuer (aucune opération n’a été modifiée).', 'err'); return; }
+  const corrected = inp && inp.value.trim() ? inp.value.trim() : null;
+  const fallbackIdx = applicable[0];
+  const account = corrected || (fallbackIdx != null && props[fallbackIdx] && props[fallbackIdx].counterAccount) || null;
+  if (!account) { toast('Aucun compte disponible pour ce groupe : aucune opération n’a été modifiée (les écritures validées ne sont jamais touchées).', 'err'); return; }
+  const sample = props[applicable[0]] || {};
+  const acct = Precompta.account(account);
+  const rows = applicable.slice(0, 6).map(j => { const t = doc.acc.data.transactions[j]; const pr = props[j] || {};
+    return '<li>' + escapeHtml(t.date || '') + ' — ' + escapeHtml(t.label || '') + ' <span class="tiny muted">(' + escapeHtml(pr.sens === 'sortie' ? 'débit ' : pr.sens === 'entree' ? 'crédit ' : '') + (t.debit ?? t.credit ?? '') + ' · ' + escapeHtml(pr.nature || 'inconnue') + ')</span></li>'; }).join('');
+  const extra = applicable.length > 6 ? '<li class="tiny muted">… et ' + (applicable.length - 6) + ' autre(s) opération(s)</li>' : '';
+  const ml = GROUP_MODE_LABEL[mode] || GROUP_MODE_LABEL.validate;
+  const body =
+    '<div class="banner info"><span><b>Compte appliqué : ' + escapeHtml(account) + (acct ? ' — ' + escapeHtml(acct.label) : '') + '</b><br>' +
+    '<b>' + applicable.length + '</b> opération(s) ' + ml.verb + (skipped.length ? ' · <b>' + skipped.length + '</b> déjà validée(s), non touchée(s)' : '') + '</span></div>' +
+    '<p class="small muted">Motif : ' + escapeHtml(sample.explanation || 'Aucune règle reconnue') + '<br>Origine : <b>' +
+    escapeHtml(sample.origin === 'apprentissage' ? 'apprentissage (vos corrections validées)' : sample.origin === 'utilisateur' ? 'votre affectation' : sample.origin ? 'règle du dossier / plan comptable' : '—') +
+    '</b> · confiance : ' + escapeHtml(sample.confLevel || '—') + ' (' + (sample.confidence ?? 0) + ' %)</p>' +
+    '<ul class="small" style="margin:6px 0;padding-left:18px;max-height:180px;overflow:auto">' + rows + extra + '</ul>' +
+    (mode === 'validate-rule' ? '<p class="banner warn"><span>Une règle va être mémorisée pour ce bénéficiaire, ce sens et cette nature ; les prochaines opérations correspondantes recevront ce compte en proposition. Une règle désactivée ou une ambiguïté restera sans application automatique.</span></p>' : '') +
+    (mode === 'correct' ? '<p class="tiny muted">La correction change le compte proposé mais ne valide pas les opérations.</p>' : '');
+  openSheet({ title: ml.title + ' — récapitulatif', sub: 'Vérifiez avant d’appliquer. Aucune écriture n’est modifiée tant que vous ne confirmez pas.', body,
+    actions: [{ label: 'Annuler', cls: 'ghost' }, { label: ml.ok, cls: 'go', act: 'acc-group-confirm', close: false }],
+    onMount: (sheet) => {
+      const btn = sheet.querySelector('[data-act="acc-group-confirm"]');
+      btn.dataset.doc = docId; btn.dataset.idxs = idxs.join(','); btn.dataset.mode = mode;
+      btn.addEventListener('click', async () => { closeSheet(); await accGroupApply(docId, idxs.join(','), mode); }, { once: true });
+    }
+  });
 }
 
 /* V2.20 — Validation par lots : n'agit que sur les opérations NON validées,
