@@ -81,7 +81,9 @@ check('L. Sauvegarde sans correction explicite : aucune règle apprise', noLearn
 // Correction classée salaire sur la ligne 0, puis application aux similaires
 await p.locator('[data-acc-tx="0:nature"]').selectOption('salaire');
 await p.locator('[data-acc-tx="0:account"]').fill('421000');
-await p.locator('[data-act="acc-save"]').click(); await p.waitForTimeout(900);
+await p.locator('[data-act="acc-save"]').click(); await p.waitForTimeout(700);
+// V2.23 : confirmation explicite sur la fiche d'aperçu de la règle
+await p.locator('.sheet [data-act="acc-save-memo"]').click(); await p.waitForTimeout(900);
 const afterSave = await p.evaluate(async () => {
   const d = window.ScanPro.App.docs.find(x => x.name.includes('natures'));
   return { rules: window.ScanPro.Precompta.learnedRules().map(r => r.account + '/' + r.nature), tx: d.acc.data.transactions.map(t => t.account || null) };
