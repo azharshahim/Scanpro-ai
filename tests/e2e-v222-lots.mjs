@@ -57,7 +57,9 @@ check('Règle apprise réutilisée (606300)', r.learnedBefore === '606300');
 check('Règle DÉSACTIVÉE : plus d\u2019application automatique (retour règle dossier 606100)', r.afterDisable === '606100', String(r.afterDisable));
 check('Règle réactivée : application automatique rétablie', r.afterEnable === '606300');
 check('Automatisation désactivée par l\u2019utilisateur : règle apprise = suggestion à confirmer', r.autoOff.counter == null && r.autoOff.sugg === '606300', JSON.stringify(r.autoOff));
-check('Seuils configurables : seuil haut à 95 requalifie le niveau de confiance', r.levelWith95 !== 'élevé' || true, r.levelWith95);
+// V2.21 — assertion réelle (avant : « ... || true » rendait le test invalable).
+// EDF porte une confiance de 85 % : avec un seuil haut à 95 %, le niveau devient « moyen ».
+check('Seuils configurables : seuil haut à 95 requalifie le niveau de confiance (85 % < 95 % → moyen)', r.levelWith95 === 'moyen', r.levelWith95);
 
 // Parcours UI : écran « Imputations à valider », validation groupée, historique, non-régression des validées
 await p.evaluate(async (txs) => {
@@ -89,13 +91,23 @@ const grpBtns = await p.locator('[data-act="acc-group-validate"]').count();
 check('Après validation : le groupe EDF disparaît des lots à traiter', grpBtns === 0 || !(await p.locator('body').innerText()).includes('Valider le groupe (3)'));
 await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(1500);
 await p.locator('.sheet .btn.primary').click().catch(() => {});
+// V2.21 — vraie vérification de persistance (avant : « length >= 0 » était toujours vrai).
 const persistedVal = await p.evaluate(async () => {
-  const docs = await window.ScanPro.Repo.list();
-  return docs.filter(d => d.acc).length >= 0;
+  const d = (await window.ScanPro.Repo.list()).find(x => x.name.includes('lots'));
+  const full = await window.ScanPro.Repo.doc(d.id);
+  const txs = full.acc.data.transactions;
+  return {
+    count: txs.length,
+    edfValidated: txs.slice(0, 3).every(t => t.validated === true && t.account === '606100'),
+    othersUntouched: txs.slice(3).every(t => !t.validated && !t.account),
+    histo: (full.acc.history || []).filter(h => h.field === 'imputation').length
+  };
 });
-check('Données conservées après rechargement (aucune perte)', persistedVal === true);
+check('Persistance réelle après rechargement : 8 opérations, 3 EDF toujours validées au 606100, autres intactes, historique conservé',
+  persistedVal.count === 8 && persistedVal.edfValidated && persistedVal.othersUntouched && persistedVal.histo >= 3,
+  JSON.stringify(persistedVal));
 // Largeurs mobiles : aucun débordement sur l'écran comptabilité
-for (const w of [320, 390, 430]) {
+for (const w of [320, 360, 390, 430]) {
   await p.setViewportSize({ width: w, height: 740 }); await p.waitForTimeout(300);
   const sw = await p.evaluate(() => document.documentElement.scrollWidth);
   check(`[${w}px] Écran comptabilité sans débordement horizontal`, sw <= w + 1, 'sw=' + sw);
