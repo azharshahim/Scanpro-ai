@@ -76,6 +76,30 @@ check('N9 solde entre parenthèses : non interprété par le chemin BNP (limite 
 r = await run(['SOLDE CREDITEUR AU 01.10.26 500,00', '02.10 PRLV FICTIF 30,00', 'SOLDE CREDITEUR AU 31.10.26 470,00', 'Page 1/4']);
 check('N10 ni les lignes de solde ni le pied de page "Page 1/4" ne créent de transaction (1 seule op.)', r.tx === 1, String(r.tx));
 
+// ── Matrice des signes ouverture/clôture et des libellés fragmentés côté clôture ──
+r = await run(['SOLDE DEBITEUR AU 01.10.26 250,00', 'SOLDE CREDITEUR AU 31.10.26 40,00']);
+check('S14 solde négatif à l’ouverture (-250) puis positif à la clôture (+40)', r.open === '-250' && r.close === '40', JSON.stringify(r));
+r = await run(['SOLDE CREDITEUR AU 01.10.26 500,00', 'SOLDE DEBITEUR AU 31.10.26 120,00']);
+check('S15 solde positif à l’ouverture (+500) puis négatif à la clôture (-120)', r.open === '500' && r.close === '-120', JSON.stringify(r));
+r = await run(['SOLDE DEBITEUR AU 01.10.26 12 345,67', 'SOLDE DEBITEUR AU 31.10.26 9 876,54']);
+check('S16 milliers avec espaces des deux côtés, tous deux négatifs (débiteur)', r.open === '-12345.67' && r.close === '-9876.54', JSON.stringify(r));
+r = await run(['SOLDE CREDITEUR AU 01.10.26 500,00', 'SOLDE C REDITEUR AU 31.10.26 470,00']);
+check('S17 libellé fragmenté « SOLDE C REDITEUR AU » aussi reconnu en clôture', r.open === '500' && r.close === '470', JSON.stringify(r));
+r = await run(['SOLDE D EBITEUR AU 31.10.26 120,00']);
+check('S18 clôture unique et fragmentée, débiteur → -120', r.close === '-120', r.close);
+
+// ── Clôture ambiguë : Non reconnu même si l’ouverture est bonne, et contrôle honnête ──
+r = await run(['SOLDE CREDITEUR AU 01.10.26 500,00', 'SOLDE CREDITEUR AU 31.10.26 120,00 470,00']);
+check('N11 deux montants sur la ligne de clôture : clôture Non reconnu, ouverture intacte', r.open === '500' && r.close === NR, JSON.stringify(r));
+r = await run(['SOLDE CREDITEUR AU 01.10.26', 'SOLDE CREDITEUR AU 31.10.26']);
+check('N12 montants absents des deux lignes : aucun des deux soldes inventé', r.open === NR && r.close === NR, JSON.stringify(r));
+const ctrl = await p.evaluate(() => {
+  const d = window.ScanPro.Acc.extractBank(['SOLDE CREDITEUR AU 01.10.26 500,00', 'SOLDE CREDITEUR AU 31.10.26 120,00 470,00'].join('\n'), []);
+  const c = d.controls.find(x => /ouverture/i.test(x.label));
+  return { status: c && c.status, ok: c && c.ok, detail: c && c.detail };
+});
+check('N13 solde ambigu → contrôle « vérification impossible » (jamais un succès ni un écart inventé)', ctrl.status === 'impossible' && ctrl.ok === false, JSON.stringify(ctrl));
+
 check('Aucune erreur JavaScript pendant la campagne', errs.length === 0, errs.join(' | '));
 console.log(`\n===== V2.22 SOLDES BNP : ${ok.length} OK / ${ko.length} échec(s) =====`);
 await b.close();

@@ -4893,7 +4893,7 @@ const Acc = {
     const t = String(text || '').toLowerCase();
     const rules = [
       ['avoir', ['avoir', 'note de crédit', 'credit note']],
-      ['releve_bancaire', ['relevé bancaire', 'releve bancaire', 'solde précédent', 'extrait de compte', 'iban']],
+      ['releve_bancaire', ['relevé bancaire', 'releve bancaire', 'relevé de compte', 'releve de compte', 'solde précédent', 'solde initial', 'nouveau solde', 'ancien solde', 'solde créditeur', 'solde debiteur', 'solde débiteur', 'extrait de compte', 'prlv sepa', 'iban']],
       ['bulletin_salaire', ['bulletin de paie', 'bulletin de salaire', 'salaire brut', 'net à payer', 'cotisations salariales']],
       ['bilan', ['bilan', 'actif immobilisé', 'capitaux propres', 'total actif', 'total passif']],
       ['compte_resultat', ['compte de résultat', 'charges d\'exploitation', 'produits d\'exploitation', 'résultat net']],
@@ -5301,7 +5301,7 @@ const Acc = {
         // V2.22 — ne jamais transformer en opération : les lignes de solde BNP ('SOLDE C REDITEUR AU',
         // glyphes parfois espacés) et les pieds de page de pagination ('Page 1/4') à l'allure de date.
         const compactRow = r.text.toLowerCase().replace(/\s+/g, '');
-        if (/totaldesopérations|nouveausolde|anciensolde|soldecrediteurau|soldedebiteurau|page\d{1,3}\/\d{1,3}/.test(compactRow)) { cur = null; continue; }
+        if (/totaldesop[eé]rations|nouveausolde|anciensolde|soldecrediteurau|soldedebiteurau|page\d{1,3}\/\d{1,3}/.test(compactRow)) { cur = null; continue; }
         // V2.22 — une ligne sans date ne peut pas se rattacher à une opération d'une AUTRE page :
         // les en-têtes de page (banque, titre, colonnes) ne doivent pas pollir le dernier libellé.
         if (cur && r.page !== cur.page) { cur = null; continue; }
@@ -5497,7 +5497,7 @@ const Acc = {
     })();
     const opening = lastAmountOfLine(/ancien\s+solde|solde\s*(?:initial|précédent|precedent|d['’]ouverture|de départ)/i) ?? opening0 ?? bnpBal.open;
     const closing = lastAmountOfLine(/nouveau\s+solde|solde\s*(?:final|de clôture|de cloture)/i) ?? closing0 ?? bnpBal.close;
-    const printedTotals = (() => { for (const l of lines) { if (/total\s+des\s+opérations/i.test(l)) { const ms = [...l.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null); if (ms.length >= 2) return { debit: ms[ms.length - 2], credit: ms[ms.length - 1] }; } } return null; })();
+    const printedTotals = (() => { for (const l of lines) { if (/total\s+des\s+op[eé]rations/i.test(l)) { const ms = [...l.matchAll(amountRe)].map(m => Acc.parseAmount(m[0])).filter(x => x != null); if (ms.length >= 2) return { debit: ms[ms.length - 2], credit: ms[ms.length - 1] }; } } return null; })();
     const transactions = [];
     // Regroupement préalable : une opération peut s'étaler sur plusieurs lignes
     // (libellé multi-ligne). Les lignes sans date qui suivent une opération lui

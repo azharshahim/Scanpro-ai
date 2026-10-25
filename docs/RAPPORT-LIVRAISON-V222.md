@@ -293,3 +293,26 @@ Résultat : **12 suites, 293 assertions, 0 échec, code de sortie 0**.
    E2E automatique et vert est attaché à la PR. `pages.yml` (déploiement) ne se déclenche que sur `main`.
 5. **Verdict : PRÊT À FUSIONNER sous réserve de l'accord explicite de l'utilisateur.** Aucune fusion,
    modification de `main` ou publication n'a été effectuée ; le site live reste en V2.21.0.
+
+---
+
+# 10. Vérification ciblée supplémentaire (demande pré-fusion, ronde 2)
+
+## 10.1 Deux nouveaux défauts trouvés et corrigés
+
+| # | Défaut démontré | Correctif | Test de non-régression |
+|---|---|---|---|
+| F-g | `TOTAL DES OPERATIONS` **sans accent** n'était pas exclu dans le chemin positions : la ligne était rattachée comme continuation au libellé de l'opération précédente | motif rendu insensible à l'accent (`op[eé]rations`) dans `bankFromPositions` et dans la reconnaissance des totaux imprimés | D12 (`e2e-v222-dispositions`) |
+| F-h | Un relevé contenant le mot « FACTURE » dans un libellé était classé `facture_achat` (55 %) au lieu de `releve_bancaire`, donc analysé par le mauvais extracteur (aucune transaction) | marqueurs bancaires forts ajoutés à `classifyType` : « relevé de compte », « solde initial/nouveau/ancien/créditeur/débiteur », « PRLV SEPA » ; le repli générique facture ne s'active plus si un marqueur bancaire marque des points | C1/C2 (`e2e-v222-releves-fiabilite`) |
+
+## 10.2 Tests ajoutés à cette ronde (100 % fictifs, exécutés, 0 échec)
+
+- `e2e-v222-dispositions` 12 → **17 assertions** : frontière `xc < 0,45` testée au centre près (0,4425 accepté, 0,48 rejeté), date en 3e cellule, lignes TOTAL/SOLDE/pied de page espacé jamais transformées en opérations, montant ambigu exclu des totaux avec contrôle `ecart`, contrôle de solde `impossible` quand la donnée manque.
+- `e2e-v222-soldes-bnp` 24 → **32 assertions** : matrice des signes ouverture/clôture (−/+, +/−, −/− avec milliers espacés), libellé fragmenté aussi côté clôture, double montant et montant absent → `Non reconnu`, contrôle `impossible` (jamais de succès ou d'écart inventé).
+- `e2e-v222-releves-fiabilite` 36 → **43 assertions** : second parcours UI sur le relevé difficile (zéro fantôme, chip « à vérifier » et « doublon ? » visibles, totaux limités aux opérations certaines, mention de non-totalisation), verrous de classification C1/C2.
+
+## 10.3 Résultats de la ronde
+
+- Noyau CI local (`tests/run-ci.sh`, 12 suites) : **0 échec** ; total des vérifications maintenues exécutées : **608, 0 échec** (y compris e2e-v25 OCR Tesseract réel 9/9 et e2e-v218 OCR 16/16).
+- `audit-bank-repro` : toujours 13/14 défauts historiques non reproduits ; R11 reste le seul défaut reproduit (périmètre §8.5, sans impact sur l'import PDF standard).
+- Relevé réel : test automatisé toujours **ignoré** sans `BANK_PDF_PATH` ; aucune donnée réelle dans le dépôt (vérifié : 0 fichier PDF suivi par git).

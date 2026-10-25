@@ -144,6 +144,63 @@ check('V1 : la vue expose le total et le reste à traiter', vue.total === 7 && t
 check('V2 : des groupes similaires existent avec compte, effectif et confiance', vue.groups.some(g => g.n >= 1 && g.account && g.level), JSON.stringify(vue.groups));
 check('V3 : chaque proposition affiche une origine (règle dossier / apprentissage / affectation)', vue.origins.length >= 1 && vue.everyHasReason, JSON.stringify(vue.origins));
 
+// ═════════════ PARCOURS UI — relevé DIFFICILE : les opérations incertaines restent visibles et jamais totalisées ═════════════
+const hardEngine = hard.data;
+await p.locator('[data-nav="home"]').click();
+await p.waitForTimeout(500);
+const fc2 = p.waitForEvent('filechooser', { timeout: 15000 });
+await p.locator('[data-act="import-pdf"]').first().click();
+(await fc2).setFiles(path.join(OUT, 'releve-hard.pdf'));
+await p.waitForSelector('#editorScreen, .doc-detail, [data-act="doc-ocr"]', { timeout: 30000 });
+await p.waitForTimeout(1000);
+await p.locator('[data-act="doc-ocr"]').first().click();
+await p.waitForFunction(() => { const d = window.ScanPro.App.docs.find(x => /releve-hard/i.test(x.name)); return d && d.text && /EDF/.test(d.text); }, { timeout: 60000 });
+const hardId = await p.evaluate(() => { const d = window.ScanPro.App.docs.find(x => /releve-hard/i.test(x.name)); window.ScanPro.App.accDocId = d.id; return d.id; });
+await p.evaluate(() => window.ScanPro.Actions['acc-analyze']({ dataset: {} }));
+await p.waitForTimeout(1200);
+// Navigation réelle dans l'interface Comptabilité, puis ouverture du document
+await p.locator('[data-nav="acc"]').click();
+await p.waitForTimeout(600);
+await p.locator(`[data-act="acc-select"][data-id="${hardId}"]`).first().click();
+await p.waitForTimeout(800);
+const hardStored = await p.evaluate(async (id) => {
+  const full = await window.ScanPro.Repo.doc(id);
+  return { id: window.ScanPro.App.accDocId, txCount: full.acc?.data?.transactions?.length ?? null, totals: full.acc?.data?.totals ?? null };
+}, hardId);
+const hardDom = await p.evaluate(() => {
+  const body = document.body.innerText;
+  return {
+    chipsAverifier: [...document.querySelectorAll('.chip.err')].filter(el => /à vérifier/i.test(el.textContent)).length,
+    chipsDoublon: [...document.querySelectorAll('.chip.warn')].filter(el => /doublon/i.test(el.textContent)).length,
+    mentionNonTotalisees: /ne sont pas totalis/i.test(body),
+    body
+  };
+});
+const uiHard = {
+  sameCountAsEngine: hardStored.txCount === hardEngine.transactions.length,
+  chipsAverifier: hardDom.chipsAverifier,
+  chipsDoublon: hardDom.chipsDoublon,
+  mentionNonTotalisees: hardDom.mentionNonTotalisees,
+  debitAffiche: hardDom.body.includes(String(hardEngine.totals.debit)),
+  creditAffiche: hardDom.body.includes(String(hardEngine.totals.credit)),
+  pasDeMontantInvente: hardDom.body.includes('à vérifier')
+};
+check('UI4 : le relevé difficile importé par l’UI a le même nombre d’opérations que le moteur (zéro transaction fantôme)', uiHard.sameCountAsEngine, JSON.stringify(hardStored));
+check('UI5 : les opérations incertaines sont explicitement visibles avec un chip « à vérifier » (examen utilisateur possible)', uiHard.chipsAverifier >= 1, String(uiHard.chipsAverifier));
+check('UI6 : le doublon est signalé visuellement par un chip « doublon ? »', uiHard.chipsDoublon >= 1, String(uiHard.chipsDoublon));
+check('UI7 : l’interface affiche que les opérations « à vérifier » ne sont pas totalisées', uiHard.mentionNonTotalisees, String(uiHard.mentionNonTotalisees));
+check('UI8 : les totaux affichés correspondent aux seules opérations certaines (débit ' + hardEngine.totals.debit + ', crédit ' + hardEngine.totals.credit + ')', uiHard.debitAffiche && uiHard.creditAffiche && uiHard.pasDeMontantInvente, JSON.stringify(uiHard));
+
+// ═════════════ CLASSIFICATION — un libellé contenant « FACTURE » ne doit pas faire passer un relevé pour une facture ═════════════
+const cls = await p.evaluate(() => {
+  const A = window.ScanPro.Acc;
+  const hardText = ['RELEVE DE COMPTE', 'SOLDE INITIAL 500,00', '05/10 CB FOURNISSEUR ABC 120,00', 'FACTURE N 2026-44 MONTANT NEGOCIE', 'NOUVEAU SOLDE 344,99'].join('\n');
+  const invoiceText = ['FACTURE D’ACHAT N 2026-11', 'Émetteur : FOURNISSEUR FICTIF SAS', 'Total HT 1 000,00', 'TVA 200,00', 'Total TTC 1 200,00'].join('\n');
+  return { hard: A.classifyType(hardText).type, invoice: A.classifyType(invoiceText).type };
+});
+check('C1 : un relevé contenant le mot « FACTURE » dans un libellé reste classé en relevé bancaire', cls.hard === 'releve_bancaire', cls.hard);
+check('C2 : une vraie facture d’achat reste classée en facture (pas d’effet de bord du durcissement)', cls.invoice === 'facture_achat', cls.invoice);
+
 check('Aucune erreur JavaScript pendant tout le parcours', errs.length === 0, errs.slice(0, 3).join(' | '));
 console.log(`\n===== V2.22 RELEVES FIXTIFS : ${ok.length} OK / ${ko.length} échec(s) =====`);
 await b.close();
