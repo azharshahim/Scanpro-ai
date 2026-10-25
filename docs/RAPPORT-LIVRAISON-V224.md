@@ -55,3 +55,10 @@ Adaptations de tests existants (comportement objet de la correction, pas un affa
 - SHA-256 de `index.html` live identique à celui du commit fusionné `6c58651` : `dbfac3ea7d510c2959be32d3d4ff7601b00aec827d47c93207d562efa9342bff`.
 - Tests exécutés contre l'URL publique : `e2e-v24-r11-pages` **16/16**, `e2e-v223-assistant` **38/38**, 0 erreur JavaScript.
 - Check distant « Tests Playwright » sur la PR : *success* avant fusion.
+
+## 7. Correctif d'affichage « À propos » (PR #15, merge `3e3b84d`, déploiement run `40232703436`)
+
+- Constats après mise en production : le panneau Paramètres → « Aide et version » affichait encore **2.23.0**. Cause : chaîne codée en dur dans `src/views.js` (`version 2.23.0 (Web)`) non couverte par le bump, alors que la version canonique `window.ScanPro.version` et le cache du service worker étaient déjà en 2.24.0. Ce n'était pas un problème de cache (SW network-first pour les pages, `skipWaiting` + `clients.claim`).
+- Correction : le libellé utilise désormais `${ScanPro.version}` (source unique, divergence impossible à l'avenir).
+- Garde-fou : assertion de non-régression dans `e2e-v221-ux.mjs` sur 6 largeurs (suite 56 → 62 assertions). Noyau CI : **14 suites, 373 assertions, 0 échec**.
+- Vérification live : `index.html` byte-identique au commit `3e3b84d` (SHA-256 `3e0b3ee8…f078d52c`), une seule occurrence `2.24.0` dans le bundle, sonde navigateur sur l'URL publique = « ScanPro AI — version 2.24.0 (Web) », suites live `e2e-v221-ux` 62/62 et `e2e-v24-r11-pages` 16/16.
