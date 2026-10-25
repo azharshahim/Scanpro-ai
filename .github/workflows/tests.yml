@@ -28,5 +28,5 @@ jobs:
       - name: Construction du bundle index.html
         run: python3 build.py
 
-      - name: Noyau de tests E2E (12 suites, sans données réelles)
+      - name: Noyau de tests E2E (13 suites, sans données réelles)
         run: bash tests/run-ci.sh

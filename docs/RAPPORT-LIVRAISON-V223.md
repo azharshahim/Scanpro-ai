@@ -101,4 +101,6 @@ Compta L2 30 · L3 23 · L4 19 · L5 18 · L6 14 (104) ; V2.13 17 · V2.14 15 ·
 ## 7. Liens
 
 - Branche : https://github.com/azharshahim/Scanpro-ai/tree/feature/v2.23-assistant-comptable
-- Pull Request : lien ajouté après création de la PR (aucune fusion ne sera effectuée sans accord explicite).
+- Pull Request **#13** : https://github.com/azharshahim/Scanpro-ai/pull/13 (ouverte sur `main`, non fusionnée)
+- CI GitHub : workflow « Tests Playwright », run **40211456379** sur le commit `baab2a0`, conclusion `success` (check « E2E Chromium (données fictives) » attaché à la PR). Le libellé d'étape « 13 suites » est aligné dans le même lot ; le run de la tête finale sera mentionné après exécution.
+- `main` reste au commit `d6b2ed5` (V2.22) ; le site Pages reste en 2.22.0 tant que la fusion n'est pas approuvée.
