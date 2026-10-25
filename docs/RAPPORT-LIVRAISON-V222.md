@@ -187,3 +187,86 @@ Des sondes exploratoires locales ont été lancées sur trois PDF fournis par l'
 - Le site live reste en V2.21.0 au moment de ce rapport.
 - Le token GitHub fourni dans la conversation ne doit jamais être écrit dans un fichier ou le dépôt ;
   sa **révocation est recommandée** (rappel déjà fait à plusieurs reprises).
+
+---
+
+# 8. Revue finale pré-fusion (postérieure à l'ouverture de la PR #12)
+
+Revue ciblée demandée avant fusion. Aucune fusion, aucune modification de `main`, aucune nouvelle
+version publiée : seuls des correctifs et des tests ont été ajoutés sur la branche de la PR.
+
+## 8.1 Défauts supplémentaires trouvés pendant la revue et corrigés
+
+Tous démontrés par sonde puis verrouillés par des tests négatifs (`tests/e2e-v222-soldes-bnp.mjs`) :
+
+| # | Défaut constaté sur la version de la PR initiale | Comportement après correctif |
+|---|---|---|
+| F-a | `SOLDE CREDITEUR AU 01.10.26 CPTE 4567 500,00` : un numéro de référence était fusionné au montant → **4 567 500,00** | `Non reconnu` (texte alpha mêlé aux chiffres du montant) |
+| F-b | `… REF 48889252 500,00` (structure vue sur un vrai BNP) → **48 889 252 500** | `Non reconnu` |
+| F-c | Groupement de milliers non canonique `123 4 500,00` interprétable | `Non reconnu` |
+| F-d | Entier sans décimale (`500`) accepté comme solde | `Non reconnu` (les soldes FR imprimés portent 2 décimales) |
+| F-e | Date ISO `2026-10-01` non neutralisée → solde non reconnu | Reconnu (séparateurs `-` pris en compte) |
+| F-f | Montant ≥ 1 million `12 345 678,90` rejeté à tort par une règle trop stricte | Reconnu (groupement canonique ××× généralisé) |
+
+Principe conservateur confirmé par tests : le montant n'est jamais lu sur une ligne voisine (N1),
+deux montants décimaux sur la ligne => `Non reconnu` (N2), un mot après le montant => `Non reconnu` (N7).
+Limite assumée et testée (N9) : les soldes entre parenthèses ne passent pas par le chemin BNP
+(le format BNP utilise le mot-clé DÉBITEUR ; les parenthèses restent gérées par les chemins de solde génériques).
+
+## 8.2 Tests ajoutés pendant la revue (100 % fictifs, assertions de valeur fortes)
+
+- `tests/e2e-v222-soldes-bnp.mjs` — **24 assertions** : 13 cas positifs (créditeur, débiteur négatif,
+  milliers groupés/fragmentés, glyphes espacés, dates variées, devises, occurrences intermédiaires)
+  et 10 cas négatifs (référence, double montant, entier sans décimale, groupement inverse, mot en fin,
+  ligne voisine, absence du mot-clé AU, parenthèses, pied de page).
+- `tests/e2e-v222-dispositions.mjs` — **12 assertions** : la frontière `xc < 0,45` est testée sur
+  9 dispositions (date à 0,05 / 0,30 / 0,42 acceptée ; 0,48 et token médian 0,55 rejetés ;
+  pied de page `Page 2/4` sans fantôme ; 3 pages avec en-têtes répétés ; ligne sans montant conservée).
+- `audit-v221-lots-independant.mjs` renforcé (62 → **65 assertions**) : C2 vérifie désormais le compte,
+  le sens et les tokens de la règle mémorisée (+ C2b nature honnêtement `inconnue`), F1 garde-fou
+  compte vide (toast d'erreur, aucun sheet, zéro écriture), F2 double-clic sur confirmer (3 validations,
+  3 entrées d'historique, jamais de double écriture).
+
+## 8.3 Vérification depuis un environnement propre (simulation de runner)
+
+Séquence identique à la CI, exécutée dans une copie sans `node_modules` ni `.git` :
+`npm install` → `npx playwright install chromium` → `python3 build.py` → `PORT=8091 bash tests/run-ci.sh`.
+Résultat : **12 suites, 293 assertions, 0 échec, code de sortie 0**.
+
+## 8.4 Bilan complet des exécutions de la revue (tout réellement exécuté)
+
+- Noyau CI (12 suites, dans la simulation runner) : **293 assertions OK**.
+- Autres suites maintenues relancées sur le code durci (v25 OCR Tesseract réel, v218 OCR, v215,
+  v216, fiabilité, compta L2–L6, v213/v214/v2141, v2/v21/v22/v23, pages, pdf-tools, desktop, perf) :
+  toutes sorties 0, **295 assertions ou checks OK supplémentaires**, soit **588 vérifications au total, 0 échec**.
+- Scripts V2.0 obsolètes (`e2e`, `e2e2`, `e2e-gh`) : mêmes échecs que sur la baseline V2.21, non régressions.
+- `audit-bank-repro` : 13/14 défauts historiques non reproduits ; **R11 reste reproduit à l'identique**.
+
+## 8.5 Périmètre exact du défaut R11 (vérifié par test, ni masqué ni prétendu corrigé)
+
+- Scénario concerné : appel texte sans géométrie (`extractBank(texte, [])` — collage manuel ou OCR
+  sans boîtes de mots) : la page d'origine de chaque opération vaut 0 par construction, faute de
+  coordonnées pour la localiser. Les montants, libellés, dates, totaux et contrôles ne sont pas affectés.
+- Parcours d'importation PDF standard V2.22 : **non concerné** — pdf.js fournit les boîtes de mots,
+  `bankFromPositions` renseigne les vraies pages (test R11a : pages 0/1/1 exactes ; R11b documente
+  la limite du chemin texte).
+
+## 8.6 Intégration continue GitHub
+
+- Avant cette revue, aucun statut CI n'était attaché aux commits : le seul workflow (`pages.yml`)
+  se déclenche sur push `main` (déploiement) et le dépôt n'avait ni workflow de test ni `package.json`
+  (Playwright était installé hors dépôt). Les tests locaux ne sont pas des contrôles GitHub.
+- Ajout de `.github/workflows/tests.yml` (déclencheurs `pull_request` + manuel), `package.json`
+  et `tests/run-ci.sh` : Chromium headless, construction du bundle, 12 suites portables sans donnée
+  réelle ni OCR lourd. Les suites OCR (v25, v218) et les scripts obsolètes restent hors CI, exécutés localement.
+- Le statut du workflow sur la PR sera constaté via l'API/l'onglet Checks après poussée ; il ne doit
+  pas être annoncé comme vert avant exécution effective.
+
+## 8.7 Relevé réel et confidentialité
+
+- `tests/e2e-v217-releve-reel.mjs` reste **IGNORÉ** tant qu'aucun relevé **anonymisé de test** n'est
+  fourni via `BANK_PDF_PATH` (vérifié : message d'ignorance, code 0). Les PDF disponibles dans
+  l'environnement sont des relevés personnels réels : ils ne sont pas des fixtures anonymisées et ne
+  sont jamais intégrés au dépôt ni à une suite automatisée. La validation sur relevé réel reste donc
+  **à effectuer** (procédure manuelle §5 ; sondes exploratoires locales à métriques agrégées seulement).
+
