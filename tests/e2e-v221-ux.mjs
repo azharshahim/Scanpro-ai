@@ -42,6 +42,10 @@ for (const w of WIDTHS) {
   const sRoute = await p.evaluate(() => window.ScanPro.App.route);
   const sections = await p.locator('.set-group h3').allInnerTexts();
   check(`[${w}px] Paramètres accessible une seule fois (Accueil) et sections organisées`, gearCount === 1 && sRoute === 'settings' && sections.some(s => /apparence/i.test(s)) && sections.some(s => /comptabilit/i.test(s)) && sections.some(s => /ocr/i.test(s)), sections.join(' · ').slice(0, 90));
+  // V2.24 — le libellé de version du panneau « À propos » reflète la version canonique (jamais codé en dur)
+  const aboutVersion = await p.locator('.about').first().textContent();
+  const canonical = await p.evaluate(() => window.ScanPro.version);
+  check(`[${w}px] Version affichée dans « À propos » = version canonique ScanPro.version (${canonical})`, aboutVersion.includes(canonical) && !/undefined|2\.\d+\.\d+/.test(aboutVersion.replace(canonical, '')), aboutVersion.replace(/\s+/g, ' ').slice(0, 80));
   // Thème sombre cohérent + retour clair
   await p.locator('[data-act="toggle-theme"]').click(); await p.waitForTimeout(400);
   const dark = await p.evaluate(() => document.documentElement.dataset.theme === 'dark');
