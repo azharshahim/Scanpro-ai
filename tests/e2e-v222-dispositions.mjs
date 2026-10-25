@@ -114,7 +114,7 @@ const r11 = await p.evaluate(() => {
   return { texteSeul, avecPositions };
 });
 check('R11a : import PDF standard (positions pdf.js) → pages d’origine exactes 0/1/1', JSON.stringify(r11.avecPositions) === '[0,1,1]', JSON.stringify(r11.avecPositions));
-check('R11b : chemin texte sans géométrie → page 0 par construction (limite R11 connue, montants/libellés non affectés)', r11.texteSeul.every(pg => pg === 0), JSON.stringify(r11.texteSeul));
+check('R11b : chemin texte sans géométrie ni marqueur → origine inconnue explicite (null), jamais de fausse page 0 (V2.24 R11)', r11.texteSeul.every(pg => pg === null), JSON.stringify(r11.texteSeul));
 check('Aucune erreur JavaScript', errs.length === 0, errs.join(' | '));
 console.log(`\n===== V2.22 DISPOSITIONS : ${ok.length} OK / ${ko.length} échec(s) =====`);
 await b.close();

@@ -62,7 +62,7 @@ check('R7', 'Positions : ligne de continuation (sans date) écartée du libellé
 check('R8', 'Positions : date non en 1re cellule -> opération entièrement ignorée', !r.r8 || r.r8.length === 0, JSON.stringify(r.r8));
 check('R9', 'Positions : montant crédit entre deux ancres proches -> affecté au débit', Array.isArray(r.r9) && r.r9.length === 1 && r.r9[0].debit === 9.99, JSON.stringify(r.r9));
 check('R10', 'Doublon détecté en interne mais NON signalé dans le CSV', r.r10.dupFlag[1] === true && !/Doublon|À vérifier.*oui/i.test(r.r10.csv.split('\n')[2] || ''), JSON.stringify(r.r10.dupFlag));
-check('R11', 'Texte : page d’origine toujours 0 (multi-pages non tracé)', r.r11.length === 1 && r.r11[0].page === 0, 'page=' + (r.r11[0] && r.r11[0].page));
+check('R11', 'Texte multi-pages sans géométrie : fausse page 0 forcée (V2.24 — corrigé : null = origine inconnue explicite)', r.r11.length === 1 && r.r11[0].page === 0, 'page=' + (r.r11[0] && r.r11[0].page));
 check('R12', 'Colonne Montant signée sans solde : gérée ou non', !(r.r12.length === 2 && r.r12[0].debit === 12.4 && r.r12[1].credit === 2100), JSON.stringify(r.r12.map(t => [t.debit, t.credit, t.status])));
 check('R13', 'Libellé contenant « SOLDE » : opération filtrée comme un total', r.r13.length === 0, JSON.stringify(r.r13));
 check('R14', 'Positions sans en-tête Solde : le solde (1 100) écrase le crédit (100)', Array.isArray(r.r14) && r.r14.length === 1 && r.r14[0].credit === 1100, JSON.stringify(r.r14));

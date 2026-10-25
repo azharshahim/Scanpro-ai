@@ -2356,10 +2356,16 @@ const Acc = {
     // (libellé multi-ligne). Les lignes sans date qui suivent une opération lui
     // sont rattachées au lieu d'être perdues.
     const isTotalLine = (l) => /^(?:solde|total|nouveau solde)\b/i.test(l) || /(solde|total)\s*(initial|final|d['’]ouverture|de cl[oô]ture|pr[ée]c[ée]dent)/i.test(l);
-    const rawOps = []; let curOp = null;
+    // V2.24 (R11) — les marqueurs de pagination du texte assemblé (« — Page N — »,
+    // ajoutés par docRunOcr/editorOcr) portent la véritable origine. En l'absence de
+    // géométrie, c'est la seule source fiable : on suit la page courante (base 0).
+    const PAGE_MARK_RE = /^\s*[—–-]\s*Page\s+(\d{1,3})\s*[—–-]?\s*$/i;
+    const rawOps = []; let curOp = null; let currentPage = null;
     for (const l of lines) {
+      const pm = l.match(PAGE_MARK_RE);
+      if (pm) { currentPage = parseInt(pm[1], 10) - 1; curOp = null; continue; }
       const dm = l.match(/^(\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?)\s+(?:(\d{1,2}[\/.\-]\d{1,2}(?:[\/.\-]\d{2,4})?)\s+)?(.+)$/);
-      if (dm) { curOp = { date: dm[1], valueDate: dm[2] || null, parts: [dm[3]] }; rawOps.push(curOp); continue; }
+      if (dm) { curOp = { date: dm[1], valueDate: dm[2] || null, parts: [dm[3]], page: currentPage }; rawOps.push(curOp); continue; }
       if (!curOp) continue;
       if (isTotalLine(l) || /^(iban|bic|swift|titulaire|banque|relevé|extrait|page\s+\d)/i.test(l)) { curOp = null; continue; }
       if (/^(date|libellé|opération|operation)\b/i.test(l) && /(débit|crédit|libellé|montant|solde)/i.test(l)) continue;
@@ -2391,8 +2397,15 @@ const Acc = {
       else if (creditWords.test(label) || /\+\s?[\d]/.test(rest)) credit = Math.abs(amount);
       else { status = 'a-verifier'; conf = 40; }
       const normDate = (d) => { const pr = d.replace(/[.\-]/g, '/').split('/'); if (pr.length === 3 && pr[2].length === 2) pr[2] = '20' + pr[2]; return pr.join('/'); };
-      const txo = { date: normDate(op.date), valueDate: op.valueDate ? normDate(op.valueDate) : null, label: label || Acc.NR, reference: refM ? refM[1] : (refEmb ? refEmb[1] : null), debit, credit, balance, page: 0, confidence: conf, status };
-      if (pagesWords && pagesWords.length) { const z = Acc.findZone(pagesWords, txo.label); if (z) txo.page = z.page; }
+      // V2.24 (R11) — origine de page : marqueur textuel certain d'abord, puis une seule
+      // page physique (certitude structurelle), puis findZone sur la géométrie (héritage),
+      // enfin null si rien ne peut être démontré : jamais de fausse certitude (page 0 forcée).
+      let txPage = op.page;
+      if (txPage == null && Array.isArray(pagesWords)) {
+        if (pagesWords.length === 1) txPage = 0;
+        else if (pagesWords.some(w => w && w.length)) { const z = Acc.findZone(pagesWords, label || Acc.NR); if (z) txPage = z.page; }
+      }
+      const txo = { date: normDate(op.date), valueDate: op.valueDate ? normDate(op.valueDate) : null, label: label || Acc.NR, reference: refM ? refM[1] : (refEmb ? refEmb[1] : null), debit, credit, balance, page: txPage, confidence: conf, status };
       transactions.push(txo);
     }
     const posTx = Acc.bankFromPositions(pagesWords);
