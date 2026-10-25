@@ -2127,6 +2127,14 @@ const Acc = {
         else labelCells.push(cell.t);
         return;
       }
+      // V2.21 (R9) — un montant à cheval sur les colonnes débit/crédit ne doit pas être
+      // affecté à un sens deviné : on le laisse non affecté et on exige une vérification.
+      // La valeur reste lisible dans le texte OCR de l'opération ; aucune écriture n'est proposée.
+      if (nearBorder && col !== 'balance') {
+        target.status = 'a-verifier'; target.confidence = Math.min(target.confidence, 45);
+        target.source += ' · montant ambigu (frontière débit/crédit) : non affecté, à vérifier (' + cell.t + ')';
+        return;
+      }
       target[col] = col === 'balance' ? amt : Math.abs(amt);
       if (nearBorder) { target.status = 'a-verifier'; target.confidence = Math.min(target.confidence, 45); target.source += ' · colonne ambiguë (montant entre deux colonnes)'; }
     };
@@ -3425,21 +3433,33 @@ async function accGroupApply(docId, idxsCsv, mode) {
   if (!idxs.length) return;
   const props = Acc.bankProposals(doc.acc.data);
   const inp = document.getElementById('grpacc-' + idxs[0]);
+  // V2.21 — un champ rendu puis volontairement vidé est une erreur explicite : pas de
+  // repli silencieux sur la proposition, qui ferait croire à un compte choisi par l'utilisateur.
+  if (inp && !inp.value.trim()) { toast('Aucun compte saisi pour ce groupe : renseignez un compte avant de continuer (aucune opération n’a été modifiée).', 'err'); return; }
   const corrected = inp && inp.value.trim() ? inp.value.trim() : null;
-  const account = corrected || (props[idxs[0]] && props[idxs[0]].counterAccount);
-  if (!account) { toast('Aucun compte choisi pour ce groupe', 'err'); return; }
+  // V2.21 — le compte de repli est lu sur une ligne NON validée du lot : une écriture déjà
+  // validée (éventuellement sur un autre compte) ne doit jamais imposer son compte aux autres.
+  const fallbackIdx = idxs.find(j => { const t = doc.acc.data.transactions[j]; return t && !t.validated; });
+  const account = corrected || (fallbackIdx != null && props[fallbackIdx] && props[fallbackIdx].counterAccount) || null;
+  if (!account) { toast('Aucun compte disponible pour ce groupe : aucune opération n’a été modifiée (les écritures validées ne sont jamais touchées).', 'err'); return; }
   let n = 0, skipped = 0, firstTx = null;
   doc.acc.history = doc.acc.history || [];
   for (const j of idxs) {
     const tx = doc.acc.data.transactions[j]; if (!tx) continue;
     if (tx.validated) { skipped++; continue; } // jamais de modification silencieuse d'une écriture validée
+    firstTx = firstTx || tx;
     const old = tx.account || 'en attente';
-    if (mode !== 'correct' || tx.account !== account) {
-      tx.account = account; firstTx = firstTx || tx;
+    // V2.21 — ne tracer que les changements réels : aucune entrée d'historique old === new.
+    if (old !== account) {
+      tx.account = account;
       doc.acc.history.push({ at: Date.now(), field: 'imputation', old, new: account, rule: (props[j] && (props[j].origin || 'groupe')) + ' · nature ' + ((props[j] || {}).nature || 'inconnue'), origin: mode === 'correct' ? 'correction de groupe (utilisateur)' : 'validation groupée (utilisateur)' });
     }
     if (mode !== 'correct') { tx.validated = true; tx.validatedAt = Date.now(); }
     n++;
+  }
+  if (!n) { // toutes les lignes du lot étaient déjà validées : aucun enregistrement, message clair
+    toast('Aucune opération à traiter : ' + skipped + ' opération(s) de ce lot sont déjà validées et n’ont pas été touchées.', 'err', 5000);
+    return;
   }
   let learnedMsg = '';
   if (mode === 'validate-rule' && firstTx) {
