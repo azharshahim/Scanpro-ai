@@ -72,9 +72,9 @@ Serveur : `python3 -m http.server 8080` ; navigateur : Chromium Playwright (Pixe
 | `node tests/e2e-v217-releve-reel.mjs` | **Ignoré honnêtement** : aucun PDF de référence (`BANK_PDF_PATH`), donnée réelle volontairement absente du dépôt — jamais annoncé comme réussi |
 | `node tests/e2e-v24 / v25 / v26.mjs`, `e2e-v27` (2 assertions) | **Échecs préexistants identiques sur `main`** (sélecteurs UX V2.19), aucune régression V2.21 |
 
-Synthèse : **382 assertions exécutées avec succès sur les périmètres tenus**, 0 échec de
-régression imputable à V2.21, 1 défaut OCR historique refermé (R9), 1 repro artificiel
-documenté (R11), 4 scripts obsolètes à rafraîchir (dette préexistante).
+Synthèse : **452 assertions exécutées avec succès sur les 23 suites du périmètre tenu**,
+0 échec de régression imputable à V2.21, 1 défaut OCR historique refermé (R9), 1 repro
+artificiel documenté (R11), 4 scripts obsolètes à rafraîchir (dette préexistante).
 
 ### Preuves des scénarios A → E (test indépendant)
 
@@ -115,9 +115,13 @@ documenté (R11), 4 scripts obsolètes à rafraîchir (dette préexistante).
 
 ## 6. Publication
 
-- La V2.21 est livrée sur la branche **`feature/v2.21-audit-lots`** (commit de livraison référencé
-  dans le dépôt). **Aucune fusion dans `main`, aucun déploiement GitHub Pages** : le site live reste
-  en V2.20 tant que la V2.21 n'est pas validée. La publication se fera par PR → fusion `main`,
-  qui déclenchera `pages.yml` ; le changement de nom du cache SW garantira le remplacement propre.
+- La V2.21 est livrée sur la branche **`feature/v2.21-audit-lots`**, commit
+  [`269ba7c`](https://github.com/azharshahim/Scanpro-ai/commit/269ba7c15a43c27e61ba3f4bde81888833c2b762),
+  et la revue de code est ouverte en **PR [#11](https://github.com/azharshahim/Scanpro-ai/pull/11)**
+  (base `main`). **Aucune fusion dans `main`, aucun déploiement GitHub Pages** : vérifié via l'API,
+  `main` pointe toujours sur `001ea6d` et le site live
+  https://azharshahim.github.io/Scanpro-ai/ sert toujours la 2.20.0 (le workflow ne se déclenche
+  que sur `main`). La publication se fera par fusion de la PR, qui déclenchera `pages.yml` ;
+  le changement de nom du cache SW (`scanpro-ai-v2.21.0`) garantira le remplacement propre.
 - Tous les tests essentiels étant au vert, rien ne s'oppose à la revue de PR ; en revanche, ne pas
   publier si la vérification téléphone (point 5) révèle un blocage.
