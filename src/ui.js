@@ -2316,21 +2316,33 @@ const Acc = {
       if (!idxs.length) return { open: null, close: null };
       const amtAt = (i) => {
         // Conservateur : le montant doit être sur la MEME ligne que le libellé (jamais récupéré
-        // sur une ligne voisine). Les fragments de milliers ('3 3 88,42') sont refusionnés ;
-        // toute structure ambiguë renvoie null : aucune valeur n'est inventée.
+        // sur une ligne voisine). On analyse les tokens situés APRÈS le mot-clé 'AU' : ils ne
+        // peuvent contenir qu'une date, des fragments numériques de milliers et, en fin, une devise.
+        // Tout autre texte alphabétique (référence, libellé mêlé aux chiffres) rend la ligne
+        // ambiguë -> null : aucune valeur n'est inventée.
         const line = lines[i];
         const isDeb = /soldedebiteurau/.test(line.toLowerCase().replace(/\s+/g, ''));
-        const clean = line.replace(/\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}/g, ' ');
-        // Regex dédiée : le amountRe du scope exige une décimale et ignorerait les fragments
-        // entiers ('3' dans '3 3 88,42') ; on capture ici aussi les entiers isolés 1-3 chiffres.
-        const fragRe = /-?\d{1,3}(?:[.,]\d{2})?/g;
-        const toks = (clean.match(fragRe) || []).map(t => t.trim()).filter(Boolean);
-        if (!toks.length) return null;
-        const decs = toks.filter(t => /[.,]\d{2}$/.test(t));
-        const ints = toks.filter(t => !/[.,]\d{2}$/.test(t));
-        let v = null;
-        if (decs.length === 1 && ints.length <= 3) v = Acc.parseAmount(ints.join('') + ' ' + decs[0]);
-        else if (toks.length === 1) v = Acc.parseAmount(toks[0]);
+        const toksAll = line.split(/\s+/).filter(Boolean);
+        const auIdx = toksAll.findIndex(t => /^au$/i.test(t));
+        if (auIdx < 0) return null;
+        // Dates admises : JJ.MM.AA(AA), JJ/MM/AAAA, ISO AAAA-MM-JJ.
+        const dateTok = /^\d{1,4}[.\/-]\d{1,2}(?:[.\/-]\d{2,4})?$/;
+        let tail = toksAll.slice(auIdx + 1).filter(t => !dateTok.test(t));
+        // Une devise strictement terminale est admise (EUR/USD/E/€/$) ; tout autre mot alpha rend la ligne ambiguë.
+        if (tail.length && /^(EUR|USD|E|\u20AC|\$)$/i.test(tail[tail.length - 1])) tail = tail.slice(0, -1);
+        if (tail.some(t => /[A-Za-zÀ-ÿ]/.test(t))) return null;
+        const decs = tail.filter(t => /[.,]\d{2}$/.test(t));
+        const ints = tail.filter(t => !/[.,]\d{2}$/.test(t) && /^-?\d+$/.test(t));
+        if (decs.length !== 1) return null; // zéro ou plusieurs montants décimaux : non reconnu
+        // Fragments de milliers acceptés uniquement selon deux structures sûres :
+        //  (a) glyphes fragmentés : au plus deux fragments d'un seul chiffre (ex. '3 3 88,42') ;
+        //  (b) groupement français canonique : un premier groupe de 1-3 chiffres puis des
+        //      groupes d'exactement 3 chiffres (ex. '12 345 678,90', '1 234,56').
+        // Tout autre empilement (numéro de référence, groupes de longueurs mélangées) est rejeté.
+        const allSingle = ints.length > 0 && ints.length <= 2 && ints.every(t => /^-?\d$/.test(t));
+        const canonical = ints.length > 0 && ints[0].replace('-', '').length <= 3 && ints.slice(1).every(t => /^\d{3}$/.test(t));
+        if (ints.length && !allSingle && !canonical) return null;
+        const v = Acc.parseAmount(ints.join('') + ' ' + decs[0]);
         if (v == null) return null;
         return isDeb ? -Math.abs(v) : Math.abs(v);
       };

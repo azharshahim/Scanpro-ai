@@ -155,8 +155,13 @@ await veoCard.locator('button[data-act="acc-group-validate-rule"]').click();
 await confirmGroup(2);
 s = await snap(docId);
 check('C1 : Valider + règle → les 2 Veolia sont validées au 606300', s.txs[10].validated && s.txs[11].validated && s.txs[10].account === '606300' && s.txs[11].account === '606300');
-const ruleKey = await p.evaluate(() => { const r = window.ScanPro.Precompta.learnedRules().find(x => (x.tokens || []).includes('veolia')); return r ? r.key : null; });
-check('C2 : une règle apprise existe pour le bénéficiaire (sens sortie, compte 606300)', !!ruleKey, String(ruleKey));
+const learned = await p.evaluate(() => {
+  const r = window.ScanPro.Precompta.learnedRules().find(x => (x.tokens || []).includes('veolia'));
+  return r ? { key: r.key, account: r.account, direction: r.direction, nature: r.nature, tokens: r.tokens } : null;
+});
+check('C2 : la règle mémorise le bon compte (606300), le bon sens (sortie) et les bons tokens bénéficiaires', learned && learned.account === '606300' && learned.direction === 'sortie' && learned.tokens.includes('veolia'), JSON.stringify(learned));
+check('C2b : la nature non établie de Veolia reste honnêtement « inconnue » (jamais inventée)', learned && learned.nature === 'inconnue', String(learned && learned.nature));
+const ruleKey = learned ? learned.key : null;
 check('C3 : le message confirme validation ET apprentissage', /validée/.test(await lastToast()) && /Règle apprise/.test(await lastToast()), await lastToast());
 // « Réimport » : nouvelles opérations correspondant à la règle, dans un nouveau document
 const DOC2 = 'Relevé fictif réimport C';
@@ -324,6 +329,32 @@ await p.evaluate((id) => { window.ScanPro.App.accDocId = id; window.ScanPro.Acti
 await p.waitForTimeout(500);
 const twice = await snap(doc4Id);
 check('L3b : seconde demande refusée (déjà validées), aucune entrée d’historique supplémentaire, aucun faux succès', twice.history.filter(h => h.field === 'imputation').length === 2 && /déjà validées|Aucun compte/.test(await lastToast()), await lastToast());
+
+// ══════════════════════════════ SCÉNARIO F — gardes fous du récapitulatif (compte vide, double-clic) ══════════════════════════════
+const doc6Id = await makeBankDoc('Relevé fictif gardes fous récap', TXS.slice(0, 3));
+await openAcc(doc6Id);
+const fCard = p.locator('.grp-card', { hasText: 'Edf Energie' });
+// F1 : champ compte volontairement vidé → erreur explicite, pas de sheet, aucune écriture
+await fCard.locator('input[id^="grpacc-"]').fill('');
+await fCard.locator('button[data-act="acc-group-validate"]').click();
+await p.waitForTimeout(400);
+const f1 = await snap(doc6Id);
+check('F1 : compte vidé → erreur explicite, aucun sheet de confirmation, zéro validation et zéro historique',
+  (await p.locator('.sheet [data-act="acc-group-confirm"]').count()) === 0 &&
+  /Aucun compte saisi/.test(await lastToast()) &&
+  f1.txs.every(t => !t.validated) && f1.history.filter(h => h.field === 'imputation').length === 0, await lastToast());
+// F2 : double-clic rapide sur le bouton confirmer → une seule validation par opération
+await fCard.locator('input[id^="grpacc-"]').fill('606100');
+await fCard.locator('button[data-act="acc-group-validate"]').click();
+await p.waitForSelector('.sheet [data-act="acc-group-confirm"]', { timeout: 5000 });
+const confirmBtn = p.locator('.sheet [data-act="acc-group-confirm"]');
+await confirmBtn.click();
+await confirmBtn.click().catch(() => {}); // 2e clic après fermeture du sheet : ne doit rien provoquer
+await p.waitForTimeout(800);
+const f2 = await snap(doc6Id);
+check('F2 : double-clic sur confirmer → exactement 3 validations et 3 entrées d’historique (pas de double écriture)',
+  f2.txs.filter(t => t.validated).length === 3 && f2.history.filter(h => h.field === 'imputation').length === 3,
+  JSON.stringify({ validations: f2.txs.filter(t => t.validated).length, histo: f2.history.filter(h => h.field === 'imputation').length }));
 
 // ══════════════════════════════ LARGEURS MOBILES 320/360/390/430 ══════════════════════════════
 await openAcc(docId);
