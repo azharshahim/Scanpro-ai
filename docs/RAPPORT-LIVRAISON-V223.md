@@ -104,3 +104,27 @@ Compta L2 30 · L3 23 · L4 19 · L5 18 · L6 14 (104) ; V2.13 17 · V2.14 15 ·
 - Pull Request **#13** : https://github.com/azharshahim/Scanpro-ai/pull/13 (ouverte sur `main`, non fusionnée)
 - CI GitHub : workflow « Tests Playwright » — runs **40211456379** (`baab2a0`) et **40212145235** (`bb820d6`), conclusion `success`, check « E2E Chromium (données fictives) » attaché à la PR. Noyau exécuté sur runner Ubuntu : 13 suites / 340 assertions. Le check de la tête effective de la PR est à vérifier dans l'onglet Checks de la PR (chaque nouveau push relance la CI).
 - `main` reste au commit `d6b2ed5` (V2.22) ; le site Pages reste en 2.22.0 tant que la fusion n'est pas approuvée. PR #13 : `mergeable: true`, `merge_state: clean`, aucun retard sur `main`.
+
+---
+
+## 8. Correctif demande revue PR #13 — filtres de tri et opérations validées
+
+### 8.1 Défauts constatés
+1. Les filtres « Fiables / Incertaines / Non reconnues » étaient calculés par une fonction propre (`inTriage`) qui n'excluait pas les opérations déjà validées : une opération validée avec contrepartie réapparaissait dans « Fiables », contrairement à `Acc.bankTriage` qui les isole dans `validees`.
+2. La catégorie « Validées » était un simple `<span>` non cliquable (et masqué quand le compteur était à zéro) : elle ressemblait à un filtre sans en être un.
+3. Compteurs (`tri.counts`) et lignes affichées (`inTriage`) provenaient de deux sources différentes : aucune garantie d'égalité entre le chiffre du chip et les lignes visibles.
+
+### 8.2 Correctif (`src/views.js`, moteur d'extraction inchangé)
+- Le filtrage utilise désormais la **même source que les compteurs** : `tri.cats` produit par `Acc.bankTriage` (mapping `fiables / incertaines / nonReconnues / validees`). Une opération validée ne peut plus figurer dans aucune des trois autres catégories, avec ou sans contrepartie.
+- « Validées » devient un vrai bouton filtre (`data-act="acc-triage" data-f="validees"`), toujours rendu, avec `aria-pressed` reflétant le chip actif.
+- Le message d'aide précise que les validées sont exclues des trois autres catégories.
+
+### 8.3 Tests ajoutés/adaptés (`tests/e2e-v223-assistant.mjs`, 27 → 38 vérifications, toutes vertes)
+- Moteur : ajout d'une opération **validée sans contrepartie** ; M5b (elle ne bascule pas en « non reconnue »), M5c (exclusion des validées des trois catégories), M5d (partition stricte, les 4 catégories reconstituent exactement le total).
+- UI : document de 5 opérations couvrant les cinq cas (fiable, incertaine, non reconnue, validée avec compte, validée sans compte) ; U-F1 (chip Validées cliquable), U-F2 à U-F6 (pour chaque filtre, nombre de lignes visibles **exactement égal au compteur du chip** et contenu attendu), U-F7 (`aria-pressed`), U-F8 (parallélisation UI ↔ `bankTriage`). U1 couvre maintenant les quatre catégories.
+
+### 8.4 Résultats d'exécution (round correctif)
+- Noyau CI local (`tests/run-ci.sh`, 13 suites, **351 assertions**) : **0 échec** ; `e2e-v223-assistant` : **38 OK / 0 échec** (351 = 340 du round précédent + 11 vérifications nettes ajoutées).
+- Non-régression rejouée : compta L2–L6 (104), V2.13/V2.14/V2.14.1/V2.15/V2.15.1 (78), fiabilité 13, V2/V2.1–V2.3 (55), V2.16 synthétiques 16, V2.22 dispositions 17 / soldes 32 / relevés 43, lots 22, audit indépendant 65, V2.17 20, V2.18 18, V2.19 UX 56, audit-extra 8, V2.4/V2.6/V2.7 (32), pages 19 — aucune régression.
+- `audit-bank-repro` : R11 toujours seul défaut reproduit (périmètre documenté) ; `e2e-v217-releve-reel` reste ignoré sans `BANK_PDF_PATH` ; aucune donnée réelle, 0 PDF et 0 jeton dans le dépôt.
+- Le run GitHub du commit de tête sera référencé après exécution (chaque push relance la CI).
