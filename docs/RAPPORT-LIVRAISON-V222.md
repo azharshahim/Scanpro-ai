@@ -316,3 +316,5 @@ Résultat : **12 suites, 293 assertions, 0 échec, code de sortie 0**.
 - Noyau CI local (`tests/run-ci.sh`, 12 suites) : **0 échec** ; total des vérifications maintenues exécutées : **608, 0 échec** (y compris e2e-v25 OCR Tesseract réel 9/9 et e2e-v218 OCR 16/16).
 - `audit-bank-repro` : toujours 13/14 défauts historiques non reproduits ; R11 reste le seul défaut reproduit (périmètre §8.5, sans impact sur l'import PDF standard).
 - Relevé réel : test automatisé toujours **ignoré** sans `BANK_PDF_PATH` ; aucune donnée réelle dans le dépôt (vérifié : 0 fichier PDF suivi par git).
+
+Run GitHub réel déclenché par le push de cette ronde : workflow « Tests Playwright », run **40198318152**, conclusion `success` (toutes étapes vertes, check « E2E Chromium (données fictives) » attaché au commit 09d51f9, tête de la PR #12).
