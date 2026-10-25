@@ -127,4 +127,4 @@ Compta L2 30 · L3 23 · L4 19 · L5 18 · L6 14 (104) ; V2.13 17 · V2.14 15 ·
 - Noyau CI local (`tests/run-ci.sh`, 13 suites, **351 assertions**) : **0 échec** ; `e2e-v223-assistant` : **38 OK / 0 échec** (351 = 340 du round précédent + 11 vérifications nettes ajoutées).
 - Non-régression rejouée : compta L2–L6 (104), V2.13/V2.14/V2.14.1/V2.15/V2.15.1 (78), fiabilité 13, V2/V2.1–V2.3 (55), V2.16 synthétiques 16, V2.22 dispositions 17 / soldes 32 / relevés 43, lots 22, audit indépendant 65, V2.17 20, V2.18 18, V2.19 UX 56, audit-extra 8, V2.4/V2.6/V2.7 (32), pages 19 — aucune régression.
 - `audit-bank-repro` : R11 toujours seul défaut reproduit (périmètre documenté) ; `e2e-v217-releve-reel` reste ignoré sans `BANK_PDF_PATH` ; aucune donnée réelle, 0 PDF et 0 jeton dans le dépôt.
-- Le run GitHub du commit de tête sera référencé après exécution (chaque push relance la CI).
+- CI GitHub du correctif : workflow « Tests Playwright », run **40216444634** sur le commit `935542f`, conclusion `success` (le run de la tête effective de la PR reste consultable dans l'onglet Checks de la PR #13, chaque push relançant la CI).
