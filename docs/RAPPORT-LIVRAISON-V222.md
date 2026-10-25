@@ -259,8 +259,12 @@ Résultat : **12 suites, 293 assertions, 0 échec, code de sortie 0**.
 - Ajout de `.github/workflows/tests.yml` (déclencheurs `pull_request` + manuel), `package.json`
   et `tests/run-ci.sh` : Chromium headless, construction du bundle, 12 suites portables sans donnée
   réelle ni OCR lourd. Les suites OCR (v25, v218) et les scripts obsolètes restent hors CI, exécutés localement.
-- Le statut du workflow sur la PR sera constaté via l'API/l'onglet Checks après poussée ; il ne doit
-  pas être annoncé comme vert avant exécution effective.
+- **Run réel constaté après poussée** : workflow `Tests Playwright`, exécution
+  [40185456966](https://github.com/azharshahim/Scanpro-ai/actions/runs/40185456966),
+  déclenchée par l'événement `pull_request` sur le commit `b015e60`, conclusion **success**
+  (toutes les étapes au vert, y compris « Noyau de tests E2E » sur runner GitHub Ubuntu). Le check
+  « E2E Chromium (données fictives) » est attaché à la PR #12. Les tests locaux et ce check GitHub
+  sont deux preuves distinctes ; le check GitHub n'a été vert qu'après exécution réelle.
 
 ## 8.7 Relevé réel et confidentialité
 
@@ -270,3 +274,22 @@ Résultat : **12 suites, 293 assertions, 0 échec, code de sortie 0**.
   sont jamais intégrés au dépôt ni à une suite automatisée. La validation sur relevé réel reste donc
   **à effectuer** (procédure manuelle §5 ; sondes exploratoires locales à métriques agrégées seulement).
 
+
+---
+
+# 9. Verdict de la revue finale
+
+1. **Tests réellement exécutés** : 588 vérifications locales, 0 échec (noyau CI de 12 suites / 293
+   assertions validé aussi dans une simulation de runner propre) ; run GitHub Actions **40185456966
+   success** sur le commit de tête ; OCR Tesseract réel (v25, v218) vérifié localement.
+2. **Défauts trouvés et corrigés pendant la revue** : interprétation arbitraire de numéros de
+   référence comme montants de solde (F-a/F-b), entier sans décimale accepté (F-d), groupement de
+   milliers trop strict (F-f) ; chacun est verrouillé par un test négatif. Les correctifs M1–M5 de
+   la première livraison sont confirmés sans régression.
+3. **Points restant à vérifier** : validation sur un **vrai relevé anonymisé** (test v217 ignoré en
+   l'absence de `BANK_PDF_PATH`) ; procédure manuelle sur téléphone Android physique (§5, aucun
+   appareil disponible en environnement) ; défaut R11 cantonné au chemin texte sans géométrie, documenté.
+4. **Contrôles GitHub** : avant la revue, aucun (workflow de test inexistant) ; désormais un check
+   E2E automatique et vert est attaché à la PR. `pages.yml` (déploiement) ne se déclenche que sur `main`.
+5. **Verdict : PRÊT À FUSIONNER sous réserve de l'accord explicite de l'utilisateur.** Aucune fusion,
+   modification de `main` ou publication n'a été effectuée ; le site live reste en V2.21.0.
